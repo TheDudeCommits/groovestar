@@ -55,12 +55,12 @@ export function drawCoach(
   song: Song,
   pose: Pose,
   cx: number, groundY: number, height: number,
-  opts: { gloveFlash?: number; goldHold?: boolean; alpha?: number } = {},
+  opts: { gloveFlash?: number; goldHold?: boolean; alpha?: number; palette?: Song['coach'] } = {},
 ) {
   const sk = forward(pose);
   const scale = height / 2.7;
   const P = (p: [number, number]): [number, number] => [cx + p[0] * scale, groundY + (p[1] - 1.06) * scale];
-  const c = song.coach;
+  const c = opts.palette ?? song.coach;
   const lw = (u: number) => u * scale;
 
   ctx.save();

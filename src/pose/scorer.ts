@@ -41,6 +41,8 @@ export class Scorer {
   combo = 0;
   judged = 0;
   counts: Record<Judgment, number> = { X: 0, OK: 0, GOOD: 0, SUPER: 0, PERFECT: 0, YEAH: 0 };
+  /** per-move log, used by the results victory dance */
+  log: { move: string; judgment: Judgment }[] = [];
   /** true → no camera; judgments are simulated so presentation still works */
   demoMode = false;
 
@@ -123,6 +125,7 @@ export class Scorer {
     this.score += pts;
     this.judged++;
     this.counts[judgment]++;
+    this.log.push({ move: slot.move.move, judgment });
     return { judgment, gold, score: pts, moveIndex: slot.index };
   }
 

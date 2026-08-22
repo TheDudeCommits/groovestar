@@ -13,7 +13,7 @@ import { drawScene } from './scenes';
 import { Hud, drawPictograms } from './ui/hud';
 import { MOVES } from './moves';
 import { StyleScanner, type StyleProfile } from './appearance';
-import { PlayerAvatar } from './avatar';
+import { PlayerAvatar, type Cosmetics } from './avatar';
 import { generateChoreo } from './choreograph';
 import { parseYouTubeId, YouTubeSource, YouTubeClock } from './youtube';
 
@@ -59,6 +59,65 @@ const YT_ACCENTS: [string, string][] = [
   ['#37e0ff', '#b348ff'], ['#ffc843', '#ff7847'], ['#7cf95c', '#ff5ad2'],
   ['#ff6b6b', '#ffd23e'], ['#7aa2ff', '#5cf9c7'],
 ];
+
+// ---------------------------------------------------------------------------
+// Style locker: cosmetics unlocked by lifetime stars
+
+interface LockerOption { id: string; label: string; stars: number; color: string | null }
+const LOCKER: Record<'aura' | 'trim' | 'tattoo' | 'kicks', LockerOption[]> = {
+  aura: [
+    { id: 'accent', label: 'Song Accent', stars: 0, color: null },
+    { id: 'magenta', label: 'Magenta', stars: 5, color: '#ff5ad2' },
+    { id: 'gold', label: 'Gold', stars: 10, color: '#ffd23e' },
+    { id: 'emerald', label: 'Emerald', stars: 20, color: '#57f9a6' },
+  ],
+  trim: [
+    { id: 'none', label: 'None', stars: 0, color: null },
+    { id: 'cyan', label: 'Cyan Piping', stars: 5, color: '#55f0ff' },
+    { id: 'gold', label: 'Gold Piping', stars: 20, color: '#ffd23e' },
+  ],
+  tattoo: [
+    { id: 'none', label: 'None', stars: 0, color: null },
+    { id: 'circuit', label: 'Circuit Glow', stars: 10, color: null },
+    { id: 'royal', label: 'Royal Rings', stars: 35, color: null },
+  ],
+  kicks: [
+    { id: 'default', label: 'Classic', stars: 0, color: null },
+    { id: 'neon', label: 'Neon Kicks', stars: 10, color: null },
+    { id: 'gold', label: 'Gold Kicks', stars: 35, color: null },
+  ],
+};
+
+const totalStars = () => Number(localStorage.getItem('gs-stars') ?? '0');
+const addStars = (n: number) => localStorage.setItem('gs-stars', String(totalStars() + n));
+const crewOn = () => localStorage.getItem('gs-crew') !== '0';
+
+function getEquip(): Record<string, string> {
+  try { return JSON.parse(localStorage.getItem('gs-equip') ?? '{}'); } catch { return {}; }
+}
+function setEquip(slot: string, id: string) {
+  const e = getEquip(); e[slot] = id;
+  localStorage.setItem('gs-equip', JSON.stringify(e));
+}
+function resolveCosmetics(): Cosmetics {
+  const e = getEquip();
+  const stars = totalStars();
+  const opt = (slot: keyof typeof LOCKER) => {
+    const o = LOCKER[slot].find((x) => x.id === e[slot]);
+    return o && o.stars <= stars ? o : LOCKER[slot][0];
+  };
+  return {
+    aura: opt('aura').color,
+    trim: opt('trim').color,
+    tattoo: opt('tattoo').id as Cosmetics['tattoo'],
+    kicks: opt('kicks').id as Cosmetics['kicks'],
+  };
+}
+
+/** coach palette derived from the player's captured style (crew, victory dance) */
+function paletteFromStyle(s: StyleProfile): Song['coach'] {
+  return { skin: s.skin, hair: s.hair, top: s.top, vest: s.topDeep, pants: s.bottom, glove: s.glove, boots: s.boots };
+}
 
 function showMenu() {
   state = 'menu';
@@ -135,9 +194,40 @@ function showMenu() {
     startYouTube(id, bpm, ytDiff);
   });
 
+  // --- style locker + crew toggle ---
+  const locker = div('locker');
+  const renderLocker = () => {
+    const stars = totalStars();
+    const e = getEquip();
+    locker.innerHTML = `<span class="locker-title">STYLE LOCKER <b class="locker-stars">★ ${stars}</b></span>` +
+      (Object.keys(LOCKER) as (keyof typeof LOCKER)[]).map((slot) => {
+        const cur = LOCKER[slot].find((o) => o.id === e[slot] && o.stars <= stars) ?? LOCKER[slot][0];
+        const next = LOCKER[slot].find((o) => o.stars > stars);
+        return `<button class="locker-slot" data-slot="${slot}" title="${next ? `Next unlock at ★${next.stars}: ${next.label}` : 'All unlocked!'}">
+          <span class="ls-name">${slot.toUpperCase()}</span><span class="ls-val">${cur.label} ▸</span>
+        </button>`;
+      }).join('') +
+      `<button class="locker-slot crew ${crewOn() ? 'sel' : ''}" id="crew-btn">
+        <span class="ls-name">BACKUP CREW</span><span class="ls-val">${crewOn() ? 'ON' : 'OFF'}</span>
+      </button>`;
+    locker.querySelectorAll<HTMLElement>('.locker-slot[data-slot]').forEach((b) => b.addEventListener('click', () => {
+      const slot = b.dataset.slot as keyof typeof LOCKER;
+      const unlocked = LOCKER[slot].filter((o) => o.stars <= totalStars());
+      const curIdx = unlocked.findIndex((o) => o.id === (getEquip()[slot] ?? unlocked[0].id));
+      setEquip(slot, unlocked[(curIdx + 1) % unlocked.length].id);
+      renderLocker();
+    }));
+    locker.querySelector('#crew-btn')!.addEventListener('click', () => {
+      localStorage.setItem('gs-crew', crewOn() ? '0' : '1');
+      renderLocker();
+    });
+  };
+  renderLocker();
+  menu.appendChild(locker);
+
   const foot = div('menu-foot');
   foot.innerHTML = `<label>Dancer name <input id="pname" maxlength="14" value="${localStorage.getItem('gs-name') ?? 'DANCER'}"></label>
-    <div class="cam-note" id="cam-note">📷 The webcam scans your look (hair, skin, outfit) into a neon avatar and scores your moves. No camera? Demo Mode — full show, simulated scoring.</div>`;
+    <div class="cam-note" id="cam-note">📷 The webcam scans your look (hair, skin, outfit, build) into a neon avatar and scores your moves. Earn stars to unlock styles. No camera? Demo Mode — full show, simulated scoring.</div>`;
   menu.appendChild(foot);
   app.appendChild(menu);
 
@@ -233,6 +323,7 @@ function defaultStyle(song: Song): StyleProfile {
   return {
     skin: c.skin, hair: c.hair, top: c.top, topDeep: c.vest, bottom: c.pants,
     boots: c.boots, glove: c.glove, longSleeves: false, hairIsSkin: false,
+    body: { headScale: 1, buildScale: 1 },
   };
 }
 
@@ -319,6 +410,9 @@ function play(song: Song, playerName: string, opts: PlayOpts) {
   const hud = new Hud(app, playerName, song);
   const fx: FxState = { gloveFlash: 0, goldBurst: 0, shake: 0 };
   const avatar = new PlayerAvatar();
+  const cosmetics = resolveCosmetics();
+  const crew = crewOn() && cameraOk;
+  const crewPalette = playerStyle ? paletteFromStyle(playerStyle) : song.coach;
 
   const preview = buildPreview();
   const countdown = div('overlay countdown');
@@ -370,10 +464,20 @@ function play(song: Song, playerName: string, opts: PlayOpts) {
     if (cameraOk && playerStyle) {
       const aspect = tracker.video.videoWidth / Math.max(1, tracker.video.videoHeight);
       avatar.update(tracker.latestLandmarks, aspect || 4 / 3, performance.now());
+      // optional backup crew: two smaller clones of you dancing the routine
+      if (crew) {
+        const crewPose = goldHold ? pose : addGroove(pose, Math.max(0, beat + 0.5), 0.9);
+        for (const cxr of [0.22, 0.78]) {
+          drawCoach(ctx, song, crewPose, W() * cxr, H() * 0.8, H() * 0.3, {
+            alpha: 0.8, palette: crewPalette, goldHold: goldHold && fx.goldBurst > 0.2,
+          });
+        }
+      }
       if (avatar.hasPose) {
         avatar.draw(ctx, playerStyle, W() / 2, H() * 0.84, H() * 0.56, {
           beat: Math.max(0, beat), accent: song.accent, w: W(),
           gloveFlash: fx.gloveFlash, goldGlow: fx.goldBurst > 0.25,
+          cosmetics,
         });
       } else {
         hintStepIn(ctx);
@@ -401,6 +505,7 @@ function play(song: Song, playerName: string, opts: PlayOpts) {
 
   function applyEvent(ev: JudgmentEvent) {
     hud.popJudgment(ev.judgment);
+    avatar.react(ev.judgment);
     if (ev.judgment !== 'X') fx.gloveFlash = 1;
     if (ev.judgment === 'YEAH') {
       fx.goldBurst = 1;
@@ -508,6 +613,7 @@ async function endSong(song: Song, scorer: Scorer, hud: Hud, preview: HTMLCanvas
   const res = div('overlay results');
   const finalScore = Math.round(scorer.score);
   const stars = scorer.stars();
+  addStars(stars);
   res.innerHTML = `
     <div class="congrats">Congratulations!</div>
     <div class="result-banner">
@@ -525,10 +631,19 @@ async function endSong(song: Song, scorer: Scorer, hud: Hud, preview: HTMLCanvas
     </div>`;
   app.appendChild(res);
 
+  // victory dance: your avatar replays the moves you nailed
+  const nailed = [...new Set(scorer.log.filter((l) => l.judgment === 'PERFECT' || l.judgment === 'YEAH').map((l) => l.move))]
+    .filter((m) => !m.startsWith('gold_')).slice(-4);
+  const victorySeq = nailed.length >= 2 ? nailed : ['clap_up', 'v_up', 'pump', 'star_jump'];
+  const victoryPalette = playerStyle ? paletteFromStyle(playerStyle) : song.coach;
   const bgLoop = () => {
     if (state !== 'results') return;
     const t = performance.now() / 1000;
-    drawScene({ ctx, w: W(), h: H(), beat: t * 1.6, section: 'intro', song, goldBurst: 0 });
+    drawScene({ ctx, w: W(), h: H(), beat: t * 1.9, section: 'chorus', song, goldBurst: 0 });
+    const vb = t * 1.9;
+    const moveId = victorySeq[Math.floor(vb / 2) % victorySeq.length];
+    const pose = addGroove(MOVES[moveId].pose, vb, 1);
+    drawCoach(ctx, song, pose, W() * 0.18, H() * 0.97, H() * 0.4, { alpha: 0.95, palette: victoryPalette });
     raf = requestAnimationFrame(bgLoop);
   };
   bgLoop();

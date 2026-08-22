@@ -7,6 +7,11 @@
 
 import type { NormalizedLandmark } from '@mediapipe/tasks-vision';
 
+export interface BodyShape {
+  headScale: number;   // head radius multiplier vs default
+  buildScale: number;  // limb thickness multiplier (from shoulder-width ratio)
+}
+
 export interface StyleProfile {
   skin: string;
   hair: string;
@@ -17,6 +22,7 @@ export interface StyleProfile {
   glove: string;
   longSleeves: boolean;
   hairIsSkin: boolean; // shaved/bald → skip hair swoop
+  body: BodyShape;
 }
 
 type RGB = [number, number, number];
@@ -27,6 +33,8 @@ export class StyleScanner {
   private cv = document.createElement('canvas');
   private cx = this.cv.getContext('2d', { willReadFrequently: true })!;
   private samples: Record<string, RGB[]> = { hair: [], skin: [], top: [], forearm: [], bottom: [] };
+  private headRatios: number[] = [];   // ear distance / torso length
+  private buildRatios: number[] = [];  // shoulder width / torso length
 
   /** feed one video frame + its landmarks; call ~15–30 times during the scan */
   feed(video: HTMLVideoElement, lms: NormalizedLandmark[]) {
@@ -74,6 +82,18 @@ export class StyleScanner {
       const h2 = P(hp), k2 = P(kn);
       if (h2.v > 0.4 && k2.v > 0.4) push('bottom', at((h2.x + k2.x) / 2, (h2.y + k2.y) / 2));
     }
+    // body-shape ratios (aspect-corrected x so ratios are geometric, not pixel)
+    const A = 4 / 3;
+    const torso = Math.hypot((midSh.x - midHip.x) * A, midSh.y - midHip.y);
+    if (torso > 0.05) {
+      const earL = P(IDX.earL), earR = P(IDX.earR);
+      if (earL.v > 0.5 && earR.v > 0.5) {
+        this.headRatios.push(Math.hypot((earL.x - earR.x) * A, earL.y - earR.y) / torso);
+      }
+      if (shL.v > 0.5 && shR.v > 0.5) {
+        this.buildRatios.push(Math.hypot((shL.x - shR.x) * A, shL.y - shR.y) / torso);
+      }
+    }
   }
 
   get sampleCount() { return this.samples.top.length; }
@@ -94,8 +114,15 @@ export class StyleScanner {
     const longSleeves = dist(foreRGB, topRGB) + 18 < dist(foreRGB, skinRGB);
     const hairIsSkin = dist(hairRGB, skinRGB) < 42;
 
+    const med1 = (arr: number[], fb: number) =>
+      arr.length >= 3 ? arr.slice().sort((a, b) => a - b)[Math.floor(arr.length / 2)] : fb;
+    // typical ear-span/torso ≈ 0.34, shoulder-span/torso ≈ 0.72 — normalize around those
+    const headScale = Math.min(1.25, Math.max(0.85, med1(this.headRatios, 0.34) / 0.34));
+    const buildScale = Math.min(1.35, Math.max(0.8, med1(this.buildRatios, 0.72) / 0.72));
+
     const top = stylize(topRGB, 1.75, [0.38, 0.6]);
     return {
+      body: { headScale, buildScale },
       skin: rgbCss(clampL(skinRGB, 0.32, 0.82)),
       hair: rgbCss(stylize(hairRGB, 1.35, [0.12, 0.55])),
       top: rgbCss(top),
