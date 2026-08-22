@@ -203,15 +203,27 @@ body {
 .star.pop { animation: starpop 0.6s ease-out; }
 @keyframes starpop { 0% { transform: scale(1); } 40% { transform: scale(1.9) rotate(18deg); } 100% { transform: scale(1); } }
 
-/* lyrics */
-.lyrics { position: absolute; left: 26px; bottom: 22px; max-width: 44vw; }
-.lyric-now {
-  font-size: clamp(15px, 1.9vw, 21px); font-weight: 700;
-  background: linear-gradient(90deg, var(--accent, #55f0ff) var(--fill, 0%), rgba(238,241,255,0.85) var(--fill, 0%));
-  -webkit-background-clip: text; background-clip: text; color: transparent;
-  text-shadow: 0 2px 8px rgba(0,0,0,0.6);
+/* lyrics — cinematic overlay floating on the video, never boxed */
+.lyrics {
+  position: absolute; left: 50%; top: 2.6vh; transform: translateX(-50%);
+  max-width: 84vw; text-align: center; pointer-events: none;
 }
-.lyric-next { font-size: clamp(12px, 1.4vw, 16px); opacity: 0.45; margin-top: 4px; }
+.lyric-now {
+  font-size: clamp(20px, 3vw, 38px);
+  font-weight: 900; font-style: italic; letter-spacing: 0.015em; line-height: 1.15;
+  background: linear-gradient(90deg, var(--accent, #55f0ff) var(--fill, 0%), rgba(255,255,255,0.92) var(--fill, 0%));
+  -webkit-background-clip: text; background-clip: text; color: transparent;
+  filter:
+    drop-shadow(0 2px 3px rgba(0, 0, 5, 0.9))
+    drop-shadow(0 0 14px rgba(0, 0, 10, 0.7))
+    drop-shadow(0 0 26px var(--accent, #55f0ff));
+  will-change: transform, opacity, filter;
+}
+.lyric-next {
+  font-size: clamp(12px, 1.3vw, 16px); font-weight: 700; font-style: italic;
+  color: rgba(255, 255, 255, 0.42); margin-top: 6px; letter-spacing: 0.08em;
+  text-shadow: 0 1px 6px rgba(0, 0, 5, 0.9);
+}
 
 /* beat-sync chip */
 .sync-chip {

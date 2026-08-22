@@ -708,17 +708,13 @@ function play(song: Song, playerName: string, opts: PlayOpts) {
     const lyricBeat = clock instanceof YouTubeClock ? clock.videoBeat() : beat;
     hud.updateLyrics(song.lyrics, lyricBeat);
 
-    // mic beat-sync: pull the grid onto the room audio every ~2s
+    // mic beat-sync: pull the grid onto the room audio every ~2s (silent — no chip)
     if (opts.mic?.active && clock instanceof YouTubeClock && beat > 0) {
       if (performance.now() - lastSync > 2000) {
         lastSync = performance.now();
         const est = opts.mic.estimate();
         if (est) clock.applySync(est);
       }
-      hud.setSync(
-        clock.synced ? `♪ LIVE SYNC ${clock.bpm.toFixed(1)} BPM` : `♪ ${Math.round(clock.bpm)} BPM`,
-        clock.synced,
-      );
     }
 
     const section = clock.sectionAt(Math.max(0, beat));
@@ -788,12 +784,6 @@ function play(song: Song, playerName: string, opts: PlayOpts) {
       drawCoach(ctx, song, coachPose, W() * 0.885, H() * 0.64, H() * 0.21, {
         gloveFlash: 0, goldHold: goldHold && fx.goldBurst > 0.2,
       });
-      ctx.save();
-      ctx.font = `700 ${Math.max(11, H() * 0.014)}px 'Trebuchet MS', sans-serif`;
-      ctx.fillStyle = 'rgba(255,255,255,0.55)';
-      ctx.textAlign = 'center';
-      ctx.fillText('COACH', W() * 0.885, H() * 0.665);
-      ctx.restore();
     } else {
       drawCoach(ctx, song, coachPose, W() / 2, H() * 0.84, H() * 0.56, {
         gloveFlash: fx.gloveFlash, goldHold: goldHold && fx.goldBurst > 0.2,
@@ -807,8 +797,7 @@ function play(song: Song, playerName: string, opts: PlayOpts) {
   };
 
   function applyEvent(ev: JudgmentEvent) {
-    hud.popJudgment(ev.judgment);
-    avatar.react(ev.judgment);
+    avatar.react(ev.judgment); // the dancer's rim color IS the judgment feedback
     if (ev.judgment !== 'X') fx.gloveFlash = 1;
     if (ev.judgment === 'YEAH') {
       fx.goldBurst = 1;

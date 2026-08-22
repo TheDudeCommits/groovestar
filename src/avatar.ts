@@ -82,6 +82,10 @@ export class PlayerAvatar {
   private ghosts: Ghost[] = [];
   private pendingGhost = false;
 
+  // judgment rim: the neon outline IS the score feedback
+  private rimNow: [number, number, number] = [255, 255, 255];
+  private rimTarget: [number, number, number] = [255, 255, 255];
+
   // offscreen for the cel pass
   private off = document.createElement('canvas');
   private offCtx = this.off.getContext('2d')!;
@@ -106,11 +110,19 @@ export class PlayerAvatar {
       : { ...midHip };
   }
 
-  /** judgment feedback → face state + gold afterimages */
+  /** judgment feedback → rim color + face state + gold afterimages
+   *  gold = perfect · green = good · blue = okay · red = missed */
   react(j: Judgment) {
     if (j === 'YEAH') { this.faceState = 'stars'; this.faceT = 1.4; this.pendingGhost = true; }
     else if (j === 'PERFECT' || j === 'SUPER') { this.faceState = 'smile'; this.faceT = 0.9; }
     else if (j === 'X') { this.faceState = 'wobble'; this.faceT = 0.8; }
+    const RIM: Record<Judgment, [number, number, number]> = {
+      YEAH: [255, 210, 62], PERFECT: [255, 210, 62],
+      SUPER: [87, 249, 107], GOOD: [87, 249, 107],
+      OK: [63, 141, 255],
+      X: [255, 77, 77],
+    };
+    this.rimTarget = RIM[j];
   }
 
   private mid(a: Named, b: Named): Pt {
@@ -264,11 +276,19 @@ export class PlayerAvatar {
       [hipB, kneeB, W_THIGH, W_KNEE], [kneeB, ankB, W_KNEE, W_ANK],
     ];
 
-    // neon rim: padded copies of every body shape, glowing
+    // neon rim: padded copies of every body shape, glowing.
+    // The rim color IS the judgment feedback — it eases toward the color of
+    // the last scored move (gold/green/blue/red) and holds until the next.
+    for (let i = 0; i < 3; i++) {
+      this.rimNow[i] += (this.rimTarget[i] - this.rimNow[i]) * Math.min(1, dt * 9);
+    }
+    const rim = opts.goldGlow
+      ? 'rgba(255,222,120,0.95)'
+      : `rgba(${this.rimNow.map(Math.round).join(',')},0.94)`;
     o.save();
-    o.shadowColor = opts.goldGlow ? '#ffd23e' : opts.accent;
-    o.shadowBlur = lwT(0.3);
-    o.fillStyle = opts.goldGlow ? 'rgba(255,222,120,0.95)' : 'rgba(255,255,255,0.92)';
+    o.shadowColor = rim;
+    o.shadowBlur = lwT(0.32);
+    o.fillStyle = rim;
     const pad = lwT(0.05);
     for (const [a, b, w1, w2] of bodyCapsules) {
       capsulePath(o, a, b, w1 + pad, w2 + pad); o.fill();
@@ -435,7 +455,8 @@ export class PlayerAvatar {
       o.closePath(); o.fill();
       const angles = [-2.35, -1.85, -1.2];
       o.strokeStyle = style.hair;
-      for (let i = 0; i < 3; i++) {
+      // no loose strands when the hood is up — they'd poke through it
+      for (let i = 0; i < (style.longSleeves && headUpright ? 0 : 3); i++) {
         const a = angles[i];
         const anchor = { x: head[0] + Math.cos(a) * hr * 0.95, y: head[1] + Math.sin(a) * hr * 0.95 };
         const rest = { x: head[0] + Math.cos(a) * hr * 1.5, y: head[1] + Math.sin(a) * hr * 1.5 - hr * 0.1 };

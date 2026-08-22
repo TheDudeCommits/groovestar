@@ -7,31 +7,18 @@
 
 import { MOVES, forward } from '../moves';
 import type { Song, LyricLine } from '../songs';
-import type { Judgment } from '../pose/scorer';
-
-const JCOLORS: Record<Judgment, string> = {
-  X: '#8d93a8', OK: '#e8ecf5', GOOD: '#41d6ff', SUPER: '#79f26b', PERFECT: '#c6f95c', YEAH: '#ffd23e',
-};
 
 export class Hud {
   root: HTMLElement;
-  private nameChip: HTMLElement;
-  private judgmentBox: HTMLElement;
   private meterFill: HTMLElement;
   private starEls: HTMLElement[] = [];
   private lyricNow: HTMLElement;
   private lyricNext: HTMLElement;
   private starsShown = 0;
 
-  constructor(parent: HTMLElement, playerName: string, song: Song) {
+  constructor(parent: HTMLElement, _playerName: string, song: Song) {
     this.root = el('div', 'hud');
     parent.appendChild(this.root);
-
-    const top = el('div', 'hud-top');
-    this.nameChip = el('div', 'name-chip', playerName);
-    this.judgmentBox = el('div', 'judgment-box');
-    top.append(this.nameChip, this.judgmentBox);
-    this.root.appendChild(top);
 
     const meter = el('div', 'meter');
     const track = el('div', 'meter-track');
@@ -68,13 +55,7 @@ export class Hud {
     this.syncChip.classList.toggle('locked', locked);
   }
 
-  popJudgment(j: Judgment) {
-    const d = el('div', 'judgment j-' + j, j === 'X' ? '✕' : j);
-    d.style.color = JCOLORS[j];
-    if (j === 'YEAH') d.classList.add('gold');
-    this.judgmentBox.appendChild(d);
-    setTimeout(() => d.remove(), 950);
-  }
+  // judgment feedback lives on the dancer's neon rim now (see PlayerAvatar.react)
 
   setProgress(ratio: number, stars: number, superstar: boolean) {
     this.meterFill.style.height = `${Math.min(100, ratio * 100)}%`;
@@ -90,6 +71,7 @@ export class Hud {
     this.starsShown = stars;
   }
 
+  private lastLine = '';
   updateLyrics(lyrics: LyricLine[], beat: number) {
     let now: LyricLine | null = null, next: LyricLine | null = null;
     for (const l of lyrics) {
@@ -98,10 +80,22 @@ export class Hud {
     }
     if (now) {
       const frac = Math.max(0, Math.min(1, (beat - now.beat) / now.durBeats));
-      this.lyricNow.textContent = now.text;
+      if (now.text !== this.lastLine) {
+        this.lastLine = now.text;
+        this.lyricNow.textContent = now.text;
+        // cinematic line entrance: rise + unblur + overshoot
+        this.lyricNow.animate([
+          { opacity: 0, transform: 'translateY(18px) scale(0.9)', filter: 'blur(6px)' },
+          { opacity: 1, transform: 'translateY(-3px) scale(1.04)', filter: 'blur(0px)', offset: 0.7 },
+          { opacity: 1, transform: 'translateY(0) scale(1)', filter: 'blur(0px)' },
+        ], { duration: 420, easing: 'cubic-bezier(0.2, 0.9, 0.3, 1)' });
+      }
       this.lyricNow.style.setProperty('--fill', `${frac * 100}%`);
-    } else {
-      this.lyricNow.textContent = '';
+    } else if (this.lastLine) {
+      this.lastLine = '';
+      const el2 = this.lyricNow;
+      el2.animate([{ opacity: 1 }, { opacity: 0, transform: 'translateY(-10px)', filter: 'blur(4px)' }],
+        { duration: 300, easing: 'ease-out' }).onfinish = () => { if (!this.lastLine) el2.textContent = ''; };
     }
     this.lyricNext.textContent = next ? next.text : '';
   }
@@ -123,14 +117,6 @@ export function drawPictograms(
   const speed = spacing / 2;                // 2 beats between moves
 
   ctx.save();
-  // baseline
-  ctx.strokeStyle = 'rgba(255,255,255,0.35)';
-  ctx.lineWidth = 2;
-  ctx.beginPath();
-  ctx.moveTo(nowX - size * 0.7, stripY + size * 0.55);
-  ctx.lineTo(w - 16, stripY + size * 0.55);
-  ctx.stroke();
-
   for (const m of song.choreo) {
     const d = m.beat - beat;               // beats until arrival
     if (d < -0.6 || d > 7) continue;
