@@ -50,6 +50,21 @@ The center-stage character is a live mirror of the player, generated on the spot
    (70% pose accuracy, 30% motion energy) inside the window becomes the judgment.
 4. Deliberately forgiving: enthusiasm scores; standing still doesn't.
 
+## Dance to any YouTube song
+
+Paste a music-video or choreography link in the menu: the official YouTube
+embed becomes the audio source and a dimmed neon-framed backdrop panel (the
+game never downloads or re-hosts the video), and a routine is **generated on
+the spot** — deterministic per video, so a song always gets "its" choreography.
+
+- Set the tempo with **TAP THE BEAT** or a preset; pick a difficulty (levels
+  add double-time mirror echoes).
+- The generator works from a ~95-move library with an anti-repetition budget:
+  16-beat section patterns, left/right call-and-response echoes, choruses keep
+  a recognizable 4-move hook while refreshing their back half, fresh fills on
+  odd repetitions, and one-time gold moves at section climaxes. A typical song
+  uses 60+ unique moves and no move more than a handful of times.
+
 ## Songs
 
 Three original tracks are synthesized live with WebAudio (kick/clap/hats, filtered

@@ -79,10 +79,77 @@ def('star_jump',  1.0, { armL: [140, 0], armR: [140, 0], legL: [35, 0], legR: [3
 def('letter_g',   0.8, { lean: -6, armL: [90, 80], armR: [160, 10], legL: WIDE, legR: WIDE, arrowR: 'up' });
 def('letter_r',   0.8, { lean: 6, armL: [160, 10], armR: [90, 60], legL: WIDE, legR: [34, 24], arrowL: 'up' });
 def('letter_v',   0.9, { armL: [142, 0], armR: [142, 0], legL: WIDE, legR: WIDE, arrowL: 'up', arrowR: 'up' });
-// gold move finishers
+// ---- groove tier (chill, verse-friendly) -----------------------------------
+def('snap_l',     0.35, { lean: -8, armL: [70, 95], armR: [15, 30], legL: WIDE, legR: WIDE });
+def('snap_r',     0.35, { lean: 8, armL: [15, 30], armR: [70, 95], legL: WIDE, legR: WIDE });
+def('shoulder_l', 0.4,  { lean: -10, armL: [30, 105], armR: [30, 105], legL: [28, 6], legR: [14, 6] });
+def('shoulder_r', 0.4,  { lean: 10, armL: [30, 105], armR: [30, 105], legL: [14, 6], legR: [28, 6] });
+def('hair_comb',  0.45, { lean: 6, armL: [20, 15], armR: [150, 95], arrowR: 'ccw' });
+def('swim_l',     0.5,  { lean: -8, armL: [95, 25], armR: [65, 60], legL: WIDE, legR: WIDE, arrowL: 'out' });
+def('swim_r',     0.5,  { lean: 8, armL: [65, 60], armR: [95, 25], legL: WIDE, legR: WIDE, arrowR: 'out' });
+def('monkey_l',   0.55, { armL: [120, 70], armR: [30, 70], legL: WIDE, legR: WIDE, arrowL: 'up', arrowR: 'down' });
+def('monkey_r',   0.55, { armL: [30, 70], armR: [120, 70], legL: WIDE, legR: WIDE, arrowL: 'down', arrowR: 'up' });
+def('hip_bump_l', 0.45, { lean: -13, crouch: 0.1, armL: [55, 100], armR: [40, 90], legL: [32, 4], legR: [10, 10] });
+def('hip_bump_r', 0.45, { lean: 13, crouch: 0.1, armL: [40, 90], armR: [55, 100], legL: [10, 10], legR: [32, 4] });
+def('step_touch_l', 0.4, { lean: -6, armL: [40, 10], armR: [40, 10], legL: [34, 0], legR: [10, 6], arrowL: 'out', arrowR: 'out' });
+def('step_touch_r', 0.4, { lean: 6, armL: [40, 10], armR: [40, 10], legL: [10, 6], legR: [34, 0], arrowL: 'out', arrowR: 'out' });
+def('roll_arms',  0.5,  { crouch: 0.08, armL: [55, 115], armR: [70, 110], legL: WIDE, legR: WIDE, arrowL: 'cw', arrowR: 'cw' });
+def('shimmy',     0.5,  { lean: 4, crouch: 0.15, armL: [45, 55], armR: [45, 55], legL: [26, 12], legR: [26, 12] });
+def('sprinkler',  0.6,  { lean: 7, armL: [95, 120], armR: [95, 5], legL: WIDE, legR: WIDE, arrowR: 'out' });
+def('disco_up_r', 0.6,  { lean: -8, armL: [25, 60], armR: [150, 0], legL: WIDE, legR: [26, 10], arrowR: 'up' });
+def('disco_up_l', 0.6,  { lean: 8, armL: [150, 0], armR: [25, 60], legL: [26, 10], legR: WIDE, arrowL: 'up' });
+def('disco_down_l', 0.55, { lean: 8, armL: [40, 0], armR: [120, 40], legL: WIDE, legR: WIDE, arrowL: 'down' });
+def('disco_down_r', 0.55, { lean: -8, armL: [120, 40], armR: [40, 0], legL: WIDE, legR: WIDE, arrowR: 'down' });
+def('box_arms',   0.4,  { armL: [70, 90], armR: [70, 90], legL: WIDE, legR: WIDE });
+def('wipe_l',     0.45, { lean: -5, armL: [110, 45], armR: [20, 20], legL: WIDE, legR: WIDE, arrowL: 'ccw' });
+def('wipe_r',     0.45, { lean: 5, armL: [20, 20], armR: [110, 45], legL: WIDE, legR: WIDE, arrowR: 'cw' });
+def('egyptian_l', 0.5,  { armL: [95, 85], armR: [40, 115], legL: WIDE, legR: WIDE, arrowL: 'out', arrowR: 'in' });
+def('egyptian_r', 0.5,  { armL: [40, 115], armR: [95, 85], legL: WIDE, legR: WIDE, arrowL: 'in', arrowR: 'out' });
+def('robot_l',    0.45, { armL: [90, 90], armR: [90, -90], legL: WIDE, legR: WIDE });
+def('robot_r',    0.45, { armL: [90, -90], armR: [90, 90], legL: WIDE, legR: WIDE });
+def('twist_l',    0.5,  { lean: -11, crouch: 0.16, armL: [35, 95], armR: [50, 95], legL: [24, 14], legR: [24, 14] });
+def('twist_r',    0.5,  { lean: 11, crouch: 0.16, armL: [50, 95], armR: [35, 95], legL: [24, 14], legR: [24, 14] });
+def('prayer',     0.35, { armL: [50, 118], armR: [50, 118], legL: WIDE, legR: WIDE, arrowL: 'in', arrowR: 'in' });
+// ---- power tier (chorus-friendly) ------------------------------------------
+def('raise_roof', 0.75, { armL: [140, 35], armR: [140, 35], legL: WIDE, legR: WIDE, arrowL: 'up', arrowR: 'up' });
+def('touchdown',  0.75, { armL: [165, 0], armR: [165, 0], legL: WIDE, legR: WIDE, arrowL: 'up', arrowR: 'up' });
+def('cactus',     0.6,  { armL: [90, 90], armR: [90, 90], legL: WIDE, legR: WIDE });
+def('punch_up_2', 0.8,  { crouch: 0.1, armL: [160, 5], armR: [160, 5], legL: [26, 14], legR: [26, 14], arrowL: 'up', arrowR: 'up' });
+def('punch_dn_l', 0.65, { lean: -8, crouch: 0.14, armL: [25, 0], armR: [60, 80], legL: [30, 14], legR: [16, 10], arrowL: 'down' });
+def('punch_dn_r', 0.65, { lean: 8, crouch: 0.14, armL: [60, 80], armR: [25, 0], legL: [16, 10], legR: [30, 14], arrowR: 'down' });
+def('uppercut_l', 0.75, { lean: -7, crouch: 0.12, armL: [85, 110], armR: [30, 60], legL: [28, 16], legR: [16, 8], arrowL: 'up' });
+def('uppercut_r', 0.75, { lean: 7, crouch: 0.12, armL: [30, 60], armR: [85, 110], legL: [16, 8], legR: [28, 16], arrowR: 'up' });
+def('chop_l',     0.7,  { lean: -6, armL: [100, 20], armR: [35, 75], legL: WIDE, legR: WIDE, arrowL: 'down' });
+def('chop_r',     0.7,  { lean: 6, armL: [35, 75], armR: [100, 20], legL: WIDE, legR: WIDE, arrowR: 'down' });
+def('archer_l',   0.7,  { lean: -5, armL: [90, 0], armR: [80, 115], legL: [30, 10], legR: [14, 8], arrowL: 'out' });
+def('archer_r',   0.7,  { lean: 5, armL: [80, 115], armR: [90, 0], legL: [14, 8], legR: [30, 10], arrowR: 'out' });
+def('dab_l',      0.8,  { lean: -10, armL: [60, 130], armR: [130, 0], legL: [26, 12], legR: [12, 6], arrowR: 'up' });
+def('dab_r',      0.8,  { lean: 10, armL: [130, 0], armR: [60, 130], legL: [12, 6], legR: [26, 12], arrowL: 'up' });
+def('whip_l',     0.7,  { lean: -4, crouch: 0.08, armL: [80, 15], armR: [20, 45], legL: WIDE, legR: WIDE, arrowL: 'out' });
+def('whip_r',     0.7,  { lean: 4, crouch: 0.08, armL: [20, 45], armR: [80, 15], legL: WIDE, legR: WIDE, arrowR: 'out' });
+def('floss_l',    0.75, { lean: 9, crouch: 0.08, armL: [45, 25], armR: [55, 30], legL: [22, 8], legR: [22, 8], arrowL: 'out', arrowR: 'in' });
+def('floss_r',    0.75, { lean: -9, crouch: 0.08, armL: [55, 30], armR: [45, 25], legL: [22, 8], legR: [22, 8], arrowL: 'in', arrowR: 'out' });
+def('swing_low',  0.8,  { crouch: 0.4, armL: [30, 25], armR: [30, 25], legL: [30, 35], legR: [30, 35], arrowL: 'down', arrowR: 'down' });
+def('lunge_l',    0.75, { lean: -14, crouch: 0.22, armL: [95, 0], armR: [120, 25], legL: [42, 6], legR: [18, 26] });
+def('lunge_r',    0.75, { lean: 14, crouch: 0.22, armL: [120, 25], armR: [95, 0], legL: [18, 26], legR: [42, 6] });
+def('clap_side_l', 0.6, { lean: -9, armL: [120, 45], armR: [125, 40], legL: [28, 8], legR: [12, 8], arrowL: 'out', arrowR: 'out' });
+def('clap_side_r', 0.6, { lean: 9, armL: [125, 40], armR: [120, 45], legL: [12, 8], legR: [28, 8], arrowL: 'out', arrowR: 'out' });
+def('crowd_l',    0.7,  { lean: -12, armL: [150, 10], armR: [140, 15], legL: [30, 6], legR: [12, 8], arrowL: 'up', arrowR: 'up' });
+def('crowd_r',    0.7,  { lean: 12, armL: [140, 15], armR: [150, 10], legL: [12, 8], legR: [30, 6], arrowL: 'up', arrowR: 'up' });
+def('helicopter', 0.85, { lean: 5, armL: [30, 40], armR: [170, 10], legL: WIDE, legR: WIDE, arrowR: 'cw' });
+def('run_man_l',  0.85, { lean: 3, crouch: 0.12, armL: [60, 100], armR: [25, 95], legL: [65, 85], legR: [12, 6], arrowL: 'up' });
+def('run_man_r',  0.85, { lean: -3, crouch: 0.12, armL: [25, 95], armR: [60, 100], legL: [12, 6], legR: [65, 85], arrowR: 'up' });
+def('knee_up_l',  0.7,  { armL: [45, 85], armR: [95, 30], legL: [70, 80], legR: [10, 4], arrowL: 'up' });
+def('knee_up_r',  0.7,  { armL: [95, 30], armR: [45, 85], legL: [10, 4], legR: [70, 80], arrowR: 'up' });
+def('kick_l',     0.75, { lean: 5, armL: [85, 10], armR: [85, 10], legL: [55, 5], legR: [10, 6], arrowL: 'out' });
+def('kick_r',     0.75, { lean: -5, armL: [85, 10], armR: [85, 10], legL: [10, 6], legR: [55, 5], arrowR: 'out' });
+// ---- gold move finishers ---------------------------------------------------
 def('gold_sky',   1.0, { lean: -4, armL: [30, 20], armR: [175, 0], legL: [30, 0], legR: [14, 10], arrowR: 'up' });
 def('gold_star',  1.0, { armL: [145, 0], armR: [145, 0], legL: [36, 0], legR: [36, 0], arrowL: 'up', arrowR: 'up' });
 def('gold_bow',   1.0, { lean: 0, crouch: 0.3, armL: [95, 20], armR: [95, 20], legL: [28, 30], legR: [28, 30] });
+def('gold_hero',  1.0, { lean: -8, armL: [40, 30], armR: [165, 15], legL: [34, 0], legR: [14, 12], arrowR: 'up' });
+def('gold_x',     1.0, { armL: [150, 55], armR: [150, 55], legL: [34, 0], legR: [34, 0], arrowL: 'in', arrowR: 'in' });
+def('gold_kneel', 1.0, { lean: 6, crouch: 0.42, armL: [110, 15], armR: [160, 0], legL: [30, 45], legR: [40, 30], arrowR: 'up' });
 
 // ---- skeleton geometry -----------------------------------------------------
 export interface Skeleton {
