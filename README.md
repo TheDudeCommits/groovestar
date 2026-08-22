@@ -65,6 +65,24 @@ the spot** — deterministic per video, so a song always gets "its" choreography
   odd repetitions, and one-time gold moves at section climaxes. A typical song
   uses 60+ unique moves and no move more than a handful of times.
 
+### Real rhythm & lyric sync
+
+- **Mic beat-sync**: while a YouTube track plays, the game listens to the room
+  (optional mic permission), builds an onset envelope (spectral flux), and
+  estimates the track's true tempo (autocorrelation) and beat phase (comb
+  alignment). The beat grid is gently pulled onto the actual music — pictograms
+  land on real downbeats. A chip shows "♪ LIVE SYNC" when locked.
+- **Synced lyrics (LRCLIB)**: the video title is matched against LRCLIB's free
+  synced-lyrics database; found lyrics power the in-game karaoke bar and the
+  context-aware choreographers:
+  - *Keyword tier* (always on): lyric words trigger matching moves — "jump" →
+    star jump, "hands up" → raise the roof, "left/right", "down low", "spin"…
+  - *AI tier* (optional): a serverless endpoint (`api/choreo.ts`) asks Claude
+    to beat-map a full routine that understands the lyrics' meaning, song
+    structure, and energy. Enable it by setting `ANTHROPIC_API_KEY` in the
+    Vercel project env; results are cached per video. Without a key the
+    endpoint returns 503 and the keyword tier takes over seamlessly.
+
 ## Songs
 
 Three original tracks are synthesized live with WebAudio (kick/clap/hats, filtered

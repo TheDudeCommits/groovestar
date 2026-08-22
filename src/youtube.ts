@@ -97,13 +97,25 @@ export class YouTubeClock {
   private lastPerf = 0;
   finishedFlag = false;
 
+  /** current tempo (mutable — mic beat-sync nudges it toward the real tempo) */
+  bpm: number;
+  readonly baseBpm: number;
+  /** integrated beat phase — bpm changes only affect the future, not the past */
+  private beatAccum = 0;
+  private lastEstForBeat = 0;
+  /** true once the mic listener has locked onto the track */
+  synced = false;
+
   constructor(
     private src: YouTubeSource,
-    public bpm: number,
+    bpm: number,
     private sections: SectionDef[],
     private totalBeats: number,
     private leadBeats = 4,
-  ) {}
+  ) {
+    this.bpm = bpm;
+    this.baseBpm = bpm;
+  }
 
   /** smoothed playhead → beats; player time only ticks ~4×/s, so interpolate */
   beat(): number {
@@ -119,7 +131,46 @@ export class YouTubeClock {
       this.est += (now - this.lastPerf) / 1000;
       this.lastPerf = now;
     }
-    return (this.est * this.bpm) / 60 - this.leadBeats;
+    // integrate beats so a tempo correction doesn't teleport the grid
+    const dt = this.est - this.lastEstForBeat;
+    if (dt < -0.5 || dt > 2) {
+      // seek/restart: rebuild from absolute time at the current tempo
+      this.beatAccum = (this.est * this.bpm) / 60;
+    } else if (dt > 0) {
+      this.beatAccum += (dt * this.bpm) / 60;
+    }
+    this.lastEstForBeat = this.est;
+    return this.beatAccum - this.leadBeats;
+  }
+
+  /** un-corrected beat grid at the base tempo — used for karaoke timing */
+  videoBeat(): number {
+    return (this.est * this.baseBpm) / 60 - this.leadBeats;
+  }
+
+  /**
+   * Apply a mic beat-sync estimate: pull tempo toward the detected BPM and
+   * nudge the grid phase so integer beats land on detected beats. All
+   * corrections are rate-limited so the gameplay grid never jumps.
+   */
+  applySync(est: { bpm: number; anchorMs: number; confidence: number }) {
+    if (est.confidence < 0.12) return;
+    // tempo: accept the detected bpm (or its half/double) if within 12%
+    const cands = [est.bpm, est.bpm * 2, est.bpm / 2];
+    let detected: number | null = null;
+    for (const c of cands) {
+      if (Math.abs(c / this.baseBpm - 1) < 0.12) { detected = c; break; }
+    }
+    if (detected !== null) {
+      this.bpm += Math.max(-0.35, Math.min(0.35, detected - this.bpm));
+      // phase: what fractional beat does the detected beat land on?
+      const dtSec = (performance.now() - est.anchorMs) / 1000;
+      const anchorBeat = this.beatAccum - (dtSec * this.bpm) / 60;
+      const frac = ((anchorBeat % 1) + 1) % 1;
+      const delta = frac <= 0.5 ? -frac : 1 - frac; // shortest path to the grid
+      this.beatAccum += Math.max(-0.03, Math.min(0.03, delta));
+      this.synced = Math.abs(delta) < 0.15 && est.confidence > 0.18;
+    }
   }
 
   sectionAt(beat: number): SectionDef['kind'] {

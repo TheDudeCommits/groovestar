@@ -9,6 +9,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.120.0",
     "@mediapipe/tasks-vision": "^0.10.14"
   },
   "devDependencies": {

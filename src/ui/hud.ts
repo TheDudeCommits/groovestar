@@ -53,6 +53,19 @@ export class Hud {
     this.lyricNow.style.setProperty('--accent', song.accent);
     lyr.append(this.lyricNow, this.lyricNext);
     this.root.appendChild(lyr);
+
+    this.syncChip = el('div', 'sync-chip');
+    this.syncChip.style.display = 'none';
+    this.root.appendChild(this.syncChip);
+  }
+
+  private syncChip: HTMLElement;
+  /** beat-sync status indicator (YouTube mode) */
+  setSync(text: string | null, locked: boolean) {
+    if (!text) { this.syncChip.style.display = 'none'; return; }
+    this.syncChip.style.display = 'block';
+    this.syncChip.textContent = text;
+    this.syncChip.classList.toggle('locked', locked);
   }
 
   popJudgment(j: Judgment) {

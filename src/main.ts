@@ -16,6 +16,8 @@ import { StyleScanner, type StyleProfile } from './appearance';
 import { PlayerAvatar, type Cosmetics } from './avatar';
 import { generateChoreo } from './choreograph';
 import { parseYouTubeId, YouTubeSource, YouTubeClock } from './youtube';
+import { BeatListener } from './audio/beatsync';
+import { fetchSyncedLyrics, lyricsToLines, applyKeywordChoreo, fetchAiChoreo } from './lyrics';
 
 /** common clock interface: the synth engine and the YouTube playhead both provide it */
 interface SongClock {
@@ -383,11 +385,53 @@ async function startYouTube(videoId: string, bpm: number, difficulty: 1 | 2 | 3)
     lyrics: [],
   };
 
+  // lyrics + AI choreography fetch runs in parallel with the camera scan
+  const cacheKey = `gs-ai-${videoId}-${difficulty}-${bpm}`;
+  const lyricsPromise = fetchSyncedLyrics(song.title, src.duration);
+  const aiPromise: Promise<Song['choreo'] | null> = (async () => {
+    const lyr = await lyricsPromise;
+    if (!lyr) return null;
+    try {
+      const cached = localStorage.getItem(cacheKey);
+      if (cached) return JSON.parse(cached);
+    } catch { /* bad cache */ }
+    const lines = lyricsToLines(lyr, bpm, 4);
+    const result = await fetchAiChoreo({
+      title: song.title, bpm, totalBeats, difficulty,
+      sections: gen.sections,
+      lyrics: lines.map((l) => ({ beat: Math.round(l.beat * 10) / 10, text: l.text })),
+      moves: Object.values(MOVES).filter((m) => m.id !== 'idle').map((m) => ({ id: m.id, energy: m.energy })),
+    });
+    if (result) { try { localStorage.setItem(cacheKey, JSON.stringify(result)); } catch { /* full */ } }
+    return result;
+  })();
+
   await readyFlow(song, `<b>${escapeHtml(song.title)}</b><span>${bpm} BPM · routine generated from your link</span>`);
+
+  // integrate lyrics (karaoke) + the best available choreography tier
+  const lyr = await lyricsPromise;
+  if (lyr) {
+    song.lyrics = lyricsToLines(lyr, bpm, 4);
+    // give the AI choreographer a bounded extra wait, with a status card
+    const waitCard = div('overlay ready-card');
+    waitCard.innerHTML = `<div class="ready-inner"><div class="ready-tip"><span class="scanline">♪ CHOREOGRAPHING TO THE LYRICS…</span></div></div>`;
+    app.appendChild(waitCard);
+    const ai = await Promise.race([aiPromise, wait(12000).then(() => 'timeout' as const)]);
+    waitCard.remove();
+    if (ai && ai !== 'timeout') {
+      song.choreo = ai;
+    } else {
+      // tier 1: keyword-matched moves on the generated routine
+      song.choreo = applyKeywordChoreo(gen.choreo, song.lyrics).choreo;
+    }
+  }
+
   const clock = new YouTubeClock(src, bpm, gen.sections, totalBeats, 4);
+  const mic = new BeatListener();
+  mic.start(); // fire and forget — sync silently disabled if mic is denied
   const run = () => {
     clock.restart();
-    play(song, playerName, { clock, yt: src, onAgain: run });
+    play(song, playerName, { clock, yt: src, mic, onAgain: run });
   };
   run();
 }
@@ -400,7 +444,7 @@ function escapeHtml(s: string) {
 // Gameplay
 
 interface FxState { gloveFlash: number; goldBurst: number; shake: number }
-interface PlayOpts { clock: SongClock; yt?: YouTubeSource; onAgain: () => void }
+interface PlayOpts { clock: SongClock; yt?: YouTubeSource; mic?: BeatListener; onAgain: () => void }
 
 function play(song: Song, playerName: string, opts: PlayOpts) {
   state = 'play';
@@ -419,6 +463,7 @@ function play(song: Song, playerName: string, opts: PlayOpts) {
   app.appendChild(countdown);
   const playStart = performance.now();
   let tapShown = false;
+  let lastSync = 0;
 
   const loop = () => {
     if (state !== 'play') return;
@@ -444,7 +489,22 @@ function play(song: Song, playerName: string, opts: PlayOpts) {
     const events = scorer.update(beat, tracker.latest);
     for (const ev of events) applyEvent(ev);
     hud.setProgress(scorer.ratio, scorer.stars(), scorer.superstar);
-    hud.updateLyrics(song.lyrics, beat);
+    // karaoke follows the raw video time (base tempo), gameplay the synced grid
+    const lyricBeat = clock instanceof YouTubeClock ? clock.videoBeat() : beat;
+    hud.updateLyrics(song.lyrics, lyricBeat);
+
+    // mic beat-sync: pull the grid onto the room audio every ~2s
+    if (opts.mic?.active && clock instanceof YouTubeClock && beat > 0) {
+      if (performance.now() - lastSync > 2000) {
+        lastSync = performance.now();
+        const est = opts.mic.estimate();
+        if (est) clock.applySync(est);
+      }
+      hud.setSync(
+        clock.synced ? `♪ LIVE SYNC ${clock.bpm.toFixed(1)} BPM` : `♪ ${Math.round(clock.bpm)} BPM`,
+        clock.synced,
+      );
+    }
 
     const section = clock.sectionAt(Math.max(0, beat));
     fx.goldBurst *= 0.94;
@@ -669,7 +729,7 @@ async function endSong(song: Song, scorer: Scorer, hud: Hud, preview: HTMLCanvas
     res.remove(); cancelAnimationFrame(raf); opts.onAgain();
   });
   document.getElementById('tolist')!.addEventListener('click', () => {
-    res.remove(); opts.yt?.destroy(); showMenu();
+    res.remove(); opts.yt?.destroy(); opts.mic?.stop(); showMenu();
   });
 }
 
