@@ -68,7 +68,10 @@ body {
 }
 .song-banner b { font-size: 24px; letter-spacing: 0.03em; }
 .song-banner span { opacity: 0.7; font-size: 14px; }
-.ready-tip { opacity: 0.8; font-size: 14px; }
+.ready-tip { opacity: 0.9; font-size: 14px; display: flex; align-items: center; gap: 8px; justify-content: center; flex-wrap: wrap; }
+.scanline { color: #55f0ff; font-weight: 800; letter-spacing: 0.1em; animation: pulse 0.5s ease-in-out infinite alternate; }
+.chips { display: inline-flex; gap: 5px; vertical-align: middle; margin: 0 4px; }
+.chip { width: 16px; height: 16px; border-radius: 50%; display: inline-block; border: 2px solid rgba(255,255,255,0.65); box-shadow: 0 0 8px rgba(0,0,0,0.4); }
 
 /* ---------- countdown ---------- */
 .countdown {

@@ -21,6 +21,26 @@ simulated scoring.
 | Beat-reactive stages that never occlude | 3 scenes: night-city geysers/aurora, gold bokeh, disco floor + neon letters |
 | White-flash outro → count-up results | Congratulations banner, tabular count-up, stars popping at thresholds |
 
+## You are the dancer
+
+The center-stage character is a live mirror of the player, generated on the spot:
+
+- During the "Get Ready" screen a ~1.5s **style scan** samples the webcam at
+  landmark-guided regions (hair, cheeks, chest, forearms, thighs), takes
+  per-channel medians across frames, and stylizes the palette into the game's
+  neon language — a redhead gets a redheaded avatar, your hoodie color becomes
+  the avatar's hoodie.
+- **Sleeve detection**: forearm color closer to your shirt than to your skin →
+  long sleeves → the avatar gets the hoodie treatment (hood, drawstrings,
+  kangaroo pocket); otherwise bare arms.
+- In play, MediaPipe landmarks are mirrored, smoothed, re-anchored to the stage
+  and rendered as the stylized dancer (neon rim, blank glowing face, glove,
+  wrist motion trails, beat-pulsing aura). Legs are synthesized with a groove
+  stance when the camera only sees your upper body.
+- Choreography guidance comes from the sliding pictogram queue plus a **mini
+  coach** dancing the routine beside it; scoring compares your live pose to the
+  choreography target.
+
 ## Motion tracking & scoring
 
 1. MediaPipe PoseLandmarker (lite, GPU) tracks 33 landmarks from the webcam at ~30 fps.

@@ -10,6 +10,8 @@ import { choreoPose, addGroove, drawCoach } from './coach';
 import { drawScene } from './scenes';
 import { Hud, drawPictograms } from './ui/hud';
 import { MOVES, forward } from './moves';
+import { StyleScanner, type StyleProfile } from './appearance';
+import { PlayerAvatar } from './avatar';
 
 const app = document.getElementById('app')!;
 const canvas = document.createElement('canvas');
@@ -24,6 +26,7 @@ let cameraOk = false;
 
 let raf = 0;
 let state: 'menu' | 'ready' | 'play' | 'results' = 'menu';
+let playerStyle: StyleProfile | null = null;
 
 function resize() {
   canvas.width = window.innerWidth * devicePixelRatio;
@@ -47,7 +50,7 @@ function showMenu() {
   const menu = div('overlay menu');
   menu.innerHTML = `
     <div class="logo">GROOVE<span>STAR</span></div>
-    <div class="tagline">Camera-controlled dance floor — mirror the coach, hit the pictograms, chase the stars.</div>
+    <div class="tagline">You are the dancer — the camera puts a stylized you on stage, mirroring every move. Hit the pictograms, chase the stars.</div>
   `;
   const row = div('song-row');
   for (const song of SONGS) {
@@ -67,7 +70,7 @@ function showMenu() {
   menu.appendChild(row);
   const foot = div('menu-foot');
   foot.innerHTML = `<label>Dancer name <input id="pname" maxlength="14" value="${localStorage.getItem('gs-name') ?? 'DANCER'}"></label>
-    <div class="cam-note" id="cam-note">📷 Webcam scores your moves. No camera? You’ll get Demo Mode — full show, simulated scoring.</div>`;
+    <div class="cam-note" id="cam-note">📷 The webcam scans your look (hair, skin, outfit) into a neon avatar and scores your moves. No camera? Demo Mode — full show, simulated scoring.</div>`;
   menu.appendChild(foot);
   app.appendChild(menu);
 
@@ -117,14 +120,49 @@ async function startSong(song: Song) {
     cameraOk = await tracker.init();
   }
   const tip = document.getElementById('ready-tip');
-  if (tip) {
-    tip.textContent = cameraOk
-      ? 'Stand back so your whole upper body is visible. Mirror the coach!'
-      : `Demo Mode — no camera (${tracker.error ?? 'unavailable'}). The show runs with simulated scoring.`;
+  if (cameraOk) {
+    if (tip) tip.innerHTML = '<span class="scanline">SCANNING YOUR STYLE…</span> stand back so your upper body is in frame';
+    const scanned = await scanStyle(song);
+    playerStyle = scanned ?? defaultStyle(song);
+    if (tip) {
+      tip.innerHTML = scanned
+        ? `Style locked — you're the dancer! ${swatches(scanned)} Follow the pictograms & mini coach.`
+        : 'You are the dancer on stage — step into frame! Follow the pictograms & mini coach.';
+    }
+    await wait(1700);
+  } else {
+    if (tip) tip.textContent = `Demo Mode — no camera (${tracker.error ?? 'unavailable'}). The show runs with simulated scoring.`;
+    await wait(2200);
   }
-  await wait(cameraOk ? 1600 : 2200);
   card.remove();
   play(song, playerName);
+}
+
+/** sample the player's appearance for ~1.5s and build a stylized profile */
+async function scanStyle(song: Song): Promise<StyleProfile | null> {
+  const scanner = new StyleScanner();
+  const t0 = performance.now();
+  while (performance.now() - t0 < 1500) {
+    tracker.update();
+    if (tracker.latestLandmarks) scanner.feed(tracker.video, tracker.latestLandmarks);
+    await new Promise(requestAnimationFrame);
+  }
+  if (scanner.sampleCount < 4) return null;
+  return scanner.build(song.coach.glove);
+}
+
+function defaultStyle(song: Song): StyleProfile {
+  const c = song.coach;
+  return {
+    skin: c.skin, hair: c.hair, top: c.top, topDeep: c.vest, bottom: c.pants,
+    boots: c.boots, glove: c.glove, longSleeves: false, hairIsSkin: false,
+  };
+}
+
+function swatches(s: StyleProfile): string {
+  const chip = (c: string, label: string) =>
+    `<span class="chip" title="${label}" style="background:${c}"></span>`;
+  return `<span class="chips">${chip(s.hair, 'hair')}${chip(s.skin, 'skin')}${chip(s.top, 'top')}${chip(s.bottom, 'bottom')}</span>`;
 }
 
 function drawCoverFull(song: Song) {
@@ -145,6 +183,7 @@ function play(song: Song, playerName: string) {
   scorer.demoMode = !cameraOk;
   const hud = new Hud(app, playerName, song);
   const fx: FxState = { gloveFlash: 0, goldBurst: 0, shake: 0 };
+  const avatar = new PlayerAvatar();
 
   const preview = buildPreview();
   const countdown = div('overlay countdown');
@@ -181,10 +220,36 @@ function play(song: Song, playerName: string) {
     ctx.translate(sx, sy);
     drawScene({ ctx, w: W(), h: H(), beat: Math.max(0, beat), section, song, goldBurst: fx.goldBurst });
     const { pose, goldHold } = choreoPose(song.choreo, beat);
-    const finalPose = goldHold ? pose : addGroove(pose, Math.max(0, beat), 0.8);
-    drawCoach(ctx, song, finalPose, W() / 2, H() * 0.84, H() * 0.56, {
-      gloveFlash: fx.gloveFlash, goldHold: goldHold && fx.goldBurst > 0.2,
-    });
+    const coachPose = goldHold ? pose : addGroove(pose, Math.max(0, beat), 0.8);
+
+    if (cameraOk && playerStyle) {
+      // the center dancer is YOU — mirrored live from the webcam
+      const aspect = tracker.video.videoWidth / Math.max(1, tracker.video.videoHeight);
+      avatar.update(tracker.latestLandmarks, aspect || 4 / 3, performance.now());
+      if (avatar.hasPose) {
+        avatar.draw(ctx, playerStyle, W() / 2, H() * 0.84, H() * 0.56, {
+          beat: Math.max(0, beat), accent: song.accent, w: W(),
+          gloveFlash: fx.gloveFlash, goldGlow: fx.goldBurst > 0.25,
+        });
+      } else {
+        hintStepIn(ctx);
+      }
+      // mini coach keeps demonstrating the choreography
+      drawCoach(ctx, song, coachPose, W() * 0.885, H() * 0.64, H() * 0.21, {
+        gloveFlash: 0, goldHold: goldHold && fx.goldBurst > 0.2,
+      });
+      ctx.save();
+      ctx.font = `700 ${Math.max(11, H() * 0.014)}px 'Trebuchet MS', sans-serif`;
+      ctx.fillStyle = 'rgba(255,255,255,0.55)';
+      ctx.textAlign = 'center';
+      ctx.fillText('COACH', W() * 0.885, H() * 0.665);
+      ctx.restore();
+    } else {
+      // demo mode: the coach dances center stage
+      drawCoach(ctx, song, coachPose, W() / 2, H() * 0.84, H() * 0.56, {
+        gloveFlash: fx.gloveFlash, goldHold: goldHold && fx.goldBurst > 0.2,
+      });
+    }
     drawPictograms(ctx, song, beat, W(), H());
     ctx.restore();
     drawPreview(preview);
@@ -202,6 +267,15 @@ function play(song: Song, playerName: string) {
     }
   }
   loop();
+}
+
+function hintStepIn(c: CanvasRenderingContext2D) {
+  c.save();
+  c.font = `800 ${Math.max(18, H() * 0.03)}px 'Trebuchet MS', sans-serif`;
+  c.fillStyle = 'rgba(255,255,255,0.75)';
+  c.textAlign = 'center';
+  c.fillText('STEP INTO FRAME', W() / 2, H() * 0.5);
+  c.restore();
 }
 
 // mini camera preview with skeleton dots (bottom-left, small & unobtrusive)

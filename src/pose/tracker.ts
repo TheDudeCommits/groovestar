@@ -26,6 +26,8 @@ export class PoseTracker {
   private lastT = 0;
   private energySmooth = 0;
   latest: PlayerFrame = { t: 0, features: null, energy: 0, points: null };
+  /** raw (unmirrored) landmarks from the last successful detection */
+  latestLandmarks: NormalizedLandmark[] | null = null;
   ready = false;
   error: string | null = null;
 
@@ -69,8 +71,10 @@ export class PoseTracker {
     const lms = res.landmarks?.[0];
     if (!lms || lms.length < 33) {
       this.latest = { t: now, features: null, energy: this.decayEnergy(), points: null };
+      this.latestLandmarks = null;
       return;
     }
+    this.latestLandmarks = lms;
     // mirror x so the player's viewer-left is the coach's viewer-left
     const p = (i: number) => ({ x: 1 - lms[i].x, y: lms[i].y });
     const shL = p(L.shR), shR = p(L.shL);   // note: mirroring swaps L/R
