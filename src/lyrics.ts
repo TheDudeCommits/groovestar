@@ -8,6 +8,7 @@
 //    back to tier 1 transparently when unavailable.
 
 import { MOVES } from './moves';
+import { CLIPS } from './motion';
 import type { ChoreoMove, LyricLine, SectionDef } from './songs';
 
 export interface SyncedLyric { t: number; text: string }
@@ -125,8 +126,11 @@ const KEYWORDS: [RegExp, string[]][] = [
   [/\b(point|look|see|watch)\b/i, ['point_up_r', 'point_up_l', 'archer_l', 'archer_r']],
 ];
 
-/** replace choreo moves near lyric lines with keyword-matched moves (≤1 per line) */
+/** replace choreo moves near lyric lines with keyword-matched moves (≤1 per line).
+ *  Skipped for real-motion routines — splicing static poses into flowing
+ *  mocap looks stiff; the AI tier handles semantics there instead. */
 export function applyKeywordChoreo(choreo: ChoreoMove[], lines: LyricLine[]): { choreo: ChoreoMove[]; hits: number } {
+  if (choreo.some((m) => CLIPS[m.move])) return { choreo, hits: 0 };
   const out = choreo.map((m) => ({ ...m }));
   let hits = 0;
   const usedIdx = new Set<number>();
@@ -187,7 +191,7 @@ function validateAiChoreo(raw: any, totalBeats: number): ChoreoMove[] | null {
   for (const e of raw) {
     const beat = Number(e?.b);
     const move = String(e?.m ?? '');
-    if (!MOVES[move] || !isFinite(beat) || beat < 4 || beat > totalBeats - 1) continue;
+    if ((!MOVES[move] && !CLIPS[move]) || !isFinite(beat) || beat < 4 || beat > totalBeats - 1) continue;
     const gold = !!e?.g && golds < 8 && move.startsWith('gold_');
     if (gold) golds++;
     out.push({ beat: Math.round(beat * 2) / 2, move, gold });

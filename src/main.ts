@@ -13,6 +13,7 @@ import { drawScene } from './scenes';
 import { Hud, drawPictograms } from './ui/hud';
 import { MOVES } from './moves';
 import { StyleScanner, type StyleProfile } from './appearance';
+import { CLIPS } from './motion';
 import { PlayerAvatar, type Cosmetics } from './avatar';
 import { generateChoreo } from './choreograph';
 import { parseYouTubeId, YouTubeSource, YouTubeClock } from './youtube';
@@ -434,7 +435,7 @@ async function startYouTube(videoId: string, bpm: number, difficulty: 1 | 2 | 3)
   };
 
   // lyrics + AI choreography fetch runs in parallel with the camera scan
-  const cacheKey = `gs-ai-${videoId}-${difficulty}-${bpm}`;
+  const cacheKey = `gs-ai2-${videoId}-${difficulty}-${bpm}`;
   const lyricsPromise = fetchSyncedLyrics(song.title, src.duration);
   const aiPromise: Promise<Song['choreo'] | null> = (async () => {
     const lyr = await lyricsPromise;
@@ -448,7 +449,12 @@ async function startYouTube(videoId: string, bpm: number, difficulty: 1 | 2 | 3)
       title: song.title, bpm, totalBeats, difficulty,
       sections: gen.sections,
       lyrics: lines.map((l) => ({ beat: Math.round(l.beat * 10) / 10, text: l.text })),
-      moves: Object.values(MOVES).filter((m) => m.id !== 'idle').map((m) => ({ id: m.id, energy: m.energy })),
+      moves: [
+        // real-motion clips (2 beats each) — the routine's fabric
+        ...Object.values(CLIPS).map((c) => ({ id: c.id, energy: c.e, genre: c.g, beats: c.b })),
+        // static gold finishers for climaxes
+        ...Object.values(MOVES).filter((m) => m.id.startsWith('gold_')).map((m) => ({ id: m.id, energy: m.energy })),
+      ],
     });
     if (result) { try { localStorage.setItem(cacheKey, JSON.stringify(result)); } catch { /* full */ } }
     return result;
@@ -729,8 +735,9 @@ function play(song: Song, playerName: string, opts: PlayOpts) {
     // YouTube backdrop: the video becomes the upper half of the stage
     if (yt) drawVideoStage(yt, song, Math.max(0, beat), fx.goldBurst);
 
-    const { pose, goldHold } = choreoPose(song.choreo, beat);
-    const coachPose = goldHold ? pose : addGroove(pose, Math.max(0, beat), 0.8);
+    const { pose, goldHold, flowing } = choreoPose(song.choreo, beat);
+    // real motion clips carry their own bounce — no synthetic groove on top
+    const coachPose = goldHold || flowing ? pose : addGroove(pose, Math.max(0, beat), 0.8);
 
     // ---- multiplayer: broadcast pose/score, draw rival dancers, update corners
     if (opts.room && opts.remotes) {

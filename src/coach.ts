@@ -5,10 +5,16 @@
 // transitions snap onto the beat with a springy ease.
 
 import { MOVES, forward, lerpPose, snapEase, type Pose, type Skeleton } from './moves';
+import { CLIPS, clipPose } from './motion';
 import type { ChoreoMove } from './songs';
 import type { Song } from './songs';
 
 const IDLE = MOVES['idle'].pose;
+
+/** target pose of a move id at its start (static pose or clip frame 0) */
+function startPose(id: string): Pose {
+  return MOVES[id]?.pose ?? (CLIPS[id] ? clipPose(CLIPS[id], 0) : IDLE);
+}
 
 export interface CoachState {
   pose: Pose;
@@ -17,9 +23,9 @@ export interface CoachState {
   goldHold: boolean;
 }
 
-export function choreoPose(choreo: ChoreoMove[], beat: number): { pose: Pose; current: ChoreoMove | null; goldHold: boolean } {
+export function choreoPose(choreo: ChoreoMove[], beat: number): { pose: Pose; current: ChoreoMove | null; goldHold: boolean; flowing: boolean } {
   if (choreo.length === 0 || beat < choreo[0].beat - 4) {
-    return { pose: IDLE, current: null, goldHold: false };
+    return { pose: IDLE, current: null, goldHold: false, flowing: false };
   }
   let prevI = -1;
   for (let i = 0; i < choreo.length; i++) {
@@ -27,9 +33,24 @@ export function choreoPose(choreo: ChoreoMove[], beat: number): { pose: Pose; cu
   }
   const prev = prevI >= 0 ? choreo[prevI] : null;
   const next = choreo[prevI + 1] ?? null;
-  const prevPose = prev ? MOVES[prev.move].pose : IDLE;
+
+  // motion clip playing: real captured dance — play it through, then blend
+  // the last fraction of a beat into whatever comes next
+  const clip = prev ? CLIPS[prev.move] : undefined;
+  if (prev && clip) {
+    const t = beat - prev.beat;
+    let pose = clipPose(clip, Math.min(t, clip.b));
+    if (next) {
+      const lead = 0.22;
+      const tn = beat - (next.beat - lead);
+      if (tn > 0) pose = lerpPose(pose, startPose(next.move), Math.min(1, tn / lead));
+    }
+    return { pose, current: prev, goldHold: false, flowing: true };
+  }
+
+  const prevPose = prev ? startPose(prev.move) : IDLE;
   if (!next) {
-    return { pose: prevPose, current: prev, goldHold: !!prev?.gold && beat - (prev?.beat ?? 0) < 2.5 };
+    return { pose: prevPose, current: prev, goldHold: !!prev?.gold && beat - (prev?.beat ?? 0) < 2.5, flowing: false };
   }
   const span = next.beat - (prev ? prev.beat : next.beat - 2);
   const t = (beat - (prev ? prev.beat : next.beat - 2)) / span;
@@ -37,9 +58,10 @@ export function choreoPose(choreo: ChoreoMove[], beat: number): { pose: Pose; cu
   const hold = prev?.gold ? 0.75 : 0.4; // gold moves freeze longer, like the reference
   const eased = snapEase(Math.max(0, (t - hold) / (1 - hold)));
   return {
-    pose: lerpPose(prevPose, MOVES[next.move].pose, eased),
+    pose: lerpPose(prevPose, startPose(next.move), eased),
     current: prev,
     goldHold: !!prev?.gold && t < 0.75,
+    flowing: false,
   };
 }
 

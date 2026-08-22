@@ -5,6 +5,7 @@
 // and a global anti-repetition budget so no move outstays its welcome.
 
 import { MOVES } from './moves';
+import { CLIPS, CLIP_GENRES } from './motion';
 import type { ChoreoMove, SectionDef } from './songs';
 
 export interface GenResult {
@@ -33,10 +34,31 @@ const pool = (min: number, max: number) =>
 
 export function generateChoreo(seed: string, totalBeats: number, difficulty: 1 | 2 | 3): GenResult {
   const rand = rng(seed);
-  const chill = pool(0, 0.5);
-  const groove = pool(0.4, 0.75);
-  const power = pool(0.6, 1);
   const golds = Object.keys(MOVES).filter((id) => id.startsWith('gold_'));
+
+  // Real-motion mode: build the routine from AIST++ clips. Two seeded genres
+  // keep the routine stylistically coherent (a house track doesn't suddenly
+  // switch to waacking mid-verse).
+  let chill: string[], groove: string[], power: string[];
+  const allClips = Object.values(CLIPS);
+  if (allClips.length) {
+    const g1 = CLIP_GENRES[Math.floor(rand() * CLIP_GENRES.length)];
+    let g2 = CLIP_GENRES[Math.floor(rand() * CLIP_GENRES.length)];
+    if (g2 === g1) g2 = CLIP_GENRES[(CLIP_GENRES.indexOf(g1) + 1) % CLIP_GENRES.length];
+    const of = (pred: (c: { g: string; e: number }) => boolean) =>
+      allClips.filter((c) => pred(c)).map((c) => c.id);
+    chill = of((c) => c.g === g1 && c.e < 0.55);
+    groove = of((c) => (c.g === g1 || c.g === g2) && c.e >= 0.25 && c.e <= 0.8);
+    power = of((c) => (c.g === g1 || c.g === g2) && c.e > 0.55);
+    // safety: never let a pool be empty
+    if (chill.length < 4) chill = of((c) => c.g === g1);
+    if (power.length < 4) power = of((c) => c.g === g1 || c.g === g2);
+    if (groove.length < 4) groove = [...chill, ...power];
+  } else {
+    chill = pool(0, 0.5);
+    groove = pool(0.4, 0.75);
+    power = pool(0.6, 1);
+  }
 
   // --- section plan: intro 8, then 32-beat blocks, outro 16 ------------------
   const sections: SectionDef[] = [{ beat: 0, kind: 'intro' }];

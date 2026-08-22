@@ -4,6 +4,7 @@
 // mocap exam), and emit a judgment right after the window closes.
 
 import { MOVES, poseFeatures } from '../moves';
+import { CLIPS, clipPose } from '../motion';
 import type { ChoreoMove } from '../songs';
 import type { PlayerFrame } from './tracker';
 
@@ -61,7 +62,7 @@ export class Scorer {
       const d = beat - slot.move.beat;
       if (d < -WINDOW) break; // slots are beat-ordered
       if (d <= WINDOW) {
-        const sim = this.similarity(slot, frame);
+        const sim = this.similarity(slot, frame, beat);
         if (sim !== null) {
           slot.sawPlayer = true;
           // slight timing shaping: dead-center hits count a touch more
@@ -76,14 +77,20 @@ export class Scorer {
     return out;
   }
 
-  private similarity(slot: Slot, frame: PlayerFrame | null): number | null {
+  private similarity(slot: Slot, frame: PlayerFrame | null, beat: number): number | null {
     if (this.demoMode) {
       // scripted-but-plausible results so menus/HUD can be exercised without a camera
       const r = Math.sin(slot.index * 12.9898) * 43758.5453;
       return 0.55 + (r - Math.floor(r)) * 0.4;
     }
     if (!frame || !frame.features) return null;
-    const target = poseFeatures(MOVES[slot.move.move].pose);
+    // motion clips are compared against the pose at THIS instant of the clip —
+    // continuous matching, like the reference — statics against their held pose
+    const clip = CLIPS[slot.move.move];
+    const targetPose = clip
+      ? clipPose(clip, Math.max(0, Math.min(clip.b, beat - slot.move.beat)))
+      : MOVES[slot.move.move].pose;
+    const target = poseFeatures(targetPose);
     const f = frame.features;
     // arms weighted heavily; forearms slightly less than upper arms
     const weights = [1.0, 0.7, 1.0, 0.7, 0.55];
@@ -96,7 +103,7 @@ export class Scorer {
       wsum += weights[i];
     }
     const poseSim = acc / wsum;
-    const energyTarget = MOVES[slot.move.move].energy;
+    const energyTarget = clip ? clip.e : MOVES[slot.move.move].energy;
     const energySim = Math.min(1, frame.energy / Math.max(0.12, energyTarget * 0.5));
     // 70% pose accuracy, 30% "are you actually moving with it"
     return poseSim * 0.7 + energySim * 0.3;

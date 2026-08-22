@@ -83,6 +83,22 @@ the spot** — deterministic per video, so a song always gets "its" choreography
     Vercel project env; results are cached per video. Without a key the
     endpoint returns 503 and the keyword tier takes over seamlessly.
 
+## Real dance motion (AIST++)
+
+YouTube routines are built from **200 real motion-capture dance clips** derived
+from the [AIST++ Dance Motion Dataset](https://google.github.io/aistplusplus_dataset/)
+(Li et al., annotations CC BY 4.0) — 20 clips × 10 genres (break, pop, lock,
+middle/LA hip-hop, house, waacking, krump, street jazz, ballet jazz).
+`tools/process_aist.py` converts the 60fps 3D keypoints into beat-aligned
+2-beat clips in the game's pose parameterization (de-rotated to face front,
+floorwork filtered, 16 keyframes each, diversity-selected per genre); at
+runtime the coach Catmull-Roms through the keyframes so the movement — weight
+shifts, bounce, follow-through — is the dancer's, not an interpolator's.
+Scoring compares the player continuously against the clip's pose at each
+instant. The generator keeps routines in 1–2 seeded genres; the AI tier picks
+genres to match the song's mood. Static poses remain for gold-move freezes and
+the built-in synth songs.
+
 ## Songs
 
 Three original tracks are synthesized live with WebAudio (kick/clap/hats, filtered

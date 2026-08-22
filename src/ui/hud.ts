@@ -5,7 +5,8 @@
 //  bottom-right — pictogram queue sliding right→left onto a "now" slot
 //  results — white flash → banner → count-up score with popping stars
 
-import { MOVES, forward } from '../moves';
+import { MOVES, forward, type Pose } from '../moves';
+import { CLIPS, clipPeakPose } from '../motion';
 import type { Song, LyricLine } from '../songs';
 
 export class Hud {
@@ -135,9 +136,11 @@ function drawPicto(
   moveId: string, gold: boolean,
   x: number, y: number, size: number, alpha: number, accent: string,
 ) {
+  let pose: Pose | null = MOVES[moveId]?.pose ?? null;
+  if (!pose && CLIPS[moveId]) pose = clipPeakPose(CLIPS[moveId]);
+  if (!pose) return;
   const move = MOVES[moveId];
-  if (!move) return;
-  const sk = forward(move.pose);
+  const sk = forward(pose);
   const s = size / 2.9;
   const P = (p: [number, number]): [number, number] => [x + p[0] * s, y + (p[1] - 1.0) * s];
 
@@ -198,8 +201,8 @@ function drawPicto(
     ctx.lineTo(hx + uy * s * 0.12, hy - ux * s * 0.12);
     ctx.closePath(); ctx.fill();
   };
-  if (move.pose.arrowL) arrow(sk.wrL, move.pose.arrowL, -1);
-  if (move.pose.arrowR) arrow(sk.wrR, move.pose.arrowR, 1);
+  if (move?.pose.arrowL) arrow(sk.wrL, move.pose.arrowL, -1);
+  if (move?.pose.arrowR) arrow(sk.wrR, move.pose.arrowR, 1);
   ctx.restore();
 }
 
