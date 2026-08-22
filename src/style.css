@@ -17,9 +17,10 @@ body {
 #app { position: fixed; inset: 0; }
 #stage { position: absolute; inset: 0; width: 100%; height: 100%; display: block; z-index: 1; }
 
-/* YouTube backdrop iframe sits behind the stage canvas; the canvas punches a window */
+/* YouTube backdrop iframe sits behind the stage canvas; the canvas punches
+   through with a soft gradient so the video becomes the upper stage wall */
 .yt-holder {
-  position: absolute; z-index: 0; overflow: hidden; border-radius: 14px;
+  position: absolute; z-index: 0; overflow: hidden;
   pointer-events: none; background: #000;
 }
 .yt-holder iframe { width: 100%; height: 100%; border: 0; }
@@ -231,6 +232,56 @@ body {
   border-radius: 10px; border: 1px solid rgba(255,255,255,0.25); z-index: 6;
   box-shadow: 0 6px 24px rgba(0,0,0,0.5);
 }
+
+/* ---------- multiplayer ---------- */
+.mp-panel { border-color: rgba(85, 240, 255, 0.35); box-shadow: 0 8px 40px rgba(85, 240, 255, 0.1); }
+.mp-title { color: #55f0ff; }
+.mp-btn {
+  font: inherit; font-weight: 900; letter-spacing: 0.08em; font-size: 14px; cursor: pointer;
+  background: #55f0ff; color: #0b2030; border: 0; border-radius: 999px; padding: 11px 22px;
+  transition: all 0.15s ease;
+}
+.mp-btn:hover { box-shadow: 0 0 26px rgba(85, 240, 255, 0.6); transform: translateY(-1px); }
+.mp-btn.big { font-size: 16px; padding: 14px 30px; background: #7cf95c; color: #12300b; }
+#mp-code { width: 90px; text-align: center; letter-spacing: 0.3em; font-weight: 900; font-size: 16px; flex: none !important; min-width: 0 !important; }
+
+.lobby { justify-content: center; background: linear-gradient(180deg, rgba(5,3,15,0.7), rgba(5,3,15,0.9)); }
+.lobby-box {
+  background: rgba(14, 12, 30, 0.95); border: 2px solid rgba(85, 240, 255, 0.4); border-radius: 18px;
+  padding: 26px 34px; display: flex; flex-direction: column; gap: 14px; width: min(680px, 92vw);
+  box-shadow: 0 20px 80px rgba(85, 240, 255, 0.15);
+}
+.lobby-title { font-weight: 900; letter-spacing: 0.14em; font-size: 18px; color: #55f0ff; }
+.lobby-code { font-size: 15px; opacity: 0.85; }
+.lobby-code b { font-size: 34px; letter-spacing: 0.35em; color: #ffd23e; text-shadow: 0 0 20px rgba(255,210,62,0.6); margin-left: 10px; }
+.lobby-players { display: flex; gap: 10px; flex-wrap: wrap; }
+.lobby-player { background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.2); border-radius: 999px; padding: 6px 14px; font-size: 13px; }
+.lobby-wait { opacity: 0.7; font-size: 14px; font-style: italic; }
+.lobby-leave { font: inherit; font-size: 12px; color: rgba(255,255,255,0.55); background: none; border: none; cursor: pointer; align-self: flex-start; text-decoration: underline; }
+
+.mp-corners { position: absolute; inset: 0; pointer-events: none; z-index: 7; }
+.mp-corner {
+  position: absolute; display: flex; flex-direction: column; gap: 4px; width: 148px;
+  background: rgba(8, 10, 26, 0.72); border: 1px solid rgba(255,255,255,0.2); border-radius: 12px; padding: 8px;
+}
+.mp-corner.tl { top: 14px; left: 14px; }
+.mp-corner.tr { top: 14px; right: 14px; }
+.mp-corner.bl { bottom: 14px; left: 14px; }
+.mp-corner.br { bottom: 14px; right: 14px; }
+.mpc-name { font-size: 11px; font-weight: 800; letter-spacing: 0.08em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mp-corner video { width: 100%; height: 84px; object-fit: cover; border-radius: 8px; background: #05030f; transform: scaleX(-1); }
+.mpc-meter { height: 8px; border-radius: 4px; background: rgba(255,255,255,0.12); overflow: hidden; }
+.mpc-fill { height: 100%; width: 0%; background: linear-gradient(90deg, #55f0ff, #7cf95c); transition: width 0.4s ease; }
+.mpc-stars { font-size: 11px; color: #ffd23e; letter-spacing: 0.12em; }
+
+.mp-ranking { display: flex; flex-direction: column; gap: 6px; min-width: min(420px, 80vw); }
+.mp-rank-title { font-size: 12px; font-weight: 900; letter-spacing: 0.16em; opacity: 0.7; margin-bottom: 2px; }
+.mp-rank-row {
+  display: flex; justify-content: space-between; gap: 20px; font-size: 15px;
+  background: rgba(255,255,255,0.06); border-radius: 8px; padding: 8px 14px;
+}
+.mp-rank-row.me { background: rgba(85,240,255,0.16); border: 1px solid rgba(85,240,255,0.4); }
+.mp-rank-row b { font-variant-numeric: tabular-nums; }
 
 /* ---------- results ---------- */
 .flash { background: #fff; justify-content: center; transition: opacity 0.6s ease; z-index: 20; }

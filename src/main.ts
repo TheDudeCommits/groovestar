@@ -18,6 +18,8 @@ import { generateChoreo } from './choreograph';
 import { parseYouTubeId, YouTubeSource, YouTubeClock } from './youtube';
 import { BeatListener } from './audio/beatsync';
 import { fetchSyncedLyrics, lyricsToLines, applyKeywordChoreo, fetchAiChoreo } from './lyrics';
+import { Room, encodePose, decodePose, MAX_PLAYERS, type NetMsg } from './net/room';
+import { DEFAULT_COSMETICS } from './avatar';
 
 /** common clock interface: the synth engine and the YouTube playhead both provide it */
 interface SongClock {
@@ -42,6 +44,19 @@ let cameraOk = false;
 let raf = 0;
 let state: 'menu' | 'ready' | 'play' | 'results' = 'menu';
 let playerStyle: StyleProfile | null = null;
+let activeRoom: Room | null = null;
+
+/** remote player state in a dance-off */
+interface RemotePlayer {
+  id: string;
+  style: StyleProfile;
+  avatar: PlayerAvatar;
+  lms: ReturnType<typeof decodePose>;
+  lastPoseAt: number;
+  score: number;
+  stars: number;
+  end?: number;
+}
 
 function resize() {
   canvas.width = window.innerWidth * devicePixelRatio;
@@ -124,7 +139,9 @@ function paletteFromStyle(s: StyleProfile): Song['coach'] {
 function showMenu() {
   state = 'menu';
   cancelAnimationFrame(raf);
-  app.querySelectorAll('.overlay, .hud, .yt-holder, .cam-preview').forEach((e) => e.remove());
+  activeRoom?.destroy();
+  activeRoom = null;
+  app.querySelectorAll('.overlay, .hud, .yt-holder, .cam-preview, .mp-corners').forEach((e) => e.remove());
 
   const menu = div('overlay menu');
   menu.innerHTML = `
@@ -226,6 +243,37 @@ function showMenu() {
   };
   renderLocker();
   menu.appendChild(locker);
+
+  // --- dance-off (multiplayer) panel ---
+  const mp = div('yt-panel mp-panel');
+  mp.innerHTML = `
+    <div class="yt-title mp-title">⚔ DANCE OFF — UP TO ${MAX_PLAYERS} PLAYERS</div>
+    <div class="yt-sub">Create a room, drop a YouTube link, share the 4-digit code. Everyone dances the same routine live.</div>
+    <div class="yt-row">
+      <button id="mp-create" class="mp-btn">CREATE ROOM</button>
+      <span class="yt-label">or</span>
+      <input id="mp-code" placeholder="CODE" maxlength="4" inputmode="numeric">
+      <button id="mp-join" class="mp-btn">JOIN</button>
+      <span id="mp-err" class="yt-err"></span>
+    </div>`;
+  menu.appendChild(mp);
+  const mpErr = mp.querySelector('#mp-err') as HTMLElement;
+  mp.querySelector('#mp-create')!.addEventListener('click', async () => {
+    mpErr.textContent = 'Creating room…';
+    try {
+      activeRoom = await Room.create(playerNameFromMenu());
+      openLobby(activeRoom);
+    } catch (e) { mpErr.textContent = String((e as Error).message ?? e); }
+  });
+  mp.querySelector('#mp-join')!.addEventListener('click', async () => {
+    const code = (mp.querySelector('#mp-code') as HTMLInputElement).value.trim();
+    if (!/^\d{4}$/.test(code)) { mpErr.textContent = 'Enter the 4-digit code.'; return; }
+    mpErr.textContent = 'Joining…';
+    try {
+      activeRoom = await Room.join(code, playerNameFromMenu());
+      openLobby(activeRoom);
+    } catch (e) { mpErr.textContent = String((e as Error).message ?? e); }
+  });
 
   const foot = div('menu-foot');
   foot.innerHTML = `<label>Dancer name <input id="pname" maxlength="14" value="${localStorage.getItem('gs-name') ?? 'DANCER'}"></label>
@@ -441,10 +489,175 @@ function escapeHtml(s: string) {
 }
 
 // ---------------------------------------------------------------------------
+// Multiplayer lobby & flow
+
+function openLobby(room: Room) {
+  state = 'ready';
+  cancelAnimationFrame(raf);
+  app.querySelectorAll('.overlay').forEach((e) => e.remove());
+  drawScene({ ctx, w: W(), h: H(), beat: 0.9, section: 'chorus', song: SONGS[0], goldBurst: 0 });
+
+  const lobby = div('overlay lobby');
+  lobby.innerHTML = `
+    <div class="lobby-box">
+      <div class="lobby-title">DANCE OFF LOBBY</div>
+      <div class="lobby-code">ROOM CODE <b>${room.code}</b></div>
+      <div class="lobby-players" id="lobby-players"></div>
+      ${room.isHost ? `
+        <div class="yt-row">
+          <input id="mp-url" placeholder="Paste a YouTube link for the battle…" spellcheck="false">
+        </div>
+        <div class="yt-row yt-opts">
+          <span class="yt-label">TEMPO</span><span id="mp-bpm-val" class="bpm-val">120 BPM</span>
+          <span class="yt-presets">${[100, 110, 120, 128, 140].map((b) => `<button class="preset" data-bpm="${b}">${b}</button>`).join('')}</span>
+          <span class="yt-label">LEVEL</span>
+          <span class="yt-diff">${[1, 2, 3].map((d) => `<button class="diff ${d === 2 ? 'sel' : ''}" data-d="${d}">${'●'.repeat(d)}</button>`).join('')}</span>
+        </div>
+        <div class="yt-row">
+          <button id="mp-start" class="mp-btn big">START THE DANCE OFF</button>
+          <span id="lobby-err" class="yt-err"></span>
+        </div>` : `
+        <div class="lobby-wait">Waiting for the host to pick a song and start…</div>`}
+      <button id="lobby-leave" class="lobby-leave">LEAVE ROOM</button>
+    </div>`;
+  app.appendChild(lobby);
+
+  const renderPlayers = () => {
+    const el = document.getElementById('lobby-players');
+    if (!el) return;
+    el.innerHTML = room.players.map((p, i) =>
+      `<span class="lobby-player">${i + 1}. ${escapeHtml(p.name)}${p.id === room.myId ? ' (you)' : ''}${i === 0 ? ' ★host' : ''}</span>`
+    ).join('');
+  };
+  renderPlayers();
+  room.onUpdate = renderPlayers;
+  room.onClosed = (reason) => { alertOverlay(reason); showMenu(); };
+  room.onMessage = (_from, msg) => {
+    if (msg.t === 'start' && !room.isHost) {
+      lobby.remove();
+      startYouTubeMP(msg.videoId, msg.bpm, msg.difficulty as 1 | 2 | 3, room);
+    }
+  };
+
+  document.getElementById('lobby-leave')!.addEventListener('click', () => showMenu());
+
+  if (room.isHost) {
+    let bpm = 120, diff: 1 | 2 | 3 = 2;
+    const bpmVal = document.getElementById('mp-bpm-val')!;
+    lobby.querySelectorAll('.preset').forEach((b) => b.addEventListener('click', () => {
+      bpm = Number((b as HTMLElement).dataset.bpm);
+      bpmVal.textContent = `${bpm} BPM`;
+    }));
+    lobby.querySelectorAll('.diff').forEach((b) => b.addEventListener('click', () => {
+      lobby.querySelectorAll('.diff').forEach((x) => x.classList.remove('sel'));
+      b.classList.add('sel');
+      diff = Number((b as HTMLElement).dataset.d) as 1 | 2 | 3;
+    }));
+    document.getElementById('mp-start')!.addEventListener('click', () => {
+      const err = document.getElementById('lobby-err')!;
+      const id = parseYouTubeId((document.getElementById('mp-url') as HTMLInputElement).value.trim());
+      if (!id) { err.textContent = 'That does not look like a YouTube link.'; return; }
+      room.send({ t: 'start', videoId: id, bpm, difficulty: diff });
+      lobby.remove();
+      startYouTubeMP(id, bpm, diff, room);
+    });
+  }
+}
+
+function alertOverlay(text: string) {
+  const d = div('overlay ready-card');
+  d.innerHTML = `<div class="ready-inner"><div class="ready-tip">${escapeHtml(text)}</div></div>`;
+  app.appendChild(d);
+  setTimeout(() => d.remove(), 2600);
+}
+
+/** multiplayer song start: deterministic choreography so every client matches */
+async function startYouTubeMP(videoId: string, bpm: number, difficulty: 1 | 2 | 3, room: Room) {
+  state = 'ready';
+  cancelAnimationFrame(raf);
+  app.querySelectorAll('.overlay, .yt-holder').forEach((e) => e.remove());
+
+  // remote registry is wired BEFORE anything async so early messages land
+  const remotes = new Map<string, RemotePlayer>();
+  const streams = new Map<string, MediaStream>();
+  const ensureRemote = (id: string): RemotePlayer => {
+    let r = remotes.get(id);
+    if (!r) {
+      r = { id, style: null as any, avatar: new PlayerAvatar(), lms: null, lastPoseAt: 0, score: 0, stars: 0 };
+      remotes.set(id, r);
+    }
+    return r;
+  };
+  room.onMessage = (from, msg: NetMsg) => {
+    const r = ensureRemote(from);
+    if (msg.t === 'style') r.style = msg.style;
+    else if (msg.t === 'pose') { r.lms = decodePose(msg.d); r.lastPoseAt = performance.now(); }
+    else if (msg.t === 'score') { r.score = msg.s; r.stars = msg.stars; }
+    else if (msg.t === 'end') r.end = msg.s;
+  };
+  room.onStream = (id, stream) => {
+    streams.set(id, stream);
+    const v = document.querySelector<HTMLVideoElement>(`video[data-peer="${id}"]`);
+    if (v) { v.srcObject = stream; v.play().catch(() => { /* autoplay */ }); }
+  };
+  room.onClosed = (reason) => { alertOverlay(reason); showMenu(); };
+
+  const loadCard = div('overlay ready-card');
+  loadCard.innerHTML = `<div class="ready-inner"><div class="get-ready">DANCE OFF!</div>
+    <div class="ready-tip">Loading the battle track…</div></div>`;
+  app.appendChild(loadCard);
+
+  const src = new YouTubeSource();
+  const ok = await src.load(videoId);
+  loadCard.remove();
+  if (!ok) { src.destroy(); alertOverlay(src.error ?? 'Could not load that video.'); showMenu(); return; }
+
+  const seedNum = [...videoId].reduce((n, ch) => n + ch.charCodeAt(0), 0);
+  const accents = YT_ACCENTS[seedNum % YT_ACCENTS.length];
+  const scenes = ['city', 'bokeh', 'disco'] as const;
+  const totalBeats = Math.max(48, Math.floor((src.duration * bpm) / 60) - 8);
+  const gen = generateChoreo(videoId, totalBeats, difficulty);
+  const song: Song = {
+    id: 'yt-' + videoId,
+    title: src.title || 'YouTube Track',
+    artist: `dance off · room ${room.code}`,
+    bpm, beats: totalBeats,
+    scene: scenes[seedNum % 3], difficulty,
+    accent: accents[0], accent2: accents[1],
+    coach: { skin: '#e8b89a', hair: '#20182a', top: accents[0], vest: '#191d2e', pants: '#2c3352', glove: '#ffd23e', boots: '#14121c' },
+    root: 57, chords: [[0, 3, 7]],
+    sections: gen.sections, choreo: gen.choreo, lyrics: [],
+  };
+
+  const lyricsPromise = fetchSyncedLyrics(song.title, src.duration);
+  await readyFlow(song, `<b>${escapeHtml(song.title)}</b><span>room ${room.code} · ${room.players.length} dancers</span>`);
+  if (playerStyle) room.send({ t: 'style', style: playerStyle });
+  const camStream = tracker.video.srcObject as MediaStream | null;
+  if (camStream) room.shareStream(camStream);
+  const lyr = await Promise.race([lyricsPromise, wait(1500).then(() => null)]);
+  if (lyr) song.lyrics = lyricsToLines(lyr, bpm, 4);
+
+  const clock = new YouTubeClock(src, bpm, gen.sections, totalBeats, 4);
+  clock.restart();
+  play(song, room.myName, {
+    clock, yt: src, room, remotes, streams,
+    onAgain: () => openLobby(room),
+  });
+}
+
+// ---------------------------------------------------------------------------
 // Gameplay
 
 interface FxState { gloveFlash: number; goldBurst: number; shake: number }
-interface PlayOpts { clock: SongClock; yt?: YouTubeSource; mic?: BeatListener; onAgain: () => void }
+interface PlayOpts {
+  clock: SongClock;
+  yt?: YouTubeSource;
+  mic?: BeatListener;
+  room?: Room;
+  remotes?: Map<string, RemotePlayer>;
+  streams?: Map<string, MediaStream>;
+  onAgain: () => void;
+}
 
 function play(song: Song, playerName: string, opts: PlayOpts) {
   state = 'play';
@@ -455,10 +668,12 @@ function play(song: Song, playerName: string, opts: PlayOpts) {
   const fx: FxState = { gloveFlash: 0, goldBurst: 0, shake: 0 };
   const avatar = new PlayerAvatar();
   const cosmetics = resolveCosmetics();
-  const crew = crewOn() && cameraOk;
+  const crew = crewOn() && cameraOk && !opts.room; // no backup dancers in a dance off
   const crewPalette = playerStyle ? paletteFromStyle(playerStyle) : song.coach;
 
-  const preview = buildPreview();
+  const preview = opts.room ? null : buildPreview(); // corners carry the cams in MP
+  const corners = opts.room ? buildCorners(opts.room, opts.streams!) : null;
+  let lastPoseSend = 0, lastScoreSend = 0;
   const countdown = div('overlay countdown');
   app.appendChild(countdown);
   const playStart = performance.now();
@@ -515,11 +730,39 @@ function play(song: Song, playerName: string, opts: PlayOpts) {
     ctx.translate(sx, sy);
     drawScene({ ctx, w: W(), h: H(), beat: Math.max(0, beat), section, song, goldBurst: fx.goldBurst });
 
-    // YouTube backdrop panel: punch a window through the scene to the iframe
-    if (yt) drawVideoPanel(yt, song, fx.goldBurst);
+    // YouTube backdrop: the video becomes the upper half of the stage
+    if (yt) drawVideoStage(yt, song, Math.max(0, beat), fx.goldBurst);
 
     const { pose, goldHold } = choreoPose(song.choreo, beat);
     const coachPose = goldHold ? pose : addGroove(pose, Math.max(0, beat), 0.8);
+
+    // ---- multiplayer: broadcast pose/score, draw rival dancers, update corners
+    if (opts.room && opts.remotes) {
+      const now = performance.now();
+      if (tracker.latestLandmarks && now - lastPoseSend > 80) {
+        lastPoseSend = now;
+        opts.room.send({ t: 'pose', d: encodePose(tracker.latestLandmarks) });
+      }
+      if (now - lastScoreSend > 500) {
+        lastScoreSend = now;
+        opts.room.send({ t: 'score', s: Math.round(scorer.score), stars: scorer.stars() });
+      }
+      // rival dancers behind/beside you, live from their streamed poses
+      const others = opts.room.players.filter((p) => p.id !== opts.room!.myId);
+      const slots = [[0.16, 0.35], [0.84, 0.35], [0.68, 0.27]] as const;
+      others.forEach((p, i) => {
+        if (i >= slots.length) return;
+        const r = opts.remotes!.get(p.id);
+        if (!r || !r.lms || now - r.lastPoseAt > 1500) return;
+        r.avatar.update(r.lms, 4 / 3, now);
+        if (r.avatar.hasPose) {
+          r.avatar.draw(ctx, r.style ?? defaultStyle(song), W() * slots[i][0], H() * 0.8, H() * slots[i][1], {
+            beat: Math.max(0, beat), accent: song.accent2, w: W(), cosmetics: DEFAULT_COSMETICS,
+          });
+        }
+      });
+      corners?.update(opts.room, opts.remotes, scorer);
+    }
 
     if (cameraOk && playerStyle) {
       const aspect = tracker.video.videoWidth / Math.max(1, tracker.video.videoHeight);
@@ -576,41 +819,94 @@ function play(song: Song, playerName: string, opts: PlayOpts) {
   loop();
 }
 
-/** dimmed video window behind the dancer, JD-video-background style */
-function drawVideoPanel(yt: YouTubeSource, song: Song, goldBurst: number) {
-  const w = Math.min(W() * 0.52, 900);
-  const h = (w * 9) / 16;
-  const x = (W() - w) / 2, y = H() * 0.05;
-  yt.setBounds(x, y, w, h);
+/**
+ * The music video becomes the upper half of the stage — like the giant screen
+ * behind a concert stage. The scene is punched through with a soft gradient so
+ * the video melts into the floor, then party lights, beat washes and vignettes
+ * are drawn ON TOP of the video so it reads as one continuous set.
+ */
+function drawVideoStage(yt: YouTubeSource, song: Song, beat: number, goldBurst: number) {
+  const w = W(), h = H() * 0.56;
+  // size the iframe to COVER the band (center-cropped like background-size: cover)
+  const vw = Math.max(w, (h * 16) / 9);
+  const vh = (vw * 9) / 16;
+  yt.setBounds((w - vw) / 2, Math.min(0, (h - vh) / 2), vw, vh);
+
+  const pulse = Math.exp(-((beat % 1)) * 3.2);
   ctx.save();
-  // punch the window
+
+  // punch through the scene with a soft bottom fade — video melts into the stage
   ctx.globalCompositeOperation = 'destination-out';
-  roundRect(ctx, x, y, w, h, 14);
-  ctx.fill();
-  // dim so the dancer stays the brightest thing on screen
+  const punch = ctx.createLinearGradient(0, 0, 0, h);
+  punch.addColorStop(0, 'rgba(0,0,0,1)');
+  punch.addColorStop(0.7, 'rgba(0,0,0,1)');
+  punch.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.fillStyle = punch;
+  ctx.fillRect(0, 0, w, h);
+
+  // everything below draws OVER the video
   ctx.globalCompositeOperation = 'source-over';
-  ctx.fillStyle = `rgba(5,8,20,${0.38 - goldBurst * 0.15})`;
-  roundRect(ctx, x, y, w, h, 14);
-  ctx.fill();
-  // neon frame
-  ctx.strokeStyle = song.accent;
-  ctx.globalAlpha = 0.55;
-  ctx.lineWidth = 2.5;
-  ctx.shadowColor = song.accent;
-  ctx.shadowBlur = 16;
-  roundRect(ctx, x, y, w, h, 14);
-  ctx.stroke();
+
+  // base dim + color grade so the dancer stays the brightest thing on stage
+  ctx.fillStyle = `rgba(6,6,20,${Math.max(0.1, 0.3 - goldBurst * 0.15)})`;
+  ctx.fillRect(0, 0, w, h);
+  const grade = ctx.createLinearGradient(0, 0, 0, h);
+  grade.addColorStop(0, 'rgba(4,3,14,0.5)');       // darker sky-line up top
+  grade.addColorStop(0.45, 'rgba(4,3,14,0)');
+  ctx.fillStyle = grade;
+  ctx.fillRect(0, 0, w, h);
+
+  // side vignettes tie the screen into the dark wings of the stage
+  for (const side of [0, 1]) {
+    const vg = ctx.createLinearGradient(side ? w : 0, 0, side ? w - w * 0.2 : w * 0.2, 0);
+    vg.addColorStop(0, 'rgba(5,3,15,0.85)');
+    vg.addColorStop(1, 'rgba(5,3,15,0)');
+    ctx.fillStyle = vg;
+    ctx.fillRect(side ? w * 0.8 : 0, 0, w * 0.2, h);
+  }
+
+  // beat-synced color wash over the video (party lighting)
+  const ac = song.accent;
+  ctx.fillStyle = hexA(ac, 0.05 + 0.09 * pulse + goldBurst * 0.12);
+  ctx.fillRect(0, 0, w, h);
+
+  // sweeping light beams from the rig above the screen
+  const beams = 4;
+  for (let i = 0; i < beams; i++) {
+    const bx = w * (0.14 + (0.72 * i) / (beams - 1));
+    const swing = Math.sin(beat * 0.55 + i * 1.7) * 0.5;
+    const ang = Math.PI / 2 + swing * 0.55;
+    const len = h * 1.35;
+    const half = 0.05 + 0.02 * Math.sin(i * 2.1);
+    const col = i % 2 === 0 ? ac : song.accent2;
+    const on = (Math.floor(beat) + i) % 2 === 0 ? 1 : 0.35;
+    const grad = ctx.createLinearGradient(bx, -10, bx + Math.cos(ang) * len, Math.sin(ang) * len);
+    grad.addColorStop(0, hexA(col, (0.16 + 0.14 * pulse) * on));
+    grad.addColorStop(1, hexA(col, 0));
+    ctx.fillStyle = grad;
+    ctx.beginPath();
+    ctx.moveTo(bx, -10);
+    ctx.lineTo(bx + Math.cos(ang - half) * len, -10 + Math.sin(ang - half) * len);
+    ctx.lineTo(bx + Math.cos(ang + half) * len, -10 + Math.sin(ang + half) * len);
+    ctx.closePath();
+    ctx.fill();
+  }
+
+  // glowing seam where the screen meets the stage floor
+  const seamY = h * 0.86;
+  const seam = ctx.createLinearGradient(0, seamY - h * 0.1, 0, h);
+  seam.addColorStop(0, hexA(ac, 0));
+  seam.addColorStop(0.7, hexA(ac, 0.1 + 0.12 * pulse));
+  seam.addColorStop(1, hexA(ac, 0));
+  ctx.fillStyle = seam;
+  ctx.fillRect(0, seamY - h * 0.1, w, h - seamY + h * 0.1);
+
   ctx.restore();
 }
 
-function roundRect(c: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number) {
-  c.beginPath();
-  c.moveTo(x + r, y);
-  c.arcTo(x + w, y, x + w, y + h, r);
-  c.arcTo(x + w, y + h, x, y + h, r);
-  c.arcTo(x, y + h, x, y, r);
-  c.arcTo(x, y, x + w, y, r);
-  c.closePath();
+function hexA(hex: string, a: number): string {
+  const v = parseInt(hex.slice(1), 16);
+  return `rgba(${(v >> 16) & 255},${(v >> 8) & 255},${v & 255},${Math.max(0, Math.min(1, a))})`;
 }
 
 function hintStepIn(c: CanvasRenderingContext2D) {
@@ -620,6 +916,58 @@ function hintStepIn(c: CanvasRenderingContext2D) {
   c.textAlign = 'center';
   c.fillText('STEP INTO FRAME', W() / 2, H() * 0.5);
   c.restore();
+}
+
+// ---------------------------------------------------------------------------
+// Dance-off corner HUD: one cluster per player (name, webcam, meter, stars)
+
+interface Corners { root: HTMLElement; update: (room: Room, remotes: Map<string, RemotePlayer>, scorer: Scorer) => void }
+
+function buildCorners(room: Room, streams: Map<string, MediaStream>): Corners {
+  const root = div('mp-corners');
+  app.appendChild(root);
+  const POS = ['tl', 'tr', 'bl', 'br'];
+  const cells = new Map<string, { meter: HTMLElement; stars: HTMLElement }>();
+
+  const build = () => {
+    root.innerHTML = '';
+    cells.clear();
+    room.players.forEach((p, i) => {
+      const cell = div(`mp-corner ${POS[i % 4]}`);
+      const isMe = p.id === room.myId;
+      cell.innerHTML = `
+        <div class="mpc-name">${escapeHtml(p.name)}${isMe ? ' · YOU' : ''}</div>
+        <video data-peer="${p.id}" autoplay playsinline muted></video>
+        <div class="mpc-meter"><div class="mpc-fill"></div></div>
+        <div class="mpc-stars"></div>`;
+      root.appendChild(cell);
+      const v = cell.querySelector('video') as HTMLVideoElement;
+      const stream = isMe ? (tracker.video.srcObject as MediaStream | null) : streams.get(p.id) ?? null;
+      if (stream) { v.srcObject = stream; v.play().catch(() => { /* autoplay */ }); }
+      if (isMe) v.classList.add('me');
+      cells.set(p.id, {
+        meter: cell.querySelector('.mpc-fill') as HTMLElement,
+        stars: cell.querySelector('.mpc-stars') as HTMLElement,
+      });
+    });
+  };
+  build();
+  room.onUpdate = build;
+
+  return {
+    root,
+    update(r, remotes, scorer) {
+      for (const p of r.players) {
+        const cell = cells.get(p.id);
+        if (!cell) continue;
+        const isMe = p.id === r.myId;
+        const score = isMe ? scorer.score : remotes.get(p.id)?.score ?? 0;
+        const stars = isMe ? scorer.stars() : remotes.get(p.id)?.stars ?? 0;
+        cell.meter.style.width = `${Math.min(100, (score / 13333) * 100)}%`;
+        cell.stars.textContent = '★'.repeat(stars) + '☆'.repeat(5 - stars);
+      }
+    },
+  };
 }
 
 function buildPreview(): HTMLCanvasElement | null {
@@ -660,7 +1008,12 @@ async function endSong(song: Song, scorer: Scorer, hud: Hud, preview: HTMLCanvas
   opts.clock.stop();
   hud.destroy();
   preview?.remove();
-  const playerName = localStorage.getItem('gs-name') ?? 'DANCER';
+  app.querySelectorAll('.mp-corners').forEach((e) => e.remove());
+  const playerName = opts.room?.myName ?? localStorage.getItem('gs-name') ?? 'DANCER';
+  if (opts.room) {
+    opts.room.send({ t: 'end', s: Math.round(scorer.score) });
+    await wait(1200); // give rivals' final scores a moment to arrive
+  }
 
   const flash = div('overlay flash');
   flash.innerHTML = `<div class="flash-logo">GROOVESTAR</div>`;
@@ -685,8 +1038,9 @@ async function endSong(song: Song, scorer: Scorer, hud: Hud, preview: HTMLCanvas
     <div class="result-counts">${(['PERFECT', 'SUPER', 'GOOD', 'OK', 'X'] as const)
       .map((k) => `<span class="rc rc-${k}">${k === 'X' ? '✕' : k} <b>${scorer.counts[k] + (k === 'PERFECT' ? scorer.counts.YEAH : 0)}</b></span>`).join('')}
     </div>
+    ${opts.room ? `<div class="mp-ranking">${rankingHtml(opts, Math.round(scorer.score))}</div>` : ''}
     <div class="result-btns">
-      <button id="again">DANCE AGAIN</button>
+      <button id="again">${opts.room ? 'BACK TO LOBBY' : 'DANCE AGAIN'}</button>
       <button id="tolist">SONG LIST</button>
     </div>`;
   app.appendChild(res);
@@ -726,11 +1080,27 @@ async function endSong(song: Song, scorer: Scorer, hud: Hud, preview: HTMLCanvas
   tick();
 
   document.getElementById('again')!.addEventListener('click', () => {
-    res.remove(); cancelAnimationFrame(raf); opts.onAgain();
+    res.remove(); cancelAnimationFrame(raf);
+    if (opts.room) { opts.yt?.destroy(); opts.mic?.stop(); }
+    opts.onAgain();
   });
   document.getElementById('tolist')!.addEventListener('click', () => {
     res.remove(); opts.yt?.destroy(); opts.mic?.stop(); showMenu();
   });
+}
+
+/** dance-off ranking table for the results screen */
+function rankingHtml(opts: PlayOpts, myScore: number): string {
+  const room = opts.room!;
+  const rows = room.players.map((p) => ({
+    name: p.name,
+    me: p.id === room.myId,
+    score: p.id === room.myId ? myScore : (opts.remotes?.get(p.id)?.end ?? opts.remotes?.get(p.id)?.score ?? 0),
+  })).sort((a, b) => b.score - a.score);
+  const medals = ['🥇', '🥈', '🥉', '4.'];
+  return `<div class="mp-rank-title">BATTLE RESULT</div>` + rows.map((r, i) =>
+    `<div class="mp-rank-row ${r.me ? 'me' : ''}"><span>${medals[i] ?? ''} ${escapeHtml(r.name)}${r.me ? ' (you)' : ''}</span><b>${r.score.toLocaleString('en-US')}</b></div>`
+  ).join('');
 }
 
 // ---------------------------------------------------------------------------

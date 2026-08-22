@@ -222,61 +222,91 @@ export class PlayerAvatar {
     o.lineCap = 'round';
     o.lineJoin = 'round';
 
-    // torso quad
+    // torso quad corners (used to build the smooth torso path)
     const widen = (a: [number, number], b: [number, number], f: number): [number, number] =>
       [a[0] + (a[0] - b[0]) * f, a[1] + (a[1] - b[1]) * f];
     const q0 = widen(shA, shB, 0.14 + 0.08 * build), q1 = widen(shB, shA, 0.14 + 0.08 * build);
-    const q2 = widen(hipB, hipA, 0.08 + 0.06 * build), q3 = widen(hipA, hipB, 0.08 + 0.06 * build);
-    const torsoPath = (c: CanvasRenderingContext2D) => {
+    const q2 = widen(hipB, hipA, 0.1 + 0.06 * build), q3 = widen(hipA, hipB, 0.1 + 0.06 * build);
+    const center: [number, number] = [(q0[0] + q1[0] + q2[0] + q3[0]) / 4, (q0[1] + q1[1] + q2[1] + q3[1]) / 4];
+    // curved torso: rounded shoulders, waist pinch, rounded hips
+    const torsoPath = (c: CanvasRenderingContext2D, grow = 0) => {
+      const g = (p: [number, number]): [number, number] => {
+        const dx = p[0] - center[0], dy = p[1] - center[1];
+        const n = Math.hypot(dx, dy) || 1;
+        return [p[0] + (dx / n) * grow, p[1] + (dy / n) * grow];
+      };
+      const a0 = g(q0), a1 = g(q1), a2 = g(q2), a3 = g(q3);
+      const waist = (s: [number, number], h: [number, number]): [number, number] => [
+        (s[0] + h[0]) / 2 + (center[0] - (s[0] + h[0]) / 2) * 0.14,
+        (s[1] + h[1]) / 2 + (center[1] - (s[1] + h[1]) / 2) * 0.14,
+      ];
+      const top: [number, number] = [midShPx[0], midShPx[1] - lwT(0.16) - grow];
+      const bot: [number, number] = [pelvis.x, pelvis.y + lwT(0.12) + grow];
       c.beginPath();
-      c.moveTo(q0[0], q0[1] - lwT(0.06));
-      c.lineTo(q1[0], q1[1] - lwT(0.06));
-      c.lineTo(q2[0], q2[1] + lwT(0.08));
-      c.lineTo(q3[0], q3[1] + lwT(0.08));
+      c.moveTo(a3[0], a3[1]);
+      c.quadraticCurveTo(...waist(a0, a3), a0[0], a0[1]);
+      c.quadraticCurveTo(top[0], top[1], a1[0], a1[1]);
+      c.quadraticCurveTo(...waist(a1, a2), a2[0], a2[1]);
+      c.quadraticCurveTo(bot[0], bot[1], a3[0], a3[1]);
       c.closePath();
     };
 
-    // neon rim
+    // limb widths (tapered capsules)
+    const W_UARM = lw(0.085), W_FARM = lw(0.065), W_WR = lw(0.05);
+    const W_THIGH = lw(0.105), W_KNEE = lw(0.08), W_ANK = lw(0.055);
+    const OUTLINE = 'rgba(12,10,26,0.55)';
+    const ol = lwT(0.028);
+
+    const bodyCapsules: [[number, number], [number, number], number, number][] = [
+      [shA, elA, W_UARM, W_FARM], [elA, wrA, W_FARM, W_WR],
+      [shB, elB, W_UARM, W_FARM], [elB, wrB, W_FARM, W_WR],
+      [hipA, kneeA, W_THIGH, W_KNEE], [kneeA, ankA, W_KNEE, W_ANK],
+      [hipB, kneeB, W_THIGH, W_KNEE], [kneeB, ankB, W_KNEE, W_ANK],
+    ];
+
+    // neon rim: padded copies of every body shape, glowing
     o.save();
     o.shadowColor = opts.goldGlow ? '#ffd23e' : opts.accent;
     o.shadowBlur = lwT(0.3);
-    o.strokeStyle = opts.goldGlow ? 'rgba(255,222,120,0.95)' : 'rgba(255,255,255,0.92)';
-    o.fillStyle = o.strokeStyle;
-    o.lineWidth = lw(0.26);
-    for (const [a, b, c2] of [[shA, elA, wrA], [shB, elB, wrB]] as const) {
-      o.beginPath(); o.moveTo(a[0], a[1]); o.lineTo(b[0], b[1]); o.lineTo(c2[0], c2[1]); o.stroke();
+    o.fillStyle = opts.goldGlow ? 'rgba(255,222,120,0.95)' : 'rgba(255,255,255,0.92)';
+    const pad = lwT(0.05);
+    for (const [a, b, w1, w2] of bodyCapsules) {
+      capsulePath(o, a, b, w1 + pad, w2 + pad); o.fill();
     }
-    o.lineWidth = lw(0.28);
-    for (const [a, b, c2] of [[hipA, kneeA, ankA], [hipB, kneeB, ankB]] as const) {
-      o.beginPath(); o.moveTo(a[0], a[1]); o.lineTo(b[0], b[1]); o.lineTo(c2[0], c2[1]); o.stroke();
-    }
-    o.lineWidth = lwT(0.1);
-    torsoPath(o); o.fill(); o.stroke();
-    o.beginPath(); o.arc(head[0], head[1], hr + lwT(0.05), 0, Math.PI * 2); o.fill();
+    torsoPath(o, pad); o.fill();
+    o.beginPath(); o.arc(head[0], head[1], hr + pad, 0, Math.PI * 2); o.fill();
     o.restore();
 
-    // legs + kicks
+    // dark outline pass — makes the body read as one cohesive figure
+    for (const [a, b, w1, w2] of bodyCapsules) {
+      capsulePath(o, a, b, w1 + ol, w2 + ol); o.fillStyle = OUTLINE; o.fill();
+    }
+    torsoPath(o, ol); o.fillStyle = OUTLINE; o.fill();
+
+    // legs: tapered capsules + shoes
     const bootColor = cos.kicks === 'gold' ? '#ffd23e' : cos.kicks === 'neon' ? opts.accent : style.boots;
-    const legSeg = (a: [number, number], b: [number, number], c2: [number, number]) => {
-      o.strokeStyle = style.bottom; o.lineWidth = lw(0.18);
-      o.beginPath(); o.moveTo(a[0], a[1]); o.lineTo(b[0], b[1]); o.lineTo(c2[0], c2[1]); o.stroke();
+    const legSeg = (hip: [number, number], knee: [number, number], ank: [number, number], side: number) => {
+      capsulePath(o, hip, knee, W_THIGH, W_KNEE); o.fillStyle = style.bottom; o.fill();
+      capsulePath(o, knee, ank, W_KNEE, W_ANK); o.fill();
+      o.beginPath(); o.arc(knee[0], knee[1], W_KNEE, 0, Math.PI * 2); o.fill();
+      // shoe: points away from the body's midline, hugging the ground
+      const fx = Math.sign(ank[0] - pelvis.x) || side;
+      const heel: [number, number] = [ank[0] - fx * lwT(0.04), ank[1] + lwT(0.02)];
+      const toe: [number, number] = [ank[0] + fx * lwT(0.24), ank[1] + lwT(0.055)];
       o.save();
       if (cos.kicks !== 'default') { o.shadowColor = bootColor; o.shadowBlur = lwT(0.22); }
-      o.strokeStyle = bootColor; o.lineWidth = lw(0.19);
-      const dx = c2[0] - b[0], dy = c2[1] - b[1]; const n = Math.hypot(dx, dy) || 1;
-      o.beginPath();
-      o.moveTo(c2[0] - (dx / n) * lwT(0.3), c2[1] - (dy / n) * lwT(0.3));
-      o.lineTo(c2[0], c2[1]);
-      o.stroke();
+      capsulePath(o, heel, toe, lw(0.085), lw(0.07)); o.fillStyle = bootColor; o.fill();
       o.restore();
+      // sole highlight
+      capsulePath(o, [heel[0], heel[1] + lwT(0.05)], [toe[0], toe[1] + lwT(0.03)], lw(0.03), lw(0.028));
+      o.fillStyle = 'rgba(255,255,255,0.35)'; o.fill();
     };
-    legSeg(hipA, kneeA, ankA);
-    legSeg(hipB, kneeB, ankB);
+    legSeg(hipA, kneeA, ankA, -1);
+    legSeg(hipB, kneeB, ankB, 1);
 
-    // neck early
-    o.strokeStyle = style.skin;
-    o.lineWidth = lw(0.11);
-    o.beginPath(); o.moveTo(midShPx[0], midShPx[1]); o.lineTo(head[0], head[1] + hr * 0.6); o.stroke();
+    // neck (drawn early so torso/hood cover its base)
+    capsulePath(o, [midShPx[0], midShPx[1] + lwT(0.02)], [head[0], head[1] + hr * 0.55], lw(0.07), lw(0.06));
+    o.fillStyle = style.skin; o.fill();
 
     // hood (spring-drooped) behind the head
     const headUpright = head[1] < midShPx[1] - hr * 0.5;
@@ -345,18 +375,19 @@ export class PlayerAvatar {
       }
     }
 
-    // arms (+ tattoos)
+    // arms (+ tattoos) — tapered capsules with elbow joints
     const armSeg = (sh: [number, number], el: [number, number], wr: [number, number]) => {
       if (style.longSleeves) {
-        o.strokeStyle = style.top; o.lineWidth = lw(0.16);
-        o.beginPath(); o.moveTo(sh[0], sh[1]); o.lineTo(el[0], el[1]); o.stroke();
-        o.lineWidth = lw(0.14);
-        o.beginPath(); o.moveTo(el[0], el[1]); o.lineTo(wr[0], wr[1]); o.stroke();
+        capsulePath(o, sh, el, W_UARM, W_FARM); o.fillStyle = style.top; o.fill();
+        capsulePath(o, el, wr, W_FARM, W_WR); o.fill();
+        o.beginPath(); o.arc(el[0], el[1], W_FARM, 0, Math.PI * 2); o.fill();
       } else {
-        o.strokeStyle = style.top; o.lineWidth = lw(0.17);
-        o.beginPath(); o.moveTo(sh[0], sh[1]); o.lineTo(sh[0] + (el[0] - sh[0]) * 0.35, sh[1] + (el[1] - sh[1]) * 0.35); o.stroke();
-        o.strokeStyle = style.skin; o.lineWidth = lw(0.13);
-        o.beginPath(); o.moveTo(sh[0] + (el[0] - sh[0]) * 0.3, sh[1] + (el[1] - sh[1]) * 0.3); o.lineTo(el[0], el[1]); o.lineTo(wr[0], wr[1]); o.stroke();
+        // short sleeve cap + skin arm
+        const cap: [number, number] = [sh[0] + (el[0] - sh[0]) * 0.38, sh[1] + (el[1] - sh[1]) * 0.38];
+        capsulePath(o, cap, el, lw(0.07), W_FARM); o.fillStyle = style.skin; o.fill();
+        capsulePath(o, el, wr, W_FARM, W_WR); o.fill();
+        o.beginPath(); o.arc(el[0], el[1], W_FARM, 0, Math.PI * 2); o.fill();
+        capsulePath(o, sh, cap, W_UARM, lw(0.075)); o.fillStyle = style.top; o.fill();
       }
       if (cos.tattoo !== 'none') {
         o.save();
@@ -627,6 +658,19 @@ export class PlayerAvatar {
     }
     ctx.restore();
   }
+}
+
+/** tapered capsule path between two points (round caps, different end widths) */
+function capsulePath(
+  o: CanvasRenderingContext2D,
+  a: [number, number], b: [number, number],
+  w1: number, w2: number,
+) {
+  const ang = Math.atan2(b[1] - a[1], b[0] - a[0]);
+  o.beginPath();
+  o.arc(a[0], a[1], Math.max(0.5, w1), ang + Math.PI / 2, ang - Math.PI / 2);
+  o.arc(b[0], b[1], Math.max(0.5, w2), ang - Math.PI / 2, ang + Math.PI / 2);
+  o.closePath();
 }
 
 function star(o: CanvasRenderingContext2D, x: number, y: number, r: number) {
