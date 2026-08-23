@@ -212,11 +212,14 @@ export class Room {
 
 const POSE_IDX = [0, 7, 8, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28];
 
-export function encodePose(lms: { x: number; y: number; visibility?: number }[]): number[] {
+export function encodePose(lms: { x: number; y: number; z?: number; visibility?: number }[]): number[] {
   const out: number[] = [];
   for (const i of POSE_IDX) {
     const l = lms[i];
-    out.push(Math.round(l.x * 1000), Math.round(l.y * 1000), Math.round((l.visibility ?? 1) * 100));
+    out.push(
+      Math.round(l.x * 1000), Math.round(l.y * 1000),
+      Math.round((l.z ?? 0) * 1000), Math.round((l.visibility ?? 1) * 100),
+    );
   }
   return out;
 }
@@ -224,10 +227,10 @@ export function encodePose(lms: { x: number; y: number; visibility?: number }[])
 export interface WirePoint { x: number; y: number; z: number; visibility: number }
 
 export function decodePose(d: number[]): WirePoint[] | null {
-  if (d.length !== POSE_IDX.length * 3) return null;
+  if (d.length !== POSE_IDX.length * 4) return null;
   const lms: WirePoint[] = Array.from({ length: 33 }, () => ({ x: 0, y: 0, z: 0, visibility: 0 }));
   POSE_IDX.forEach((idx, k) => {
-    lms[idx] = { x: d[k * 3] / 1000, y: d[k * 3 + 1] / 1000, z: 0, visibility: d[k * 3 + 2] / 100 };
+    lms[idx] = { x: d[k * 4] / 1000, y: d[k * 4 + 1] / 1000, z: d[k * 4 + 2] / 1000, visibility: d[k * 4 + 3] / 100 };
   });
   return lms;
 }

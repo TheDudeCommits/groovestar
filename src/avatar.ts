@@ -14,6 +14,9 @@
 import type { NormalizedLandmark } from '@mediapipe/tasks-vision';
 import type { StyleProfile } from './appearance';
 import type { Judgment } from './pose/scorer';
+import { SpriteRig } from './rig';
+
+export type SkinId = 'toon' | 'sprite' | 'wire';
 
 interface Pt { x: number; y: number }
 type Named =
@@ -86,6 +89,15 @@ export class PlayerAvatar {
   private rimNow: [number, number, number] = [255, 255, 255];
   private rimTarget: [number, number, number] = [255, 255, 255];
 
+  // depth (MediaPipe z, smoothed), sprite rig, particles, anime-mode gating
+  private zr: Partial<Record<Named, number>> = {};
+  private rig = new SpriteRig();
+  private particles: { x: number; y: number; vx: number; vy: number; r: number; life: number; max: number; kind: 'dust' | 'spark'; color: string }[] = [];
+  private prevJoint: Partial<Record<string, [number, number]>> = {};
+  /** 12fps stepped-pose mode */
+  anime = false;
+  private lastAccept = 0;
+
   // offscreen for the cel pass
   private off = document.createElement('canvas');
   private offCtx = this.off.getContext('2d')!;
@@ -94,6 +106,9 @@ export class PlayerAvatar {
     if (!lms) { this.hasPose = now - this.lastSeen < 600; return; }
     this.lastSeen = now;
     this.hasPose = true;
+    // anime mode: hold the pose between 12fps steps for a hand-animated feel
+    if (this.anime && now - this.lastAccept < 83) return;
+    this.lastAccept = now;
     const A = 0.45;
     for (const key of Object.keys(MAP) as Named[]) {
       const lm = lms[MAP[key]];
@@ -101,6 +116,8 @@ export class PlayerAvatar {
       const prev = this.sm[key];
       this.sm[key] = prev ? { x: prev.x + (p.x - prev.x) * A, y: prev.y + (p.y - prev.y) * A } : p;
       this.vis[key] = lm.visibility ?? 1;
+      const z = (lm as { z?: number }).z ?? 0;
+      this.zr[key] = (this.zr[key] ?? z) * 0.6 + z * 0.4;
     }
     const midSh = this.mid('shA', 'shB'), midHip = this.mid('hipA', 'hipB');
     const torso = Math.hypot(midSh.x - midHip.x, midSh.y - midHip.y);
@@ -137,6 +154,9 @@ export class PlayerAvatar {
     opts: {
       beat: number; accent: string; gloveFlash?: number; goldGlow?: boolean; w: number;
       cosmetics?: Cosmetics;
+      skin?: SkinId;
+      /** stage key light (beam) — x position on screen + beam color */
+      light?: { x: number; color: string };
     },
   ) {
     if (!this.sm.shA || !this.baseHip) return;
@@ -189,6 +209,19 @@ export class PlayerAvatar {
     const build = style.body.buildScale;
     const lw = (u: number) => u * torsoPx * build;
     const lwT = (u: number) => u * torsoPx; // thickness-independent (layout)
+    const skin = opts.skin ?? 'toon';
+
+    // pseudo-3D: MediaPipe z scales limbs as they come toward the camera and
+    // decides whether each arm passes in front of or behind the body
+    const hipZ = ((this.zr.hipA ?? 0) + (this.zr.hipB ?? 0)) / 2;
+    const dz = (k: string) => {
+      const z = this.zr[k as Named];
+      if (z === undefined) return 1;
+      return Math.max(0.84, Math.min(1.3, 1 + (hipZ - z) * 0.9));
+    };
+    const armZ = (el: Named, wr: Named) => ((this.zr[el] ?? hipZ) + (this.zr[wr] ?? hipZ)) / 2;
+    const frontA = armZ('elA', 'wrA') < hipZ - 0.03;
+    const frontB = armZ('elB', 'wrB') < hipZ - 0.03;
 
     // ---------------- main-canvas layers (behind the body) ----------------
     ctx.save();
@@ -233,6 +266,13 @@ export class PlayerAvatar {
     o.clearRect(0, 0, cw, ch);
     o.lineCap = 'round';
     o.lineJoin = 'round';
+
+    // squash & stretch: a quick vertical squash right on each beat landing
+    const sq = 0.045 * Math.exp(-((opts.beat % 1)) * 7);
+    o.save();
+    o.translate(pelvis.x, groundY);
+    o.scale(1 + sq * 0.55, 1 - sq);
+    o.translate(-pelvis.x, -groundY);
 
     // torso quad corners (used to build the smooth torso path)
     const widen = (a: [number, number], b: [number, number], f: number): [number, number] =>
@@ -285,18 +325,56 @@ export class PlayerAvatar {
     const rim = opts.goldGlow
       ? 'rgba(255,222,120,0.95)'
       : `rgba(${this.rimNow.map(Math.round).join(',')},0.94)`;
-    o.save();
-    o.shadowColor = rim;
-    o.shadowBlur = lwT(0.32);
-    o.fillStyle = rim;
-    const pad = lwT(0.05);
-    for (const [a, b, w1, w2] of bodyCapsules) {
-      capsulePath(o, a, b, w1 + pad, w2 + pad); o.fill();
+    if (skin !== 'wire') {
+      o.save();
+      o.shadowColor = rim;
+      o.shadowBlur = lwT(0.32);
+      o.fillStyle = rim;
+      const pad = lwT(0.05);
+      for (const [a, b, w1, w2] of bodyCapsules) {
+        capsulePath(o, a, b, w1 + pad, w2 + pad); o.fill();
+      }
+      torsoPath(o, pad); o.fill();
+      o.beginPath(); o.arc(head[0], head[1], hr + pad, 0, Math.PI * 2); o.fill();
+      o.restore();
     }
-    torsoPath(o, pad); o.fill();
-    o.beginPath(); o.arc(head[0], head[1], hr + pad, 0, Math.PI * 2); o.fill();
-    o.restore();
 
+    if (skin === 'wire') {
+      // NEON WIREFRAME skin: glowing strokes only — pure light
+      o.save();
+      o.strokeStyle = rim;
+      o.shadowColor = rim;
+      o.shadowBlur = lwT(0.28);
+      o.lineWidth = lwT(0.035);
+      for (const [a, b] of bodyCapsules) {
+        o.beginPath(); o.moveTo(a[0], a[1]); o.lineTo(b[0], b[1]); o.stroke();
+      }
+      torsoPath(o); o.stroke();
+      o.beginPath(); o.arc(head[0], head[1], hr, 0, Math.PI * 2); o.stroke();
+      // joint nodes
+      o.fillStyle = rim;
+      for (const j of [shA, shB, elA, elB, wrA, wrB, hipA, hipB, kneeA, kneeB, ankA, ankB]) {
+        o.beginPath(); o.arc(j[0], j[1], lwT(0.035), 0, Math.PI * 2); o.fill();
+      }
+      // minimal face: two eye nodes
+      for (const s of [-1, 1]) {
+        o.beginPath(); o.arc(head[0] + s * hr * 0.32, head[1] - hr * 0.05, lwT(0.028), 0, Math.PI * 2); o.fill();
+      }
+      o.restore();
+    } else if (skin === 'sprite') {
+      // SPRITE RIG skin: baked illustrated parts stamped onto the bones
+      this.rig.render(o, {
+        T: torsoPx, pelvis: [pelvis.x, pelvis.y], midSh: midShPx, head, hr,
+        shA, elA, wrA, shB, elB, wrB, hipA, kneeA, ankA, hipB, kneeB, ankB,
+        dz, frontA, frontB,
+      }, style);
+      const flashS = opts.gloveFlash ?? 0;
+      this.drawHand(o, 'A', wrA, elA, style.skin, lw(0.1) * dz('wrA'), 0, P);
+      this.drawHand(o, 'B', wrB, elB, flashS > 0.05 ? '#ffe9a0' : style.glove, lw(0.115) * dz('wrB'), flashS, P);
+      this.drawFace(o, head, hr, now);
+    }
+
+    if (skin === 'toon') {
     // dark outline pass — makes the body read as one cohesive figure
     for (const [a, b, w1, w2] of bodyCapsules) {
       capsulePath(o, a, b, w1 + ol, w2 + ol); o.fillStyle = OUTLINE; o.fill();
@@ -470,30 +548,44 @@ export class PlayerAvatar {
       }
     }
 
+    } // end toon skin
+
+    o.restore(); // squash & stretch transform
+
     // ---------------- cel-shading pass on the offscreen body ----------------
-    const bboxX = pelvis.x, keyLight = Math.sin(opts.beat * Math.PI * 0.5) * torsoPx * 0.6;
-    o.save();
-    o.globalCompositeOperation = 'source-atop';
-    // side shade (away from the drifting key light)
-    const sg = o.createLinearGradient(bboxX + keyLight - torsoPx * 1.4, 0, bboxX + keyLight + torsoPx * 1.4, 0);
-    sg.addColorStop(0, 'rgba(255,245,235,0.10)');
-    sg.addColorStop(0.55, 'rgba(0,0,0,0)');
-    sg.addColorStop(1, 'rgba(8,4,38,0.30)');
-    o.fillStyle = sg;
-    o.fillRect(bboxX - torsoPx * 2.5, pelvis.y - torsoPx * 2.6, torsoPx * 5, torsoPx * 4.5);
-    // top light
-    const tl = o.createLinearGradient(0, head[1] - hr * 1.4, 0, pelvis.y + torsoPx);
-    tl.addColorStop(0, 'rgba(255,255,255,0.12)');
-    tl.addColorStop(0.4, 'rgba(255,255,255,0)');
-    o.fillStyle = tl;
-    o.fillRect(bboxX - torsoPx * 2.5, head[1] - hr * 2, torsoPx * 5, torsoPx * 5);
-    o.restore();
+    // Key light follows the actual stage beam when one is shining (YouTube
+    // stage mode); otherwise it drifts gently with the beat.
+    if (skin !== 'wire') {
+      const bboxX = pelvis.x;
+      const keyLight = opts.light
+        ? Math.max(-torsoPx * 1.2, Math.min(torsoPx * 1.2, (opts.light.x - pelvis.x) * 0.4))
+        : Math.sin(opts.beat * Math.PI * 0.5) * torsoPx * 0.6;
+      const litColor = opts.light ? `rgba(${hexToRgbStr(opts.light.color)},0.16)` : 'rgba(255,245,235,0.10)';
+      o.save();
+      o.globalCompositeOperation = 'source-atop';
+      const sg = o.createLinearGradient(bboxX + keyLight - torsoPx * 1.4, 0, bboxX + keyLight + torsoPx * 1.4, 0);
+      sg.addColorStop(0, litColor);
+      sg.addColorStop(0.55, 'rgba(0,0,0,0)');
+      sg.addColorStop(1, 'rgba(8,4,38,0.30)');
+      o.fillStyle = sg;
+      o.fillRect(bboxX - torsoPx * 2.5, pelvis.y - torsoPx * 2.6, torsoPx * 5, torsoPx * 4.5);
+      const tl = o.createLinearGradient(0, head[1] - hr * 1.4, 0, pelvis.y + torsoPx);
+      tl.addColorStop(0, 'rgba(255,255,255,0.12)');
+      tl.addColorStop(0.4, 'rgba(255,255,255,0)');
+      o.fillStyle = tl;
+      o.fillRect(bboxX - torsoPx * 2.5, head[1] - hr * 2, torsoPx * 5, torsoPx * 5);
+      o.restore();
+    }
 
     // composite the shaded body onto the main canvas
     ctx.save();
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.drawImage(this.off, 0, 0);
     ctx.restore();
+
+    // ---------------- limb particles: foot dust + hand sparks ----------------
+    this.spawnParticles(wrA, wrB, ankA, ankB, groundY, torsoPx, dt, style.glove, auraColor);
+    this.renderParticles(ctx, dt);
 
     // capture a ghost snapshot right after a YEAH
     if (this.pendingGhost) {
@@ -510,6 +602,75 @@ export class PlayerAvatar {
       if (this.ghosts.length > 3) this.ghosts.shift();
     }
 
+    ctx.restore();
+  }
+
+  // ---- limb particles ------------------------------------------------------
+  private spawnParticles(
+    wrA: [number, number], wrB: [number, number],
+    ankA: [number, number], ankB: [number, number],
+    groundY: number, torsoPx: number, dt: number,
+    glove: string, aura: string,
+  ) {
+    const speedOf = (key: string, p: [number, number]) => {
+      const prev = this.prevJoint[key];
+      this.prevJoint[key] = p;
+      if (!prev) return 0;
+      return Math.hypot(p[0] - prev[0], p[1] - prev[1]) / Math.max(0.008, dt);
+    };
+    // hand sparks on fast swings
+    for (const [key, wr, col] of [['wrA', wrA, aura], ['wrB', wrB, glove]] as const) {
+      const v = speedOf(key, wr);
+      if (v > torsoPx * 7 && this.particles.length < 70 && Math.random() < 0.55) {
+        this.particles.push({
+          x: wr[0] + (Math.random() - 0.5) * torsoPx * 0.1,
+          y: wr[1] + (Math.random() - 0.5) * torsoPx * 0.1,
+          vx: (Math.random() - 0.5) * torsoPx * 0.8,
+          vy: (Math.random() - 0.5) * torsoPx * 0.8,
+          r: torsoPx * (0.03 + Math.random() * 0.03),
+          life: 0, max: 0.4 + Math.random() * 0.25, kind: 'spark', color: col,
+        });
+      }
+    }
+    // foot dust when a fast-moving foot is near the floor
+    for (const [key, ank] of [['ankA', ankA], ['ankB', ankB]] as const) {
+      const v = speedOf(key, ank);
+      if (v > torsoPx * 3.4 && ank[1] > groundY - torsoPx * 0.14 && this.particles.length < 70 && Math.random() < 0.5) {
+        for (let i = 0; i < 2; i++) {
+          this.particles.push({
+            x: ank[0] + (Math.random() - 0.5) * torsoPx * 0.14,
+            y: groundY - torsoPx * 0.02,
+            vx: (Math.random() - 0.5) * torsoPx * 0.9,
+            vy: -Math.random() * torsoPx * 0.35,
+            r: torsoPx * (0.05 + Math.random() * 0.05),
+            life: 0, max: 0.5 + Math.random() * 0.3, kind: 'dust', color: '',
+          });
+        }
+      }
+    }
+  }
+
+  private renderParticles(ctx: CanvasRenderingContext2D, dt: number) {
+    if (!this.particles.length) return;
+    ctx.save();
+    for (let i = this.particles.length - 1; i >= 0; i--) {
+      const p = this.particles[i];
+      p.life += dt;
+      if (p.life >= p.max) { this.particles.splice(i, 1); continue; }
+      p.x += p.vx * dt; p.y += p.vy * dt;
+      p.vx *= 0.92; p.vy *= 0.92;
+      const a = 1 - p.life / p.max;
+      if (p.kind === 'dust') {
+        const r = p.r * (1 + 2.2 * (p.life / p.max));
+        ctx.fillStyle = `rgba(205,195,185,${0.2 * a})`;
+        ctx.beginPath(); ctx.arc(p.x, p.y, r, 0, Math.PI * 2); ctx.fill();
+      } else {
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.fillStyle = `rgba(${hexToRgbStr(p.color)},${0.75 * a})`;
+        star(ctx, p.x, p.y, p.r * (0.6 + a));
+        ctx.globalCompositeOperation = 'source-over';
+      }
+    }
     ctx.restore();
   }
 

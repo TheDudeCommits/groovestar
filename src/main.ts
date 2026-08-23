@@ -44,6 +44,10 @@ let cameraOk = false;
 
 let raf = 0;
 let state: 'menu' | 'ready' | 'play' | 'results' = 'menu';
+/** strongest stage beam this frame — the avatar's key light in YouTube mode */
+let stageLight: { x: number; color: string } | null = null;
+const skinPref = () => (localStorage.getItem('gs-skin') ?? 'toon') as 'toon' | 'sprite' | 'wire';
+const animePref = () => localStorage.getItem('gs-anime') === '1';
 let playerStyle: StyleProfile | null = null;
 let activeRoom: Room | null = null;
 
@@ -707,6 +711,14 @@ async function openCalibrate() {
       <canvas id="calib-view" width="640" height="480"></canvas>
       <div id="calib-status" class="calib-status">Starting camera\u2026</div>
       <div id="calib-chips" class="ready-tip"></div>
+      <div class="yt-row calib-skins">
+        <span class="yt-label">DANCER SKIN</span>
+        <button class="preset skin-opt" data-skin="toon">TOON</button>
+        <button class="preset skin-opt" data-skin="sprite">SPRITE</button>
+        <button class="preset skin-opt" data-skin="wire">NEON WIRE</button>
+        <span class="yt-label">ANIME 12FPS</span>
+        <button class="preset" id="anime-toggle">OFF</button>
+      </div>
       <div class="yt-row">
         <button id="calib-scan" class="mp-btn" disabled>SCAN MY STYLE</button>
         <button id="calib-close" class="lobby-leave">CLOSE</button>
@@ -715,6 +727,22 @@ async function openCalibrate() {
   app.appendChild(overlay);
   let open = true;
   overlay.querySelector('#calib-close')!.addEventListener('click', () => { open = false; overlay.remove(); });
+
+  // skin + anime pickers
+  const syncPickers = () => {
+    overlay.querySelectorAll<HTMLElement>('.skin-opt').forEach((b) =>
+      b.classList.toggle('sel', b.dataset.skin === skinPref()));
+    const at = overlay.querySelector('#anime-toggle') as HTMLElement;
+    at.textContent = animePref() ? 'ON' : 'OFF';
+    at.classList.toggle('sel', animePref());
+  };
+  overlay.querySelectorAll<HTMLElement>('.skin-opt').forEach((b) =>
+    b.addEventListener('click', () => { localStorage.setItem('gs-skin', b.dataset.skin!); syncPickers(); }));
+  overlay.querySelector('#anime-toggle')!.addEventListener('click', () => {
+    localStorage.setItem('gs-anime', animePref() ? '0' : '1');
+    syncPickers();
+  });
+  syncPickers();
 
   if (!trackerStarted) {
     trackerStarted = true;
@@ -837,6 +865,7 @@ function play(song: Song, playerName: string, opts: PlayOpts) {
   const hud = new Hud(app, playerName, song);
   const fx: FxState = { gloveFlash: 0, goldBurst: 0, shake: 0 };
   const avatar = new PlayerAvatar();
+  avatar.anime = animePref();
   const cosmetics = resolveCosmetics();
   const crew = crewOn() && cameraOk && !opts.room; // no backup dancers in a dance off
   const crewPalette = playerStyle ? paletteFromStyle(playerStyle) : song.coach;
@@ -897,6 +926,7 @@ function play(song: Song, playerName: string, opts: PlayOpts) {
     drawScene({ ctx, w: W(), h: H(), beat: Math.max(0, beat), section, song, goldBurst: fx.goldBurst });
 
     // YouTube backdrop: the video becomes the upper half of the stage
+    stageLight = null;
     if (yt) drawVideoStage(yt, song, Math.max(0, beat), fx.goldBurst);
 
     const { pose, goldHold, flowing } = choreoPose(song.choreo, beat);
@@ -925,6 +955,7 @@ function play(song: Song, playerName: string, opts: PlayOpts) {
         if (r.avatar.hasPose) {
           r.avatar.draw(ctx, r.style ?? defaultStyle(song), W() * slots[i][0], H() * 0.8, H() * slots[i][1], {
             beat: Math.max(0, beat), accent: song.accent2, w: W(), cosmetics: DEFAULT_COSMETICS,
+            skin: skinPref(), light: stageLight ?? undefined,
           });
         }
       });
@@ -947,7 +978,7 @@ function play(song: Song, playerName: string, opts: PlayOpts) {
         avatar.draw(ctx, playerStyle, W() / 2, H() * 0.84, H() * 0.56, {
           beat: Math.max(0, beat), accent: song.accent, w: W(),
           gloveFlash: fx.gloveFlash, goldGlow: fx.goldBurst > 0.25,
-          cosmetics,
+          cosmetics, skin: skinPref(), light: stageLight ?? undefined,
         });
       } else {
         hintStepIn(ctx);
@@ -1032,6 +1063,7 @@ function drawVideoStage(yt: YouTubeSource, song: Song, beat: number, goldBurst: 
 
   // sweeping light beams from the rig above the screen
   const beams = 4;
+  let bestBeam = 0;
   for (let i = 0; i < beams; i++) {
     const bx = w * (0.14 + (0.72 * i) / (beams - 1));
     const swing = Math.sin(beat * 0.55 + i * 1.7) * 0.5;
@@ -1040,6 +1072,12 @@ function drawVideoStage(yt: YouTubeSource, song: Song, beat: number, goldBurst: 
     const half = 0.05 + 0.02 * Math.sin(i * 2.1);
     const col = i % 2 === 0 ? ac : song.accent2;
     const on = (Math.floor(beat) + i) % 2 === 0 ? 1 : 0.35;
+    // where this beam lands at the dancer's height → key light candidate
+    const strength = on * (0.4 + 0.6 * pulse);
+    if (strength > bestBeam) {
+      bestBeam = strength;
+      stageLight = { x: bx + Math.cos(ang) * H() * 0.55, color: col };
+    }
     const grad = ctx.createLinearGradient(bx, -10, bx + Math.cos(ang) * len, Math.sin(ang) * len);
     grad.addColorStop(0, hexA(col, (0.16 + 0.14 * pulse) * on));
     grad.addColorStop(1, hexA(col, 0));
