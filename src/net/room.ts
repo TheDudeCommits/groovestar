@@ -7,6 +7,7 @@
 
 import Peer, { DataConnection, MediaConnection } from 'peerjs';
 import type { StyleProfile } from '../appearance';
+import { getRtcConfig } from './ice';
 
 const PREFIX = 'groovestar-v1-';
 export const MAX_PLAYERS = 4;
@@ -33,6 +34,7 @@ export class Room {
   private conns = new Map<string, DataConnection>();      // host: all guests; guest: just host
   private mediaConns = new Map<string, MediaConnection>();
   private myStream: MediaStream | null = null;
+  private dead = false;
 
   onUpdate: (() => void) | null = null;                    // roster changed
   onMessage: ((from: string, msg: NetMsg) => void) | null = null;
@@ -43,18 +45,20 @@ export class Room {
 
   // ---- lifecycle -----------------------------------------------------------
 
-  static create(name: string): Promise<Room> {
+  static async create(name: string): Promise<Room> {
+    const { config } = await getRtcConfig();
     const room = new Room();
     room.isHost = true;
     room.myName = name;
     room.code = String(1000 + Math.floor(Math.random() * 9000));
     return new Promise((resolve, reject) => {
-      room.peer = new Peer(PREFIX + room.code);
+      room.peer = new Peer(PREFIX + room.code, { config });
       const timeout = setTimeout(() =>
-        reject(new Error('Multiplayer service unreachable \u2014 a firewall or VPN may be blocking it.')), 10000);
+        reject(new Error('Multiplayer service unreachable \u2014 a firewall or VPN may be blocking it.')), 12000);
       room.peer.on('open', () => {
         clearTimeout(timeout);
         room.players = [{ id: room.peer.id, name }];
+        room.keepRegistered();
         room.wireHost();
         resolve(room);
       });
@@ -67,19 +71,30 @@ export class Room {
     });
   }
 
-  static join(code: string, name: string): Promise<Room> {
+  static async join(code: string, name: string): Promise<Room> {
+    const { config, turn } = await getRtcConfig();
     const room = new Room();
     room.isHost = false;
     room.myName = name;
     room.code = code;
     return new Promise((resolve, reject) => {
-      room.peer = new Peer();
+      room.peer = new Peer({ config });
       const fail = (m: string) => reject(new Error(m));
+      const brokerTimeout = setTimeout(() =>
+        fail('Multiplayer service unreachable — a firewall or VPN may be blocking it.'), 12000);
       room.peer.on('open', () => {
+        clearTimeout(brokerTimeout);
         const conn = room.peer.connect(PREFIX + code, { reliable: true });
-        const timeout = setTimeout(() => fail('Room not found — check the code.'), 8000);
+        // reaching here with no peer-unavailable error means the room EXISTS —
+        // a timeout is the P2P connection itself failing, which across strict
+        // networks (mobile carriers, hotels) needs a TURN relay. Say so
+        // instead of blaming the code.
+        const timeout = setTimeout(() => fail(turn
+          ? 'Found the room, but the connection could not be established. Try again — or switch one player to a phone hotspot.'
+          : 'Found the room, but your networks block a direct connection. Try a phone hotspot on one side.'), 20000);
         conn.on('open', () => {
           clearTimeout(timeout);
+          room.keepRegistered();
           room.conns.set('host', conn);
           conn.send({ from: room.peer.id, msg: { t: 'hello', name } } satisfies Envelope);
           conn.on('data', (raw) => room.handleGuestData(raw as Envelope));
@@ -90,13 +105,23 @@ export class Room {
         conn.on('error', () => { clearTimeout(timeout); fail('Could not reach that room.'); });
       });
       room.peer.on('error', (e: any) => {
-        if (String(e?.type) === 'peer-unavailable') fail('Room not found — check the code.');
-        else fail(String(e?.message ?? e));
+        clearTimeout(brokerTimeout);
+        if (String(e?.type) === 'peer-unavailable') {
+          fail('Room not found — double-check the code and make sure the host is still on the lobby screen.');
+        } else fail(String(e?.message ?? e));
       });
     });
   }
 
+  /** the free broker drops idle sockets — reconnect so the room stays reachable */
+  private keepRegistered() {
+    this.peer.on('disconnected', () => {
+      if (!this.dead) setTimeout(() => { if (!this.dead) this.peer.reconnect(); }, 1000);
+    });
+  }
+
   destroy() {
+    this.dead = true;
     try { this.peer?.destroy(); } catch { /* gone */ }
     this.conns.clear();
     this.mediaConns.clear();

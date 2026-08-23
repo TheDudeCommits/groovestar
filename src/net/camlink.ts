@@ -7,6 +7,7 @@ import Peer, { DataConnection } from 'peerjs';
 import type { NormalizedLandmark } from '@mediapipe/tasks-vision';
 import { computeFrame, type FrameState, type PlayerFrame, type PoseTracker } from '../pose/tracker';
 import { encodePose, decodePose } from './room';
+import { getRtcConfig } from './ice';
 
 const CAM_PREFIX = 'groovestar-cam-';
 
@@ -21,16 +22,20 @@ export class TvCamHost {
   private peer!: Peer;
   private st: FrameState = { lastWrists: null, energy: 0 };
 
-  static create(): Promise<TvCamHost> {
+  static async create(): Promise<TvCamHost> {
+    const { config } = await getRtcConfig();
     const host = new TvCamHost();
     host.video.playsInline = true;
     host.video.muted = true;
     host.code = String(1000 + Math.floor(Math.random() * 9000));
     return new Promise((resolve, reject) => {
-      host.peer = new Peer(CAM_PREFIX + host.code);
-      const timeout = setTimeout(() => reject(new Error('Could not reach the connection service — a firewall or VPN may be blocking it.')), 10000);
+      host.peer = new Peer(CAM_PREFIX + host.code, { config });
+      const timeout = setTimeout(() => reject(new Error('Could not reach the connection service — a firewall or VPN may be blocking it.')), 12000);
       host.peer.on('open', () => {
         clearTimeout(timeout);
+        host.peer.on('disconnected', () => {
+          if (!host.destroyed) setTimeout(() => { if (!host.destroyed) host.peer.reconnect(); }, 1000);
+        });
         host.peer.on('connection', (conn: DataConnection) => {
           conn.on('data', (raw: any) => {
             if (raw?.t === 'pose' && Array.isArray(raw.d)) {
@@ -61,22 +66,29 @@ export class TvCamHost {
 
   update() { /* frames arrive over the wire — nothing to poll */ }
 
+  destroyed = false;
+
   destroy() {
+    this.destroyed = true;
     try { this.peer?.destroy(); } catch { /* gone */ }
     this.connected = false;
   }
 }
 
 /** Phone side: track locally, stream poses + video to the TV */
-export function connectPhoneCam(
+export async function connectPhoneCam(
   code: string,
   tracker: PoseTracker,
   onStatus: (s: string) => void,
 ): Promise<{ stop: () => void }> {
+  const { config, turn } = await getRtcConfig();
   return new Promise((resolve, reject) => {
-    const peer = new Peer();
+    const peer = new Peer({ config });
     const fail = (m: string) => reject(new Error(m));
-    const timeout = setTimeout(() => fail('Could not find that screen — check the code.'), 10000);
+    // long enough for a TURN-relayed connection to negotiate
+    const timeout = setTimeout(() => fail(turn
+      ? 'Found the screen, but the connection could not be established — try again.'
+      : 'Found the screen, but this network blocks a direct connection — try the phone on wifi or hotspot.'), 20000);
     peer.on('open', () => {
       const conn = peer.connect(CAM_PREFIX + code, { reliable: false });
       conn.on('open', () => {

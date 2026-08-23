@@ -117,3 +117,22 @@ npm run build   # typecheck + production build to dist/
 ```
 
 Vanilla TypeScript + Vite + Canvas 2D. Only runtime dependency: `@mediapipe/tasks-vision`.
+
+## Multiplayer across different networks (TURN relay)
+
+Multiplayer and phone-camera links are peer-to-peer (WebRTC). Two players on
+far-apart networks — especially mobile carriers, which use carrier-grade NAT —
+often can't connect directly with STUN alone; that needs a **TURN relay**.
+The game asks `/api/ice` for its ICE servers, so enabling TURN is config-only:
+
+1. Create a free account at [metered.ca](https://www.metered.ca/stun-turn)
+   (free tier: 50 GB/month relay traffic) and create a TURN app.
+2. On Vercel, set two environment variables and redeploy:
+   - `METERED_DOMAIN` — your app domain, e.g. `yourapp.metered.live`
+   - `METERED_API_KEY` — the API key from the Metered dashboard
+
+Any other TURN server works too via `TURN_URLS` (comma-separated),
+`TURN_USERNAME`, `TURN_CREDENTIAL`. Without TURN configured the game still
+works on friendly networks and says so honestly when a connection can't be
+made. Debug: set `localStorage['gs-forcerelay']='1'` to force all traffic
+through the relay and prove the TURN path end-to-end.
