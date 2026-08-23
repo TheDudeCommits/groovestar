@@ -92,8 +92,10 @@ export class PlayerAvatar {
   // depth (MediaPipe z, smoothed), sprite rig, particles, anime-mode gating
   private zr: Partial<Record<Named, number>> = {};
   private rig = new SpriteRig();
-  private particles: { x: number; y: number; vx: number; vy: number; r: number; life: number; max: number; kind: 'dust' | 'spark'; color: string }[] = [];
+  private particles: { x: number; y: number; vx: number; vy: number; r: number; life: number; max: number; kind: 'dust' | 'spark' | 'flame'; color: string }[] = [];
   private prevJoint: Partial<Record<string, [number, number]>> = {};
+  /** screen-space ankle positions + speeds from the last draw (floor tiles read these) */
+  feet: { x: number; y: number; v: number }[] = [];
   /** 12fps stepped-pose mode */
   anime = false;
   private lastAccept = 0;
@@ -101,6 +103,9 @@ export class PlayerAvatar {
   // offscreen for the cel pass
   private off = document.createElement('canvas');
   private offCtx = this.off.getContext('2d')!;
+  // offscreen for the floor reflection (flipped body + fade mask)
+  private refl = document.createElement('canvas');
+  private reflCtx = this.refl.getContext('2d')!;
 
   update(lms: NormalizedLandmark[] | null, aspect: number, now: number) {
     if (!lms) { this.hasPose = now - this.lastSeen < 600; return; }
@@ -157,6 +162,10 @@ export class PlayerAvatar {
       skin?: SkinId;
       /** stage key light (beam) — x position on screen + beam color */
       light?: { x: number; color: string };
+      /** combo multiplier level 0-3 (×1..×4) — ≥1 ignites the flame aura */
+      comboLevel?: number;
+      /** glossy floor reflection under the dancer */
+      reflect?: boolean;
     },
   ) {
     if (!this.sm.shA || !this.baseHip) return;
@@ -577,14 +586,73 @@ export class PlayerAvatar {
       o.restore();
     }
 
+    // glossy floor reflection: the body layer flipped about the ground line,
+    // squashed, faded out with distance — drawn UNDER the real body
+    if (opts.reflect) {
+      const m = ctx.getTransform();
+      const gDev = groundY * m.d + m.f;          // ground line in device pixels
+      const fadePx = height * 0.42 * m.d;
+      if (this.refl.width !== cw || this.refl.height !== ch) { this.refl.width = cw; this.refl.height = ch; }
+      const rc = this.reflCtx;
+      rc.setTransform(1, 0, 0, 1, 0, 0);
+      rc.clearRect(0, 0, cw, ch);
+      rc.save();
+      rc.translate(0, gDev);
+      rc.scale(1, -0.5);
+      rc.translate(0, -gDev);
+      rc.drawImage(this.off, 0, 0);
+      rc.restore();
+      rc.save();
+      rc.globalCompositeOperation = 'destination-in';
+      const fade = rc.createLinearGradient(0, gDev, 0, gDev + fadePx);
+      fade.addColorStop(0, 'rgba(255,255,255,0.8)');
+      fade.addColorStop(1, 'rgba(255,255,255,0)');
+      rc.fillStyle = fade;
+      rc.fillRect(0, gDev, cw, fadePx + 2);
+      rc.restore();
+      ctx.save();
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.globalAlpha = 0.6;
+      ctx.drawImage(this.refl, 0, 0);
+      ctx.restore();
+    }
+
     // composite the shaded body onto the main canvas
     ctx.save();
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.drawImage(this.off, 0, 0);
     ctx.restore();
 
+    // publish ankle positions + speeds for the light-up floor tiles
+    const footV = (key: string, p: [number, number]) => {
+      const prev = this.prevJoint[key];
+      this.prevJoint[key] = p;
+      return prev ? Math.hypot(p[0] - prev[0], p[1] - prev[1]) / Math.max(0.008, dt) : 0;
+    };
+    this.feet = [
+      { x: ankA[0], y: ankA[1], v: footV('ftA', ankA) },
+      { x: ankB[0], y: ankB[1], v: footV('ftB', ankB) },
+    ];
+
     // ---------------- limb particles: foot dust + hand sparks ----------------
     this.spawnParticles(wrA, wrB, ankA, ankB, groundY, torsoPx, dt, style.glove, auraColor);
+    // combo flames: the hotter the multiplier, the fiercer the burn
+    const comboLv = opts.comboLevel ?? 0;
+    if (comboLv >= 1 && this.particles.length < 90) {
+      const FLAME = ['#ffd23e', '#ff9d2e', '#ff5d3e'];
+      for (let i = 0; i < comboLv; i++) {
+        if (Math.random() > 0.45) continue;
+        const sx2 = pelvis.x + (Math.random() - 0.5) * torsoPx * 1.5;
+        this.particles.push({
+          x: sx2, y: pelvis.y + (Math.random() - 0.7) * torsoPx,
+          vx: (Math.random() - 0.5) * torsoPx * 0.25,
+          vy: -torsoPx * (0.9 + Math.random() * 0.9 + comboLv * 0.25),
+          r: torsoPx * (0.05 + Math.random() * 0.05 + comboLv * 0.012),
+          life: 0, max: 0.45 + Math.random() * 0.3,
+          kind: 'flame', color: FLAME[Math.min(2, Math.floor(Math.random() * (comboLv + 1)))],
+        });
+      }
+    }
     this.renderParticles(ctx, dt);
 
     // capture a ghost snapshot right after a YEAH
@@ -664,6 +732,17 @@ export class PlayerAvatar {
         const r = p.r * (1 + 2.2 * (p.life / p.max));
         ctx.fillStyle = `rgba(205,195,185,${0.2 * a})`;
         ctx.beginPath(); ctx.arc(p.x, p.y, r, 0, Math.PI * 2); ctx.fill();
+      } else if (p.kind === 'flame') {
+        // rising teardrops that shrink and wobble as they burn out
+        p.x += Math.sin((p.life * 17) + p.y * 0.05) * p.r * 0.35;
+        ctx.globalCompositeOperation = 'lighter';
+        const r = p.r * (1 - 0.6 * (p.life / p.max));
+        const fg = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, r * 2);
+        fg.addColorStop(0, `rgba(${hexToRgbStr(p.color)},${0.5 * a})`);
+        fg.addColorStop(1, `rgba(${hexToRgbStr(p.color)},0)`);
+        ctx.fillStyle = fg;
+        ctx.beginPath(); ctx.arc(p.x, p.y, r * 2, 0, Math.PI * 2); ctx.fill();
+        ctx.globalCompositeOperation = 'source-over';
       } else {
         ctx.globalCompositeOperation = 'lighter';
         ctx.fillStyle = `rgba(${hexToRgbStr(p.color)},${0.75 * a})`;

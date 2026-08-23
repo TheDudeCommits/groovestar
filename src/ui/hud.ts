@@ -45,9 +45,50 @@ export class Hud {
     this.syncChip = el('div', 'sync-chip');
     this.syncChip.style.display = 'none';
     this.root.appendChild(this.syncChip);
+
+    this.comboChip = el('div', 'combo-chip');
+    this.comboChip.style.display = 'none';
+    this.root.appendChild(this.comboChip);
+
+    this.fsBanner = el('div', 'freestyle-banner');
+    this.fsBanner.style.display = 'none';
+    this.root.appendChild(this.fsBanner);
   }
 
   private syncChip: HTMLElement;
+  private comboChip: HTMLElement;
+  private fsBanner: HTMLElement;
+  private lastMult = 1;
+  private lastFs: string | null = null;
+
+  /** combo multiplier chip beside the star meter; pops on every level-up */
+  setCombo(mult: number) {
+    if (mult < 2) {
+      this.comboChip.style.display = 'none';
+      this.lastMult = mult;
+      return;
+    }
+    this.comboChip.style.display = 'block';
+    this.comboChip.textContent = `×${mult}`;
+    this.comboChip.className = `combo-chip c${mult}`;
+    if (mult !== this.lastMult) {
+      this.comboChip.classList.add('pop');
+      setTimeout(() => this.comboChip.classList.remove('pop'), 450);
+    }
+    this.lastMult = mult;
+  }
+
+  /** freestyle window banner: 'soon' countdown → GO OFF!! → hidden */
+  setFreestyle(mode: 'soon' | 'go' | null) {
+    if (mode === this.lastFs) return;
+    this.lastFs = mode;
+    if (!mode) { this.fsBanner.style.display = 'none'; return; }
+    this.fsBanner.style.display = 'block';
+    this.fsBanner.className = `freestyle-banner ${mode}`;
+    this.fsBanner.innerHTML = mode === 'soon'
+      ? 'FREESTYLE INCOMING…'
+      : '<span class="fs-big">FREESTYLE</span><span class="fs-sub">GO OFF!!</span>';
+  }
   /** beat-sync status indicator (YouTube mode) */
   setSync(text: string | null, locked: boolean) {
     if (!text) { this.syncChip.style.display = 'none'; return; }

@@ -15,7 +15,8 @@ import { MOVES } from './moves';
 import { StyleScanner, type StyleProfile } from './appearance';
 import { CLIPS } from './motion';
 import { PlayerAvatar, type Cosmetics } from './avatar';
-import { generateChoreo } from './choreograph';
+import { generateChoreo, freestyleWindows, carveFreestyle, type FreestyleWindow } from './choreograph';
+import { fetchVibe, vibeAt, type VibePalette } from './vibe';
 import { parseYouTubeId, YouTubeSource, YouTubeClock } from './youtube';
 import { BeatListener } from './audio/beatsync';
 import { fetchSyncedLyrics, lyricsToLines, applyKeywordChoreo, fetchAiChoreo, fetchSongMeta, introBeatsOf } from './lyrics';
@@ -481,9 +482,10 @@ async function startYouTube(videoId: string) {
   // tempo (Claude's music knowledge) + synced lyrics, in parallel
   const tuneTip = document.getElementById('tune-tip');
   if (tuneTip) tuneTip.textContent = 'Detecting tempo & fetching lyrics\u2026';
-  const [meta, lyr] = await Promise.all([
+  const [meta, lyr, vibe] = await Promise.all([
     fetchSongMeta(videoId, src.title, src.duration),
     Promise.race([fetchSyncedLyrics(src.title, src.duration), wait(9000).then(() => null)]),
+    fetchVibe(videoId),
   ]);
   loadCard.remove();
   const bpm = meta ?? 120;
@@ -544,13 +546,17 @@ async function startYouTube(videoId: string) {
     }
   }
 
+  // freestyle GO-OFF windows: the routine steps aside, you improvise
+  const freestyle = freestyleWindows(totalBeats, introBeats);
+  song.choreo = carveFreestyle(song.choreo, freestyle);
+
   const clock = new YouTubeClock(src, bpm, gen.sections, totalBeats, 4);
   clock.freeTempo = meta === null; // unknown tempo: let the mic adopt the real one
   const mic = new BeatListener();
   mic.start(); // fire and forget — sync silently disabled if mic is denied
   const run = () => {
     clock.restart();
-    play(song, playerName, { clock, yt: src, mic, onAgain: run });
+    play(song, playerName, { clock, yt: src, mic, vibe, freestyle, onAgain: run });
   };
   run();
 }
@@ -711,17 +717,23 @@ async function startYouTubeMP(videoId: string, bpm: number, introBeats: number, 
   };
 
   const lyricsPromise = fetchSyncedLyrics(song.title, src.duration);
+  const vibePromise = fetchVibe(videoId);
   await readyFlow(song, `<b>${escapeHtml(song.title)}</b><span>room ${room.code} · ${room.players.length} dancers</span>`);
   if (playerStyle) room.send({ t: 'style', style: playerStyle });
   const camStream = cam().video.srcObject as MediaStream | null;
   if (camStream) room.shareStream(camStream);
   const lyr = await Promise.race([lyricsPromise, wait(1500).then(() => null)]);
   if (lyr) song.lyrics = lyricsToLines(lyr, bpm, 4);
+  const vibe = await Promise.race([vibePromise, wait(1500).then(() => null)]);
+
+  // deterministic from (totalBeats, introBeats) → identical on every client
+  const freestyle = freestyleWindows(totalBeats, introBeats);
+  song.choreo = carveFreestyle(song.choreo, freestyle);
 
   const clock = new YouTubeClock(src, bpm, gen.sections, totalBeats, 4);
   clock.restart();
   play(song, room.myName, {
-    clock, yt: src, room, remotes, streams,
+    clock, yt: src, room, remotes, streams, vibe, freestyle,
     onAgain: () => openLobby(room),
   });
 }
@@ -969,14 +981,19 @@ interface PlayOpts {
   remotes?: Map<string, RemotePlayer>;
   streams?: Map<string, MediaStream>;
   fitness?: { kcal: number; active: number };
+  /** video thumbnail palettes — the stage grades itself to the music video */
+  vibe?: VibePalette | null;
+  /** freestyle GO-OFF windows (already carved out of the choreo) */
+  freestyle?: FreestyleWindow[];
   onAgain: () => void;
 }
 
 function play(song: Song, playerName: string, opts: PlayOpts) {
   state = 'play';
   const { clock, yt } = opts;
-  const scorer = new Scorer(song.choreo);
+  const scorer = new Scorer(song.choreo, opts.freestyle ?? []);
   scorer.demoMode = !cameraOk;
+  const tiles = new Map<number, number>();   // lit floor tiles: index → glow
   const hud = new Hud(app, playerName, song);
   const fx: FxState = { gloveFlash: 0, goldBurst: 0, shake: 0 };
   const avatar = new PlayerAvatar();
@@ -1058,9 +1075,21 @@ function play(song: Song, playerName: string, opts: PlayOpts) {
     ctx.translate(sx, sy);
     drawScene({ ctx, w: W(), h: H(), beat: Math.max(0, beat), section, song, goldBurst: fx.goldBurst });
 
+    // stage color pair: graded to the music video, easing between its acts
+    const stageCols = vibeAt(opts.vibe ?? null, Math.max(0, beat) / song.beats, [song.accent, song.accent2]);
+
     // YouTube backdrop: the video becomes the upper half of the stage
     stageLight = null;
-    if (yt) drawVideoStage(yt, song, Math.max(0, beat), fx.goldBurst);
+    if (yt) drawVideoStage(yt, Math.max(0, beat), fx.goldBurst, stageCols);
+
+    // floor tiles that lit up under last frame's footsteps
+    drawFloorTiles(tiles, avatar.feet, stageCols);
+
+    // freestyle windows: banner + combo chip live on the HUD
+    const fsWins = opts.freestyle ?? [];
+    const inFs = fsWins.some((f) => beat >= f.start && beat < f.end);
+    hud.setFreestyle(inFs ? 'go' : fsWins.some((f) => beat >= f.start - 4 && beat < f.start) ? 'soon' : null);
+    hud.setCombo(scorer.multiplier);
 
     const { pose, goldHold, flowing } = choreoPose(song.choreo, beat);
     // real motion clips carry their own bounce — no synthetic groove on top
@@ -1112,6 +1141,7 @@ function play(song: Song, playerName: string, opts: PlayOpts) {
           beat: Math.max(0, beat), accent: song.accent, w: W(),
           gloveFlash: fx.gloveFlash, goldGlow: fx.goldBurst > 0.25,
           cosmetics, skin: skinPref(), light: stageLight ?? undefined,
+          comboLevel: scorer.multiplier - 1, reflect: true,
         });
       } else {
         hintStepIn(ctx);
@@ -1124,7 +1154,7 @@ function play(song: Song, playerName: string, opts: PlayOpts) {
         gloveFlash: fx.gloveFlash, goldHold: goldHold && fx.goldBurst > 0.2,
       });
     }
-    drawPictograms(ctx, song, beat, W(), H());
+    if (!inFs) drawPictograms(ctx, song, beat, W(), H());
     ctx.restore();
     drawPreview(preview);
 
@@ -1149,7 +1179,7 @@ function play(song: Song, playerName: string, opts: PlayOpts) {
  * the video melts into the floor, then party lights, beat washes and vignettes
  * are drawn ON TOP of the video so it reads as one continuous set.
  */
-function drawVideoStage(yt: YouTubeSource, song: Song, beat: number, goldBurst: number) {
+function drawVideoStage(yt: YouTubeSource, beat: number, goldBurst: number, cols: [string, string]) {
   const w = W(), h = H() * 0.56;
   // size the iframe to COVER the band (center-cropped like background-size: cover)
   const vw = Math.max(w, (h * 16) / 9);
@@ -1190,7 +1220,7 @@ function drawVideoStage(yt: YouTubeSource, song: Song, beat: number, goldBurst: 
   }
 
   // beat-synced color wash over the video (party lighting)
-  const ac = song.accent;
+  const ac = cols[0];
   ctx.fillStyle = hexA(ac, 0.05 + 0.09 * pulse + goldBurst * 0.12);
   ctx.fillRect(0, 0, w, h);
 
@@ -1203,7 +1233,7 @@ function drawVideoStage(yt: YouTubeSource, song: Song, beat: number, goldBurst: 
     const ang = Math.PI / 2 + swing * 0.55;
     const len = h * 1.35;
     const half = 0.05 + 0.02 * Math.sin(i * 2.1);
-    const col = i % 2 === 0 ? ac : song.accent2;
+    const col = i % 2 === 0 ? ac : cols[1];
     const on = (Math.floor(beat) + i) % 2 === 0 ? 1 : 0.35;
     // where this beam lands at the dancer's height → key light candidate
     const strength = on * (0.4 + 0.6 * pulse);
@@ -1232,6 +1262,42 @@ function drawVideoStage(yt: YouTubeSource, song: Song, beat: number, goldBurst: 
   ctx.fillStyle = seam;
   ctx.fillRect(0, seamY - h * 0.1, w, h - seamY + h * 0.1);
 
+  ctx.restore();
+}
+
+/**
+ * Disco floor: tiles light up where the dancer's feet actually land and fade
+ * back out. Feet come from the avatar's last drawn frame (screen space).
+ */
+function drawFloorTiles(tiles: Map<number, number>, feet: { x: number; y: number; v: number }[], cols: [string, string]) {
+  const w = W(), h = H();
+  const top = h * 0.68, nCols = 12, nRows = 3;
+  const tw = w / nCols, th = (h - top) / nRows;
+  for (const f of feet) {
+    if (f.y < top) continue;                 // foot lifted off the floor band
+    const c = Math.max(0, Math.min(nCols - 1, Math.floor(f.x / tw)));
+    const r = Math.max(0, Math.min(nRows - 1, Math.floor((f.y - top) / th)));
+    tiles.set(r * 100 + c, 1);
+  }
+  if (!tiles.size) return;
+  ctx.save();
+  ctx.globalCompositeOperation = 'lighter';
+  ctx.lineWidth = 2;
+  for (const [key, g] of tiles) {
+    if (g < 0.04) { tiles.delete(key); continue; }
+    tiles.set(key, g * 0.94);
+    const r = Math.floor(key / 100), c = key % 100;
+    const x = c * tw, y = top + r * th;
+    const col = (r + c) % 2 === 0 ? cols[0] : cols[1];
+    ctx.shadowColor = col;
+    ctx.shadowBlur = 20 * g;
+    ctx.fillStyle = hexA(col, 0.1 * g);
+    ctx.strokeStyle = hexA(col, 0.5 * g);
+    ctx.beginPath();
+    ctx.roundRect(x + 4, y + 4, tw - 8, th - 8, 10);
+    ctx.fill();
+    ctx.stroke();
+  }
   ctx.restore();
 }
 

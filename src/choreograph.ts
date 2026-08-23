@@ -189,3 +189,32 @@ export function generateChoreo(seed: string, totalBeats: number, difficulty: 1 |
   choreo.sort((a, b2) => a.beat - b2.beat);
   return { sections, choreo };
 }
+
+// ---------------------------------------------------------------------------
+// Freestyle sections: 8-beat "GO OFF!" windows where the routine steps aside
+// and the player is scored on energy + movement variety instead of matching.
+// Purely a function of (totalBeats, introBeats) so every multiplayer client
+// derives identical windows.
+
+export interface FreestyleWindow { start: number; end: number }
+
+export function freestyleWindows(totalBeats: number, introBeats: number): FreestyleWindow[] {
+  const span = totalBeats - introBeats;
+  const at = (f: number) => introBeats + Math.round((span * f) / 8) * 8;
+  const wins: FreestyleWindow[] = [];
+  if (span >= 160) wins.push({ start: at(0.4), end: at(0.4) + 8 }, { start: at(0.72), end: at(0.72) + 8 });
+  else if (span >= 96) wins.push({ start: at(0.55), end: at(0.55) + 8 });
+  return wins.filter((w) => w.start > introBeats + 16 && w.end < totalBeats - 16);
+}
+
+/** remove routine moves inside freestyle windows; a gold caught inside lands right at the window's end instead */
+export function carveFreestyle(choreo: ChoreoMove[], wins: FreestyleWindow[]): ChoreoMove[] {
+  return choreo
+    .map((m) => {
+      const w = wins.find((x) => m.beat >= x.start - 1 && m.beat < x.end);
+      if (!w) return m;
+      return m.gold ? { ...m, beat: w.end } : null;
+    })
+    .filter((m): m is ChoreoMove => !!m)
+    .sort((a, b) => a.beat - b.beat);
+}

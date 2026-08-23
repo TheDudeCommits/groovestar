@@ -6,6 +6,7 @@
 import { MOVES, poseFeatures } from '../moves';
 import { CLIPS, clipPose } from '../motion';
 import type { ChoreoMove } from '../songs';
+import type { FreestyleWindow } from '../choreograph';
 import type { PlayerFrame } from './tracker';
 
 export type Judgment = 'X' | 'OK' | 'GOOD' | 'SUPER' | 'PERFECT' | 'YEAH';
@@ -14,7 +15,8 @@ export interface JudgmentEvent {
   judgment: Judgment;
   gold: boolean;
   score: number;       // points awarded
-  moveIndex: number;
+  moveIndex: number;   // -1 for freestyle windows
+  freestyle?: boolean;
 }
 
 export const MAX_SCORE = 13333;
@@ -47,16 +49,44 @@ export class Scorer {
   /** true → no camera; judgments are simulated so presentation still works */
   demoMode = false;
 
-  constructor(choreo: ChoreoMove[]) {
+  private fs: {
+    w: FreestyleWindow;
+    energySum: number; n: number;
+    samples: number[][];
+    done: boolean;
+  }[];
+
+  constructor(choreo: ChoreoMove[], freestyle: FreestyleWindow[] = []) {
     this.slots = choreo.map((move, index) => ({ move, index, best: 0, sawPlayer: false, done: false }));
-    // gold moves are worth double
-    const weight = choreo.reduce((n, m) => n + (m.gold ? 2 : 1), 0);
-    this.perMove = MAX_SCORE / weight;
+    this.fs = freestyle.map((w) => ({ w, energySum: 0, n: 0, samples: [], done: false }));
+    // gold moves are worth double; each freestyle window ~5 moves. The combo
+    // multiplier inflates points, so the per-move base shrinks: keeping combos
+    // alive is what fills the star meter now.
+    const weight = choreo.reduce((n, m) => n + (m.gold ? 2 : 1), 0) + freestyle.length * 5;
+    this.perMove = MAX_SCORE / (weight * 1.9);
+  }
+
+  /** combo multiplier: 4+ in a row ×2, 8+ ×3, 12+ ×4 */
+  get multiplier(): number {
+    return this.combo >= 12 ? 4 : this.combo >= 8 ? 3 : this.combo >= 4 ? 2 : 1;
   }
 
   /** feed the current player frame; call every rAF */
   update(beat: number, frame: PlayerFrame | null): JudgmentEvent[] {
     const out: JudgmentEvent[] = [];
+    for (const f of this.fs) {
+      if (f.done) continue;
+      if (beat >= f.w.start && beat < f.w.end) {
+        if (frame?.features) {
+          f.energySum += frame.energy; f.n++;
+          // ~4 pose snapshots per beat feed the variety measure
+          if (f.samples.length < (beat - f.w.start) * 4) f.samples.push(frame.features.slice(0, 4));
+        }
+      } else if (beat >= f.w.end) {
+        f.done = true;
+        out.push(this.judgeFreestyle(f));
+      }
+    }
     for (const slot of this.slots) {
       if (slot.done) continue;
       const d = beat - slot.move.beat;
@@ -128,12 +158,49 @@ export class Scorer {
     } else if (gold) {
       pts *= 2;
     }
-    if (judgment === 'X') this.combo = 0; else this.combo++;
-    this.score += pts;
+    pts *= this.multiplier;
+    this.bumpCombo(judgment);
+    this.score = Math.min(MAX_SCORE, this.score + pts);
     this.judged++;
     this.counts[judgment]++;
     this.log.push({ move: slot.move.move, judgment });
     return { judgment, gold, score: pts, moveIndex: slot.index };
+  }
+
+  /** X breaks the combo, OK merely holds it — only real hits build it */
+  private bumpCombo(j: Judgment) {
+    if (j === 'X') this.combo = 0;
+    else if (j !== 'OK') this.combo++;
+  }
+
+  private judgeFreestyle(f: { energySum: number; n: number; samples: number[][] }): JudgmentEvent {
+    let perf: number;
+    if (this.demoMode) {
+      perf = 0.72;
+    } else if (!f.n) {
+      perf = 0;
+    } else {
+      const energyScore = Math.min(1, (f.energySum / f.n) / 0.42);
+      // variety: how widely each arm angle roamed across the window
+      let variety = 0;
+      if (f.samples.length >= 4) {
+        for (let d = 0; d < 4; d++) {
+          const vals = f.samples.map((s) => s[d]);
+          const mean = vals.reduce((a, b) => a + b, 0) / vals.length;
+          const sd = Math.sqrt(vals.reduce((a, b) => a + (b - mean) ** 2, 0) / vals.length);
+          variety += Math.min(1, sd / 38) / 4;
+        }
+      }
+      perf = energyScore * 0.55 + variety * 0.45;
+    }
+    const judgment: Judgment =
+      perf >= 0.72 ? 'YEAH' : perf >= 0.52 ? 'SUPER' : perf >= 0.34 ? 'GOOD' : perf >= 0.15 ? 'OK' : 'X';
+    const pts = this.perMove * 5 * perf * this.multiplier;
+    this.bumpCombo(judgment);
+    this.score = Math.min(MAX_SCORE, this.score + pts);
+    this.judged++;
+    this.counts[judgment]++;
+    return { judgment, gold: judgment === 'YEAH', score: pts, moveIndex: -1, freestyle: true };
   }
 
   /** 0..5 stars + superstar beyond, matching the reference meter feel */
