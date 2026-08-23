@@ -369,3 +369,16 @@ body {
 /* lobby picked-track chip */
 .mp-picked { font-size: 13px; color: #7cf95c; min-height: 16px; }
 .mp-picked b { color: var(--ink); }
+
+/* toasts + fitness */
+.gs-toast {
+  position: absolute; left: 50%; bottom: 9vh; transform: translateX(-50%) translateY(16px);
+  background: rgba(12, 14, 34, 0.94); border: 1px solid rgba(255,255,255,0.25); border-radius: 999px;
+  padding: 11px 22px; font-size: 13.5px; font-weight: 700; color: var(--ink);
+  opacity: 0; transition: opacity 0.3s ease, transform 0.3s ease; z-index: 40; pointer-events: none;
+  box-shadow: 0 8px 30px rgba(0,0,0,0.5); max-width: 84vw; text-align: center;
+}
+.gs-toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+.calib-btn.on { background: rgba(255, 122, 62, 0.25); border-color: rgba(255, 122, 62, 0.7); }
+.fit-row { font-size: 15px; font-weight: 800; color: #ff9a4d; letter-spacing: 0.04em; }
+.pc-body { display: flex; flex-direction: column; gap: 12px; align-items: center; }

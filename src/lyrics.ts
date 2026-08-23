@@ -110,10 +110,7 @@ export async function fetchSongMeta(videoId: string, title: string, duration: nu
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), 9000);
   try {
-    const r = await fetch('/api/songmeta', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ title, duration }),
+    const r = await fetch(`/api/songmeta?t=${encodeURIComponent(title)}&d=${Math.round(duration)}`, {
       signal: ctrl.signal,
     });
     if (!r.ok) return null;
@@ -184,17 +181,6 @@ export function applyKeywordChoreo(choreo: ChoreoMove[], lines: LyricLine[]): { 
 // ---------------------------------------------------------------------------
 // Tier 2: Claude-generated routine via /api/choreo
 
-export interface AiChoreoRequest {
-  title: string;
-  bpm: number;
-  totalBeats: number;
-  difficulty: number;
-  introBeat: number;
-  sections: SectionDef[];
-  lyrics: { beat: number; text: string }[];
-  moves: { id: string; energy: number }[];
-}
-
 /** where the song actually starts, from the first synced-lyric timestamp */
 export function introBeatsOf(lyr: SyncedLyric[] | null, bpm: number, leadBeats: number): number {
   if (!lyr?.length) return 8;
@@ -204,19 +190,23 @@ export function introBeatsOf(lyr: SyncedLyric[] | null, bpm: number, leadBeats: 
   return Math.max(8, Math.min(64, Math.floor(first / 2) * 2));
 }
 
-export async function fetchAiChoreo(req: AiChoreoRequest, timeoutMs = 25000): Promise<ChoreoMove[] | null> {
+export async function fetchAiChoreo(
+  videoId: string, title: string, duration: number,
+  bpm: number, introBeat: number, totalBeats: number,
+  timeoutMs = 25000,
+): Promise<ChoreoMove[] | null> {
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), timeoutMs);
   try {
-    const r = await fetch('/api/choreo', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(req),
-      signal: ctrl.signal,
+    const q = new URLSearchParams({
+      v: videoId, t: title, dur: String(Math.round(duration)),
+      bpm: String(Math.round(bpm * 10) / 10), i: String(introBeat), tb: String(totalBeats),
     });
+    const r = await fetch(`/api/choreo?${q}`, { signal: ctrl.signal });
     if (!r.ok) return null;
     const data = await r.json();
-    return validateAiChoreo(data?.moves, req.totalBeats, req.introBeat);
+    if (!data?.moves) return null;
+    return validateAiChoreo(data.moves, totalBeats, introBeat);
   } catch { return null; }
   finally { clearTimeout(timer); }
 }

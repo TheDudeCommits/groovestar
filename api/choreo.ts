@@ -1,9 +1,13 @@
-// AI choreographer — Claude beat-maps a routine that understands the song's
-// lyrics, structure, and energy. Active only when ANTHROPIC_API_KEY is set in
-// the deployment environment; the client falls back to keyword mapping when
-// this endpoint is unavailable.
+// AI choreographer — GET so Vercel's CDN caches each song's routine GLOBALLY:
+// Claude runs once per (video, bpm) worldwide; everyone else gets the cached
+// routine instantly and the Anthropic key is spent once.
+// GET /api/choreo?v=<videoId>&t=<title>&dur=<sec>&bpm=<n>&i=<introBeat>&tb=<totalBeats>
 
 import Anthropic from '@anthropic-ai/sdk';
+import { checkOrigin, rateLimit, fetchLyricsServer } from './_utils';
+import clipsData from '../src/data/clips.json';
+
+const GOLDS = ['gold_sky', 'gold_star', 'gold_bow', 'gold_hero', 'gold_x', 'gold_kneel'];
 
 const SCHEMA = {
   type: 'object',
@@ -27,14 +31,46 @@ const SCHEMA = {
 } as const;
 
 export default async function handler(req: any, res: any) {
-  if (req.method !== 'POST') { res.status(405).json({ error: 'POST only' }); return; }
+  if (!checkOrigin(req, res)) return;
+  if (!rateLimit(req, res, 'choreo', 6)) return;
   if (!process.env.ANTHROPIC_API_KEY) { res.status(503).json({ error: 'no api key configured' }); return; }
 
-  const { title, bpm, totalBeats, difficulty, introBeat, sections, lyrics, moves } = req.body ?? {};
-  if (!Array.isArray(moves) || !Array.isArray(lyrics) || !totalBeats || moves.length > 200 || lyrics.length > 300) {
+  const q = req.query ?? {};
+  const videoId = String(q.v ?? '');
+  const title = String(q.t ?? '').slice(0, 200);
+  const duration = Number(q.dur ?? 0);
+  const bpm = Number(q.bpm ?? 0);
+  const introBeat = Number(q.i ?? 8);
+  const totalBeats = Number(q.tb ?? 0);
+  if (!/^[\w-]{11}$/.test(videoId) || !title || !(bpm >= 60 && bpm <= 200) || !(totalBeats >= 48 && totalBeats <= 2000)) {
     res.status(400).json({ error: 'bad request' });
     return;
   }
+
+  // server-side lyric fetch (also CDN-cached with the routine)
+  const lyr = await fetchLyricsServer(title, duration);
+  if (!lyr?.length) {
+    res.status(200).setHeader('Cache-Control', 's-maxage=86400').json({ moves: null, reason: 'no-lyrics' });
+    return;
+  }
+  const lines = lyr.map((l) => ({
+    beat: Math.round(((l.t * bpm) / 60 - 4) * 10) / 10,
+    text: l.text,
+  })).filter((l) => l.beat > 0 && l.beat < totalBeats).slice(0, 300);
+
+  const clips = (clipsData as { clips: { id: string; g: string; e: number; b: number }[] }).clips;
+  const moves = [
+    ...clips.map((c) => ({ id: c.id, energy: c.e, genre: c.g, beats: c.b })),
+    ...GOLDS.map((id) => ({ id, energy: 1 })),
+  ];
+  // simple section plan for context (intro → alternating 32-beat blocks → outro)
+  const sections: { beat: number; kind: string }[] = [{ beat: 0, kind: 'intro' }];
+  let b = Math.max(8, introBeat), k = 0;
+  while (b < totalBeats - 16) {
+    sections.push({ beat: b, kind: k % 2 === 0 ? 'verse' : 'chorus' });
+    b += 32; k++;
+  }
+  sections.push({ beat: totalBeats - 16, kind: 'outro' });
 
   const client = new Anthropic();
   try {
@@ -64,25 +100,17 @@ export default async function handler(req: any, res: any) {
       messages: [{
         role: 'user',
         content: JSON.stringify({
-          song_title: title,
-          bpm,
-          total_beats: totalBeats,
-          difficulty,
-          sections,
-          move_library: moves,
-          synced_lyrics_on_beat_grid: lyrics,
+          song_title: title, bpm, total_beats: totalBeats, intro_beat: introBeat,
+          sections, move_library: moves, synced_lyrics_on_beat_grid: lines,
         }),
       }],
     });
 
-    if (response.stop_reason === 'refusal') {
-      res.status(502).json({ error: 'model refused' });
-      return;
-    }
-    const text = response.content.find((b: any) => b.type === 'text') as any;
+    if (response.stop_reason === 'refusal') { res.status(502).json({ error: 'model refused' }); return; }
+    const text = response.content.find((bl: any) => bl.type === 'text') as any;
     const parsed = JSON.parse(text?.text ?? '{}');
     res.status(200)
-      .setHeader('Cache-Control', 's-maxage=604800')
+      .setHeader('Cache-Control', 's-maxage=2592000, stale-while-revalidate=604800')
       .json({ moves: parsed.moves ?? [] });
   } catch (e: any) {
     res.status(502).json({ error: e?.message ?? 'generation failed' });

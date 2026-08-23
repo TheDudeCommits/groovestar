@@ -1,9 +1,9 @@
-// Song metadata (tempo) from Claude's music knowledge — replaces the manual
-// tap-tempo. Given a music-video title, Claude returns the track's BPM when it
-// knows it confidently; otherwise null and the client falls back to 120 +
-// live mic beat-sync. POST /api/songmeta {title, duration}
+// Song tempo from Claude's music knowledge — GET so the CDN caches each
+// answer globally (one Claude call per song, ever).
+// GET /api/songmeta?t=<title>&d=<durationSec>
 
 import Anthropic from '@anthropic-ai/sdk';
+import { checkOrigin, rateLimit } from './_utils';
 
 const SCHEMA = {
   type: 'object',
@@ -18,10 +18,11 @@ const SCHEMA = {
 } as const;
 
 export default async function handler(req: any, res: any) {
-  if (req.method !== 'POST') { res.status(405).json({ error: 'POST only' }); return; }
+  if (!checkOrigin(req, res)) return;
+  if (!rateLimit(req, res, 'meta', 15)) return;
   if (!process.env.ANTHROPIC_API_KEY) { res.status(503).json({ error: 'no api key configured' }); return; }
-  const title = String(req.body?.title ?? '').slice(0, 200);
-  const duration = Number(req.body?.duration ?? 0);
+  const title = String(req.query?.t ?? '').slice(0, 200);
+  const duration = Number(req.query?.d ?? 0);
   if (!title) { res.status(400).json({ error: 'missing title' }); return; }
 
   const client = new Anthropic();
@@ -42,7 +43,7 @@ export default async function handler(req: any, res: any) {
       while (bpm > 180) bpm /= 2;
       bpm = Math.round(bpm * 10) / 10;
     }
-    res.status(200).setHeader('Cache-Control', 's-maxage=604800').json({ bpm });
+    res.status(200).setHeader('Cache-Control', 's-maxage=2592000, stale-while-revalidate=604800').json({ bpm });
   } catch (e: any) {
     res.status(502).json({ error: e?.message ?? 'meta failed' });
   }

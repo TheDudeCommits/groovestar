@@ -20,6 +20,7 @@ import { parseYouTubeId, YouTubeSource, YouTubeClock } from './youtube';
 import { BeatListener } from './audio/beatsync';
 import { fetchSyncedLyrics, lyricsToLines, applyKeywordChoreo, fetchAiChoreo, fetchSongMeta, introBeatsOf } from './lyrics';
 import { Room, encodePose, decodePose, MAX_PLAYERS, type NetMsg } from './net/room';
+import { TvCamHost, connectPhoneCam } from './net/camlink';
 import { DEFAULT_COSMETICS } from './avatar';
 
 /** common clock interface: the synth engine and the YouTube playhead both provide it */
@@ -46,6 +47,36 @@ let raf = 0;
 let state: 'menu' | 'ready' | 'play' | 'results' = 'menu';
 /** strongest stage beam this frame — the avatar's key light in YouTube mode */
 let stageLight: { x: number; color: string } | null = null;
+/** phone-as-camera link (TV side) — when connected it replaces the local webcam */
+let phoneCam: TvCamHost | null = null;
+const cam = () => (phoneCam?.connected ? phoneCam : tracker);
+
+// fitness mode: kcal + active time, lifetime totals + day streak
+const fitnessOn = () => localStorage.getItem('gs-fitness') === '1';
+function fitStats(): { kcal: number; secs: number; days: Record<string, number> } {
+  try { return { kcal: 0, secs: 0, days: {}, ...JSON.parse(localStorage.getItem('gs-fit') ?? '{}') }; }
+  catch { return { kcal: 0, secs: 0, days: {} }; }
+}
+function fitStreak(): number {
+  const days = fitStats().days;
+  let streak = 0;
+  const d = new Date();
+  for (;;) {
+    const key = d.toISOString().slice(0, 10);
+    if (days[key] > 0) { streak++; d.setDate(d.getDate() - 1); }
+    else break;
+  }
+  return streak;
+}
+
+/** small non-blocking notice, bottom-center */
+function toast(text: string) {
+  const t = div('gs-toast');
+  t.textContent = text;
+  app.appendChild(t);
+  requestAnimationFrame(() => t.classList.add('show'));
+  setTimeout(() => { t.classList.remove('show'); setTimeout(() => t.remove(), 400); }, 4200);
+}
 const skinPref = () => (localStorage.getItem('gs-skin') ?? 'toon') as 'toon' | 'sprite' | 'wire';
 const animePref = () => localStorage.getItem('gs-anime') === '1';
 let playerStyle: StyleProfile | null = null;
@@ -294,10 +325,17 @@ function showMenu() {
     <div class="foot-row">
       <label>Dancer name <input id="pname" maxlength="14" value="${localStorage.getItem('gs-name') ?? 'DANCER'}"></label>
       <button id="calib" class="calib-btn">\u{1F4D0} CALIBRATE${localStorage.getItem('gs-style') ? ' \u2713' : ''}</button>
+      <button id="fit-toggle" class="calib-btn ${fitnessOn() ? 'on' : ''}">\u{1F525} FITNESS ${fitnessOn() ? 'ON' : 'OFF'}${fitStreak() > 1 ? ` \u00b7 ${fitStreak()}d streak` : ''}</button>
+      <button id="phone-cam" class="calib-btn">\u{1F4FA} PHONE CAM${phoneCam?.connected ? ' \u2713' : ''}</button>
     </div>
     <div class="cam-note" id="cam-note">\u{1F4F7} The webcam scans your look into a neon avatar and scores your moves. No camera? Demo Mode \u2014 full show, simulated scoring.</div>`;
   menu.appendChild(foot);
   foot.querySelector('#calib')!.addEventListener('click', () => openCalibrate());
+  foot.querySelector('#fit-toggle')!.addEventListener('click', () => {
+    localStorage.setItem('gs-fitness', fitnessOn() ? '0' : '1');
+    showMenu();
+  });
+  foot.querySelector('#phone-cam')!.addEventListener('click', () => openPhoneCam());
   app.appendChild(menu);
 
   const loop = () => {
@@ -353,7 +391,9 @@ async function readyFlow(song: Song, bannerHtml: string) {
   drawScene({ ctx, w: W(), h: H(), beat: 0.95, section: 'chorus', song, goldBurst: 0 });
   drawCoach(ctx, song, MOVES['v_up'].pose, W() / 2, H() * 0.86, H() * 0.55);
 
-  if (!trackerStarted) {
+  if (phoneCam?.connected) {
+    cameraOk = true; // the phone is the camera
+  } else if (!trackerStarted) {
     trackerStarted = true;
     cameraOk = await tracker.init();
   }
@@ -388,8 +428,8 @@ async function scanStyle(song: Song): Promise<StyleProfile | null> {
   const scanner = new StyleScanner();
   const t0 = performance.now();
   while (performance.now() - t0 < 1500) {
-    tracker.update();
-    if (tracker.latestLandmarks) scanner.feed(tracker.video, tracker.latestLandmarks);
+    cam().update();
+    if (cam().latestLandmarks) scanner.feed(cam().video, cam().latestLandmarks!);
     await new Promise(requestAnimationFrame);
   }
   if (scanner.sampleCount < 4) return null;
@@ -481,21 +521,15 @@ async function startYouTube(videoId: string) {
       const cached = localStorage.getItem(cacheKey);
       if (cached) return JSON.parse(cached);
     } catch { /* bad cache */ }
-    const result = await fetchAiChoreo({
-      title: song.title, bpm, totalBeats, difficulty, introBeat: introBeats,
-      sections: gen.sections,
-      lyrics: song.lyrics.map((l) => ({ beat: Math.round(l.beat * 10) / 10, text: l.text })),
-      moves: [
-        ...Object.values(CLIPS).map((c) => ({ id: c.id, energy: c.e, genre: c.g, beats: c.b })),
-        ...Object.values(MOVES).filter((m) => m.id.startsWith('gold_')).map((m) => ({ id: m.id, energy: m.energy })),
-      ],
-    });
+    const result = await fetchAiChoreo(videoId, song.title, src.duration, bpm, introBeats, totalBeats);
     if (result) { try { localStorage.setItem(cacheKey, JSON.stringify(result)); } catch { /* full */ } }
     return result;
   })();
 
   await readyFlow(song, `<b>${escapeHtml(song.title)}</b><span>${Math.round(bpm)} BPM${meta === null ? ' (auto-sync)' : ''}${introBeats > 10 ? ' \u00b7 intro detected' : ''}</span>`);
 
+  if (!lyr) toast('\u266a No synced lyrics found for this track \u2014 karaoke is off, dancing the generated routine.');
+  if (meta === null) toast('Tempo unknown \u2014 the mic will lock onto the beat as the song plays.');
   if (lyr) {
     const waitCard = div('overlay ready-card');
     waitCard.innerHTML = `<div class="ready-inner"><div class="ready-tip"><span class="scanline">\u266a CHOREOGRAPHING TO THE LYRICS\u2026</span></div></div>`;
@@ -505,6 +539,7 @@ async function startYouTube(videoId: string) {
     if (ai && ai !== 'timeout') {
       song.choreo = ai;
     } else {
+      toast('AI choreographer unavailable right now \u2014 dancing the generated routine.');
       song.choreo = applyKeywordChoreo(gen.choreo, song.lyrics).choreo;
     }
   }
@@ -678,7 +713,7 @@ async function startYouTubeMP(videoId: string, bpm: number, introBeats: number, 
   const lyricsPromise = fetchSyncedLyrics(song.title, src.duration);
   await readyFlow(song, `<b>${escapeHtml(song.title)}</b><span>room ${room.code} · ${room.players.length} dancers</span>`);
   if (playerStyle) room.send({ t: 'style', style: playerStyle });
-  const camStream = tracker.video.srcObject as MediaStream | null;
+  const camStream = cam().video.srcObject as MediaStream | null;
   if (camStream) room.shareStream(camStream);
   const lyr = await Promise.race([lyricsPromise, wait(1500).then(() => null)]);
   if (lyr) song.lyrics = lyricsToLines(lyr, bpm, 4);
@@ -701,6 +736,85 @@ function loadStoredStyle(): StyleProfile | null {
     const p = JSON.parse(raw);
     return p && p.top && p.body ? p as StyleProfile : null;
   } catch { return null; }
+}
+
+/** Phone-as-camera: this screen shows the game, a phone is the webcam */
+function openPhoneCam() {
+  const overlay = div('overlay calib');
+  overlay.innerHTML = `
+    <div class="calib-box">
+      <div class="lobby-title">\u{1F4FA} PHONE CAMERA</div>
+      <div id="pc-body" class="pc-body">
+        <button id="pc-tv" class="mp-btn big">THIS IS THE BIG SCREEN \u2014 GET A CODE</button>
+        <div class="yt-row" style="justify-content:center">
+          <span class="yt-label">or</span>
+          <input id="pc-code" placeholder="CODE" maxlength="4" inputmode="numeric" style="width:90px;text-align:center;letter-spacing:0.3em;font-weight:900">
+          <button id="pc-join" class="mp-btn">THIS PHONE IS THE CAMERA</button>
+        </div>
+        <div class="yt-sub">Run the game on a TV or laptop, then point a phone at the dance floor \u2014 the phone does the tracking, the big screen does the show.</div>
+      </div>
+      <div id="pc-status" class="calib-status"></div>
+      ${phoneCam ? `<button id="pc-disconnect" class="lobby-leave">DISCONNECT PHONE CAMERA</button>` : ''}
+      <button id="pc-close" class="lobby-leave">CLOSE</button>
+    </div>`;
+  app.appendChild(overlay);
+  const status = overlay.querySelector('#pc-status') as HTMLElement;
+  overlay.querySelector('#pc-close')!.addEventListener('click', () => overlay.remove());
+  overlay.querySelector('#pc-disconnect')?.addEventListener('click', () => {
+    phoneCam?.destroy(); phoneCam = null; overlay.remove(); showMenu();
+  });
+
+  overlay.querySelector('#pc-tv')!.addEventListener('click', async () => {
+    status.textContent = 'Getting a code\u2026';
+    status.className = 'calib-status scan';
+    try {
+      phoneCam?.destroy();
+      phoneCam = await TvCamHost.create();
+      const body = overlay.querySelector('#pc-body') as HTMLElement;
+      body.innerHTML = `
+        <div class="lobby-code">CAMERA CODE <b>${phoneCam.code}</b></div>
+        <div class="yt-sub">On your phone, open <b>groovestar.vercel.app</b> \u2192 \u{1F4FA} PHONE CAM \u2192 enter this code.</div>`;
+      status.textContent = 'Waiting for the phone\u2026';
+      phoneCam.onChange = () => {
+        if (phoneCam?.connected) {
+          status.textContent = '\u2705 Phone connected! Close this and pick a song \u2014 the phone is now your camera.';
+          status.className = 'calib-status good';
+        } else {
+          status.textContent = 'Phone disconnected.';
+          status.className = 'calib-status warn';
+        }
+      };
+    } catch (e) {
+      status.textContent = String((e as Error).message ?? e);
+      status.className = 'calib-status bad';
+    }
+  });
+
+  overlay.querySelector('#pc-join')!.addEventListener('click', async () => {
+    const code = (overlay.querySelector('#pc-code') as HTMLInputElement).value.trim();
+    if (!/^\d{4}$/.test(code)) { status.textContent = 'Enter the 4-digit code shown on the big screen.'; status.className = 'calib-status warn'; return; }
+    status.textContent = 'Starting camera\u2026';
+    status.className = 'calib-status scan';
+    if (!trackerStarted) {
+      trackerStarted = true;
+      cameraOk = await tracker.init();
+    }
+    if (!cameraOk) {
+      status.textContent = `Camera unavailable (${tracker.error ?? 'denied'}).`;
+      status.className = 'calib-status bad';
+      return;
+    }
+    try {
+      await connectPhoneCam(code, tracker, (s) => { status.textContent = s; });
+      status.className = 'calib-status good';
+      (overlay.querySelector('#pc-body') as HTMLElement).innerHTML =
+        `<div class="yt-sub">\u{1F4FA} Keep this phone propped up and pointed at the dance floor. Keep the screen on!</div>`;
+      try { await (navigator as any).wakeLock?.request('screen'); } catch { /* unsupported */ }
+    } catch (e) {
+      status.textContent = String((e as Error).message ?? e);
+      status.className = 'calib-status bad';
+    }
+  });
 }
 
 async function openCalibrate() {
@@ -854,6 +968,7 @@ interface PlayOpts {
   room?: Room;
   remotes?: Map<string, RemotePlayer>;
   streams?: Map<string, MediaStream>;
+  fitness?: { kcal: number; active: number };
   onAgain: () => void;
 }
 
@@ -873,6 +988,9 @@ function play(song: Song, playerName: string, opts: PlayOpts) {
   const preview = opts.room ? null : buildPreview(); // corners carry the cams in MP
   const corners = opts.room ? buildCorners(opts.room, opts.streams!) : null;
   let lastPoseSend = 0, lastScoreSend = 0;
+  const fit = { kcal: 0, active: 0 };
+  opts.fitness = fit;
+  let lastFitT = performance.now();
   const countdown = div('overlay countdown');
   app.appendChild(countdown);
   const playStart = performance.now();
@@ -883,7 +1001,7 @@ function play(song: Song, playerName: string, opts: PlayOpts) {
     if (state !== 'play') return;
     raf = requestAnimationFrame(loop);
     const beat = clock.beat();
-    tracker.update();
+    cam().update();
 
     if (beat < 0) {
       countdown.textContent = String(Math.max(1, Math.ceil(-beat)));
@@ -900,7 +1018,22 @@ function play(song: Song, playerName: string, opts: PlayOpts) {
       countdown.remove();
     }
 
-    const events = scorer.update(beat, tracker.latest);
+    // fitness mode: integrate effort into calories + active time
+    if (fitnessOn() && beat > 0) {
+      const nowF = performance.now();
+      const dtF = Math.min(0.2, (nowF - lastFitT) / 1000);
+      lastFitT = nowF;
+      const en = cam().latest.energy;
+      if (cam().latest.features) {
+        fit.kcal += ((3.2 + 9 * en) / 60) * dtF;
+        if (en > 0.15) fit.active += dtF;
+      }
+      hud.setSync(`\u{1F525} ${Math.round(fit.kcal)} kcal \u00b7 ${Math.floor(fit.active / 60)}:${String(Math.floor(fit.active % 60)).padStart(2, '0')} active`, en > 0.45);
+    } else {
+      lastFitT = performance.now();
+    }
+
+    const events = scorer.update(beat, cam().latest);
     for (const ev of events) applyEvent(ev);
     hud.setProgress(scorer.ratio, scorer.stars(), scorer.superstar);
     // karaoke follows the raw video time (base tempo), gameplay the synced grid
@@ -936,9 +1069,9 @@ function play(song: Song, playerName: string, opts: PlayOpts) {
     // ---- multiplayer: broadcast pose/score, draw rival dancers, update corners
     if (opts.room && opts.remotes) {
       const now = performance.now();
-      if (tracker.latestLandmarks && now - lastPoseSend > 80) {
+      if (cam().latestLandmarks && now - lastPoseSend > 80) {
         lastPoseSend = now;
-        opts.room.send({ t: 'pose', d: encodePose(tracker.latestLandmarks) });
+        opts.room.send({ t: 'pose', d: encodePose(cam().latestLandmarks!) });
       }
       if (now - lastScoreSend > 500) {
         lastScoreSend = now;
@@ -963,8 +1096,8 @@ function play(song: Song, playerName: string, opts: PlayOpts) {
     }
 
     if (cameraOk && playerStyle) {
-      const aspect = tracker.video.videoWidth / Math.max(1, tracker.video.videoHeight);
-      avatar.update(tracker.latestLandmarks, aspect || 4 / 3, performance.now());
+      const aspect = cam().video.videoWidth / Math.max(1, cam().video.videoHeight);
+      avatar.update(cam().latestLandmarks, aspect || 4 / 3, performance.now());
       // optional backup crew: two smaller clones of you dancing the routine
       if (crew) {
         const crewPose = goldHold ? pose : addGroove(pose, Math.max(0, beat + 0.5), 0.9);
@@ -1176,7 +1309,7 @@ function buildCorners(room: Room, streams: Map<string, MediaStream>): Corners {
         // single-player-style preview: mirrored cam + tracked landmark dots
         const c = cell.view.getContext('2d')!;
         const w = cell.view.width, h = cell.view.height;
-        const source: HTMLVideoElement | null = isMe ? tracker.video : (cell.vid.srcObject ? cell.vid : null);
+        const source: HTMLVideoElement | null = isMe ? cam().video : (cell.vid.srcObject ? cell.vid : null);
         c.clearRect(0, 0, w, h);
         if (source) {
           c.save();
@@ -1190,7 +1323,7 @@ function buildCorners(room: Room, streams: Map<string, MediaStream>): Corners {
         c.fillRect(0, 0, w, h);
         c.fillStyle = '#54f0ff';
         if (isMe) {
-          const pts = tracker.latest.points;
+          const pts = cam().latest.points;
           if (pts) for (const pt of pts) {
             c.beginPath(); c.arc(pt.x * w, pt.y * h, 2.4, 0, Math.PI * 2); c.fill();
           }
@@ -1221,11 +1354,11 @@ function drawPreview(cv: HTMLCanvasElement | null) {
   c.save();
   c.clearRect(0, 0, cv.width, cv.height);
   c.translate(cv.width, 0); c.scale(-1, 1);
-  try { c.drawImage(tracker.video, 0, 0, cv.width, cv.height); } catch { /* not ready */ }
+  try { c.drawImage(cam().video, 0, 0, cv.width, cv.height); } catch { /* not ready */ }
   c.restore();
   c.fillStyle = 'rgba(6,8,18,0.45)';
   c.fillRect(0, 0, cv.width, cv.height);
-  const pts = tracker.latest.points;
+  const pts = cam().latest.points;
   if (pts) {
     c.fillStyle = '#54f0ff';
     for (const p of pts) {
@@ -1263,6 +1396,14 @@ async function endSong(song: Song, scorer: Scorer, hud: Hud, preview: HTMLCanvas
   const finalScore = Math.round(scorer.score);
   const stars = scorer.stars();
   addStars(stars);
+  if (fitnessOn() && opts.fitness && opts.fitness.kcal > 1) {
+    const s = fitStats();
+    s.kcal += opts.fitness.kcal;
+    s.secs += opts.fitness.active;
+    const day = new Date().toISOString().slice(0, 10);
+    s.days[day] = (s.days[day] ?? 0) + opts.fitness.kcal;
+    try { localStorage.setItem('gs-fit', JSON.stringify(s)); } catch { /* full */ }
+  }
   res.innerHTML = `
     <div class="congrats">Congratulations!</div>
     <div class="result-banner">
@@ -1274,6 +1415,7 @@ async function endSong(song: Song, scorer: Scorer, hud: Hud, preview: HTMLCanvas
     <div class="result-counts">${(['PERFECT', 'SUPER', 'GOOD', 'OK', 'X'] as const)
       .map((k) => `<span class="rc rc-${k}">${k === 'X' ? '✕' : k} <b>${scorer.counts[k] + (k === 'PERFECT' ? scorer.counts.YEAH : 0)}</b></span>`).join('')}
     </div>
+    ${fitnessOn() && opts.fitness ? `<div class="fit-row">\u{1F525} ${Math.round(opts.fitness.kcal)} kcal \u00b7 ${Math.round(opts.fitness.active / 60)} active min \u00b7 ${fitStreak()}-day streak</div>` : ''}
     ${opts.room ? `<div class="mp-ranking">${rankingHtml(opts, Math.round(scorer.score))}</div>` : ''}
     <div class="result-btns">
       <button id="again">${opts.room ? 'BACK TO LOBBY' : 'DANCE AGAIN'}</button>

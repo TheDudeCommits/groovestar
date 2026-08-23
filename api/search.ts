@@ -2,7 +2,11 @@
 // key needed) and returns a compact list of videos.
 // GET /api/search?q=<terms>
 
+import { checkOrigin, rateLimit } from './_utils';
+
 export default async function handler(req: any, res: any) {
+  if (!checkOrigin(req, res)) return;
+  if (!rateLimit(req, res, 'search', 30)) return;
   const q = String(req.query?.q ?? '').slice(0, 120);
   if (!q.trim()) { res.status(400).json({ error: 'missing q' }); return; }
   try {

@@ -50,7 +50,10 @@ export class Room {
     room.code = String(1000 + Math.floor(Math.random() * 9000));
     return new Promise((resolve, reject) => {
       room.peer = new Peer(PREFIX + room.code);
+      const timeout = setTimeout(() =>
+        reject(new Error('Multiplayer service unreachable \u2014 a firewall or VPN may be blocking it.')), 10000);
       room.peer.on('open', () => {
+        clearTimeout(timeout);
         room.players = [{ id: room.peer.id, name }];
         room.wireHost();
         resolve(room);

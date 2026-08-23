@@ -75,44 +75,10 @@ export class PoseTracker {
       return;
     }
     this.latestLandmarks = lms;
-    // mirror x so the player's viewer-left is the coach's viewer-left
-    const p = (i: number) => ({ x: 1 - lms[i].x, y: lms[i].y });
-    const shL = p(L.shR), shR = p(L.shL);   // note: mirroring swaps L/R
-    const elL = p(L.elR), elR = p(L.elL);
-    const wrL = p(L.wrR), wrR = p(L.wrL);
-    const hipL = p(L.hipR), hipR = p(L.hipL);
-
-    const midSh = { x: (shL.x + shR.x) / 2, y: (shL.y + shR.y) / 2 };
-    const midHip = { x: (hipL.x + hipR.x) / 2, y: (hipL.y + hipR.y) / 2 };
-    const lean = Math.atan2(midSh.x - midHip.x, midHip.y - midSh.y) * D;
-
-    // limb angle with the library convention: 0 = down, 90 = outward, 180 = up
-    const limb = (a: { x: number; y: number }, b: { x: number; y: number }, side: number) => {
-      const dx = (b.x - a.x) * side, dy = b.y - a.y;
-      return Math.atan2(dx, dy) * D; // 0 down, +90 outward
-    };
-    const uL = limb(shL, elL, -1), fL = limb(elL, wrL, -1);
-    const uR = limb(shR, elR, 1), fR = limb(elR, wrR, 1);
-    const features = [uL, fL, uR, fR, lean * 2.5];
-
-    // motion energy from wrist velocity (normalized by torso size)
-    const torso = Math.hypot(midSh.x - midHip.x, midSh.y - midHip.y) || 0.25;
-    const wrists = [wrL, wrR];
-    if (this.lastWrists) {
-      const dt = Math.max(16, now - (this.latest.t || now)) / 1000;
-      let v = 0;
-      for (let i = 0; i < 2; i++) {
-        v += Math.hypot(wrists[i].x - this.lastWrists[i].x, wrists[i].y - this.lastWrists[i].y);
-      }
-      const inst = Math.min(1, (v / torso / dt) * 0.55);
-      this.energySmooth = this.energySmooth * 0.82 + inst * 0.18;
-    }
-    this.lastWrists = wrists;
-
-    const pts = [shL, shR, elL, elR, wrL, wrR, hipL, hipR, midSh, midHip,
-      p(0), p(25), p(26), p(27), p(28)]; // + head, knees, ankles (mirrored)
-    this.latest = { t: now, features, energy: this.energySmooth, points: pts };
+    this.latest = computeFrame(lms, now, this.st, this.latest.t);
   }
+
+  private st: FrameState = { lastWrists: null, energy: 0 };
 
   private decayEnergy() {
     this.energySmooth *= 0.9;
@@ -124,4 +90,49 @@ export class PoseTracker {
     s?.getTracks().forEach((t) => t.stop());
     this.video.srcObject = null;
   }
+}
+
+// ---------------------------------------------------------------------------
+// Shared frame computation — used by the local PoseTracker and by the TV side
+// of the phone-camera link (which receives landmarks over WebRTC).
+
+export interface FrameState { lastWrists: { x: number; y: number }[] | null; energy: number }
+
+export function computeFrame(
+  lms: NormalizedLandmark[], now: number, st: FrameState, prevT: number,
+): PlayerFrame {
+  const p = (i: number) => ({ x: 1 - lms[i].x, y: lms[i].y });
+  const shL = p(L.shR), shR = p(L.shL);
+  const elL = p(L.elR), elR = p(L.elL);
+  const wrL = p(L.wrR), wrR = p(L.wrL);
+  const hipL = p(L.hipR), hipR = p(L.hipL);
+
+  const midSh = { x: (shL.x + shR.x) / 2, y: (shL.y + shR.y) / 2 };
+  const midHip = { x: (hipL.x + hipR.x) / 2, y: (hipL.y + hipR.y) / 2 };
+  const lean = Math.atan2(midSh.x - midHip.x, midHip.y - midSh.y) * D;
+
+  const limb = (a: { x: number; y: number }, b: { x: number; y: number }, side: number) => {
+    const dx = (b.x - a.x) * side, dy = b.y - a.y;
+    return Math.atan2(dx, dy) * D;
+  };
+  const uL = limb(shL, elL, -1), fL = limb(elL, wrL, -1);
+  const uR = limb(shR, elR, 1), fR = limb(elR, wrR, 1);
+  const features = [uL, fL, uR, fR, lean * 2.5];
+
+  const torso = Math.hypot(midSh.x - midHip.x, midSh.y - midHip.y) || 0.25;
+  const wrists = [wrL, wrR];
+  if (st.lastWrists) {
+    const dt = Math.max(16, now - (prevT || now)) / 1000;
+    let v = 0;
+    for (let i = 0; i < 2; i++) {
+      v += Math.hypot(wrists[i].x - st.lastWrists[i].x, wrists[i].y - st.lastWrists[i].y);
+    }
+    const inst = Math.min(1, (v / torso / dt) * 0.55);
+    st.energy = st.energy * 0.82 + inst * 0.18;
+  }
+  st.lastWrists = wrists;
+
+  const pts = [shL, shR, elL, elR, wrL, wrR, hipL, hipR, midSh, midHip,
+    p(0), p(25), p(26), p(27), p(28)];
+  return { t: now, features, energy: st.energy, points: pts };
 }
