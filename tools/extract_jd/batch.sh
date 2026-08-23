@@ -10,7 +10,7 @@ worker() {
   while IFS='|' read -r id views title; do
     [ -f "$OUT/$id.json" ] && { echo "SKIP $id (built)" >> "$LOG"; continue; }
     echo "START $id $title" >> "$LOG"
-    if "$TOOLS/run_one.sh" "$id" "$title" >> "$LOG" 2>&1; then
+    if "$TOOLS/run_one.sh" "$id" "$title" >> "$LOG" 2>&1 < /dev/null; then
       echo "OK   $id" >> "$LOG"
     else
       echo "FAIL $id" >> "$LOG"
