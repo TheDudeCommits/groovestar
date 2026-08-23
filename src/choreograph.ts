@@ -32,8 +32,9 @@ const pool = (min: number, max: number) =>
     .filter((m) => !EXCLUDE.has(m.id) && !m.id.startsWith('gold_') && m.energy >= min && m.energy <= max)
     .map((m) => m.id);
 
-export function generateChoreo(seed: string, totalBeats: number, difficulty: 1 | 2 | 3): GenResult {
+export function generateChoreo(seed: string, totalBeats: number, difficulty: 1 | 2 | 3, introBeats = 8): GenResult {
   const rand = rng(seed);
+  const bodyStart = Math.max(8, Math.min(totalBeats - 32, Math.round(introBeats / 2) * 2));
   const golds = Object.keys(MOVES).filter((id) => id.startsWith('gold_'));
 
   // Real-motion mode: build the routine from AIST++ clips. Two seeded genres
@@ -60,9 +61,11 @@ export function generateChoreo(seed: string, totalBeats: number, difficulty: 1 |
     power = pool(0.6, 1);
   }
 
-  // --- section plan: intro 8, then 32-beat blocks, outro 16 ------------------
+  // --- section plan: intro (through any detected song intro), then 32-beat
+  // blocks, outro 16. No moves are scheduled during the intro — the dancer
+  // just grooves in place until the song actually starts. --------------------
   const sections: SectionDef[] = [{ beat: 0, kind: 'intro' }];
-  let b = 8;
+  let b = bodyStart;
   let blockI = 0;
   const bodyEnd = totalBeats - 16;
   while (b < bodyEnd) {
@@ -132,8 +135,10 @@ export function generateChoreo(seed: string, totalBeats: number, difficulty: 1 |
     const sec = sections[s];
     const end = s + 1 < sections.length ? sections[s + 1].beat : totalBeats;
     if (sec.kind === 'intro') {
-      // ease in
-      choreo.push({ beat: 4, move: 'sway_l' }, { beat: 6, move: 'sway_r' });
+      // ease in with two sways just before the song kicks in
+      if (bodyStart >= 6) {
+        choreo.push({ beat: bodyStart - 4, move: 'sway_l' }, { beat: bodyStart - 2, move: 'sway_r' });
+      }
       continue;
     }
     // choruses keep a recognizable hook (first 4 slots) but refresh the back

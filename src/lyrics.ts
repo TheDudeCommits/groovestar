@@ -99,6 +99,33 @@ export function lyricsToLines(lyr: SyncedLyric[], bpm: number, leadBeats: number
 }
 
 // ---------------------------------------------------------------------------
+// Song tempo from Claude's music knowledge (cached per video)
+
+export async function fetchSongMeta(videoId: string, title: string, duration: number): Promise<number | null> {
+  const key = `gs-meta-${videoId}`;
+  try {
+    const cached = localStorage.getItem(key);
+    if (cached !== null) return cached === 'null' ? null : Number(cached);
+  } catch { /* no storage */ }
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), 9000);
+  try {
+    const r = await fetch('/api/songmeta', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ title, duration }),
+      signal: ctrl.signal,
+    });
+    if (!r.ok) return null;
+    const data = await r.json();
+    const bpm = typeof data?.bpm === 'number' && data.bpm >= 70 && data.bpm <= 180 ? data.bpm : null;
+    try { localStorage.setItem(key, bpm === null ? 'null' : String(bpm)); } catch { /* full */ }
+    return bpm;
+  } catch { return null; }
+  finally { clearTimeout(timer); }
+}
+
+// ---------------------------------------------------------------------------
 // Tier 1: keyword-mapped choreography
 
 const KEYWORDS: [RegExp, string[]][] = [
@@ -162,9 +189,19 @@ export interface AiChoreoRequest {
   bpm: number;
   totalBeats: number;
   difficulty: number;
+  introBeat: number;
   sections: SectionDef[];
   lyrics: { beat: number; text: string }[];
   moves: { id: string; energy: number }[];
+}
+
+/** where the song actually starts, from the first synced-lyric timestamp */
+export function introBeatsOf(lyr: SyncedLyric[] | null, bpm: number, leadBeats: number): number {
+  if (!lyr?.length) return 8;
+  const first = (lyr[0].t * bpm) / 60 - leadBeats;
+  // long instrumental intro → hold choreography until just before the vocal;
+  // cap so a mostly-instrumental track still dances
+  return Math.max(8, Math.min(64, Math.floor(first / 2) * 2));
 }
 
 export async function fetchAiChoreo(req: AiChoreoRequest, timeoutMs = 25000): Promise<ChoreoMove[] | null> {
@@ -179,19 +216,20 @@ export async function fetchAiChoreo(req: AiChoreoRequest, timeoutMs = 25000): Pr
     });
     if (!r.ok) return null;
     const data = await r.json();
-    return validateAiChoreo(data?.moves, req.totalBeats);
+    return validateAiChoreo(data?.moves, req.totalBeats, req.introBeat);
   } catch { return null; }
   finally { clearTimeout(timer); }
 }
 
-function validateAiChoreo(raw: any, totalBeats: number): ChoreoMove[] | null {
+function validateAiChoreo(raw: any, totalBeats: number, introBeat = 8): ChoreoMove[] | null {
   if (!Array.isArray(raw)) return null;
   const out: ChoreoMove[] = [];
+  const minBeat = Math.max(4, introBeat - 4);
   let golds = 0;
   for (const e of raw) {
     const beat = Number(e?.b);
     const move = String(e?.m ?? '');
-    if ((!MOVES[move] && !CLIPS[move]) || !isFinite(beat) || beat < 4 || beat > totalBeats - 1) continue;
+    if ((!MOVES[move] && !CLIPS[move]) || !isFinite(beat) || beat < minBeat || beat > totalBeats - 1) continue;
     const gold = !!e?.g && golds < 8 && move.startsWith('gold_');
     if (gold) golds++;
     out.push({ beat: Math.round(beat * 2) / 2, move, gold });

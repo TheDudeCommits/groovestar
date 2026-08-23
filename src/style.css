@@ -120,6 +120,44 @@ body {
 .ls-name { font-size: 9.5px; letter-spacing: 0.14em; opacity: 0.55; font-weight: 800; }
 .ls-val { font-size: 12px; font-weight: 700; }
 
+/* ---------- YouTube search results ---------- */
+.yt-results { display: flex; flex-direction: column; gap: 6px; max-height: 300px; overflow-y: auto; }
+.yt-searching { opacity: 0.6; font-size: 13px; padding: 6px 2px; }
+.yt-result {
+  display: flex; gap: 12px; align-items: center; text-align: left; cursor: pointer;
+  font: inherit; color: var(--ink); background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.14); border-radius: 10px; padding: 6px;
+  transition: border-color 0.12s, background 0.12s;
+}
+.yt-result:hover { border-color: #55f0ff; background: rgba(85,240,255,0.1); }
+.yt-result img { width: 96px; height: 54px; object-fit: cover; border-radius: 6px; flex: none; }
+.ytr-meta { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.ytr-title { font-weight: 700; font-size: 13.5px; overflow: hidden; text-overflow: ellipsis; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+.ytr-sub { font-size: 11.5px; opacity: 0.55; }
+
+/* ---------- calibration ---------- */
+.calib { justify-content: center; background: rgba(5,3,15,0.85); }
+.calib-box {
+  background: rgba(14, 12, 30, 0.96); border: 2px solid rgba(85, 240, 255, 0.4); border-radius: 18px;
+  padding: 22px 28px; display: flex; flex-direction: column; gap: 12px; align-items: center;
+  width: min(720px, 94vw);
+}
+#calib-view { width: min(640px, 86vw); border-radius: 12px; background: #05030f; }
+.calib-status { font-size: 15px; font-weight: 700; min-height: 20px; }
+.calib-status.good { color: #7cf95c; }
+.calib-status.warn { color: #ffd23e; }
+.calib-status.bad { color: #ff8484; }
+.calib-status.scan { color: #55f0ff; animation: pulse 0.5s ease-in-out infinite alternate; }
+.calib-btn {
+  font: inherit; font-size: 13px; font-weight: 800; letter-spacing: 0.06em; cursor: pointer;
+  color: var(--ink); background: rgba(255,210,62,0.12); border: 1px solid rgba(255,210,62,0.45);
+  border-radius: 999px; padding: 9px 18px; transition: all 0.15s;
+}
+.calib-btn:hover { background: rgba(255,210,62,0.3); }
+.foot-row { display: flex; gap: 16px; align-items: center; }
+
+.mpc-view { width: 100%; border-radius: 8px; background: #05030f; display: block; }
+
 .menu-foot { display: flex; flex-direction: column; align-items: center; gap: 10px; font-size: 14px; }
 .menu-foot input {
   margin-left: 10px; background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.25);

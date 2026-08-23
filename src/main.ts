@@ -18,7 +18,7 @@ import { PlayerAvatar, type Cosmetics } from './avatar';
 import { generateChoreo } from './choreograph';
 import { parseYouTubeId, YouTubeSource, YouTubeClock } from './youtube';
 import { BeatListener } from './audio/beatsync';
-import { fetchSyncedLyrics, lyricsToLines, applyKeywordChoreo, fetchAiChoreo } from './lyrics';
+import { fetchSyncedLyrics, lyricsToLines, applyKeywordChoreo, fetchAiChoreo, fetchSongMeta, introBeatsOf } from './lyrics';
 import { Room, encodePose, decodePose, MAX_PLAYERS, type NetMsg } from './net/room';
 import { DEFAULT_COSMETICS } from './avatar';
 
@@ -147,7 +147,6 @@ function showMenu() {
   const menu = div('overlay menu');
   menu.innerHTML = `
     <div class="logo">GROOVE<span>STAR</span></div>
-    <div class="tagline">You are the dancer — the camera puts a stylized you on stage, mirroring every move. Hit the pictograms, chase the stars.</div>
   `;
   const row = div('song-row');
   for (const song of SONGS) {
@@ -166,89 +165,55 @@ function showMenu() {
   }
   menu.appendChild(row);
 
-  // --- YouTube import panel ---
+  // --- YouTube search / import panel ---
   const yt = div('yt-panel');
   yt.innerHTML = `
     <div class="yt-title">▶ DANCE TO ANY YOUTUBE SONG</div>
-    <div class="yt-sub">Paste a music video or choreography link — we generate the routine on the spot.</div>
+    <div class="yt-sub">Search YouTube or paste a link — routine, tempo and intro are figured out automatically.</div>
     <div class="yt-row">
-      <input id="yt-url" placeholder="https://www.youtube.com/watch?v=…" spellcheck="false">
+      <input id="yt-url" placeholder="Search a song… or paste a YouTube link" spellcheck="false">
       <button id="yt-go">GO DANCE</button>
     </div>
-    <div class="yt-row yt-opts">
-      <span class="yt-label">TEMPO</span>
-      <span id="bpm-val" class="bpm-val">120 BPM</span>
-      <button id="tap" class="tap">TAP THE BEAT</button>
-      <span class="yt-presets">${[100, 110, 120, 128, 140].map((b) => `<button class="preset" data-bpm="${b}">${b}</button>`).join('')}</span>
-      <span class="yt-label">LEVEL</span>
-      <span class="yt-diff">${[1, 2, 3].map((d) => `<button class="diff ${d === 2 ? 'sel' : ''}" data-d="${d}">${'●'.repeat(d)}</button>`).join('')}</span>
-    </div>
+    <div id="yt-results" class="yt-results"></div>
     <div id="yt-err" class="yt-err"></div>`;
   menu.appendChild(yt);
 
-  let bpm = 120, ytDiff: 1 | 2 | 3 = 2;
-  const bpmVal = yt.querySelector('#bpm-val') as HTMLElement;
-  const setBpm = (b: number) => { bpm = Math.round(Math.min(180, Math.max(60, b))); bpmVal.textContent = `${bpm} BPM`; };
-  const taps: number[] = [];
-  yt.querySelector('#tap')!.addEventListener('click', () => {
-    const now = performance.now();
-    if (taps.length && now - taps[taps.length - 1] > 2200) taps.length = 0;
-    taps.push(now);
-    if (taps.length >= 3) {
-      const ds = taps.slice(1).map((t, i) => t - taps[i]).sort((a, b) => a - b);
-      setBpm(60000 / ds[Math.floor(ds.length / 2)]);
-    }
-  });
-  yt.querySelectorAll('.preset').forEach((b) => b.addEventListener('click', () => setBpm(Number((b as HTMLElement).dataset.bpm))));
-  yt.querySelectorAll('.diff').forEach((b) => b.addEventListener('click', () => {
-    yt.querySelectorAll('.diff').forEach((x) => x.classList.remove('sel'));
-    b.classList.add('sel');
-    ytDiff = Number((b as HTMLElement).dataset.d) as 1 | 2 | 3;
-  }));
   const err = yt.querySelector('#yt-err') as HTMLElement;
-  yt.querySelector('#yt-go')!.addEventListener('click', () => {
-    const url = (yt.querySelector('#yt-url') as HTMLInputElement).value.trim();
-    const id = parseYouTubeId(url);
-    if (!id) { err.textContent = 'That does not look like a YouTube link.'; return; }
+  const resultsBox = yt.querySelector('#yt-results') as HTMLElement;
+  const input = yt.querySelector('#yt-url') as HTMLInputElement;
+  const go = async () => {
+    const q = input.value.trim();
+    if (!q) return;
+    const id = parseYouTubeId(q);
+    if (id) { err.textContent = ''; startYouTube(id); return; }
+    // search mode
     err.textContent = '';
-    startYouTube(id, bpm, ytDiff);
-  });
-
-  // --- style locker + crew toggle ---
-  const locker = div('locker');
-  const renderLocker = () => {
-    const stars = totalStars();
-    const e = getEquip();
-    locker.innerHTML = `<span class="locker-title">STYLE LOCKER <b class="locker-stars">★ ${stars}</b></span>` +
-      (Object.keys(LOCKER) as (keyof typeof LOCKER)[]).map((slot) => {
-        const cur = LOCKER[slot].find((o) => o.id === e[slot] && o.stars <= stars) ?? LOCKER[slot][0];
-        const next = LOCKER[slot].find((o) => o.stars > stars);
-        return `<button class="locker-slot" data-slot="${slot}" title="${next ? `Next unlock at ★${next.stars}: ${next.label}` : 'All unlocked!'}">
-          <span class="ls-name">${slot.toUpperCase()}</span><span class="ls-val">${cur.label} ▸</span>
-        </button>`;
-      }).join('') +
-      `<button class="locker-slot crew ${crewOn() ? 'sel' : ''}" id="crew-btn">
-        <span class="ls-name">BACKUP CREW</span><span class="ls-val">${crewOn() ? 'ON' : 'OFF'}</span>
-      </button>`;
-    locker.querySelectorAll<HTMLElement>('.locker-slot[data-slot]').forEach((b) => b.addEventListener('click', () => {
-      const slot = b.dataset.slot as keyof typeof LOCKER;
-      const unlocked = LOCKER[slot].filter((o) => o.stars <= totalStars());
-      const curIdx = unlocked.findIndex((o) => o.id === (getEquip()[slot] ?? unlocked[0].id));
-      setEquip(slot, unlocked[(curIdx + 1) % unlocked.length].id);
-      renderLocker();
-    }));
-    locker.querySelector('#crew-btn')!.addEventListener('click', () => {
-      localStorage.setItem('gs-crew', crewOn() ? '0' : '1');
-      renderLocker();
-    });
+    resultsBox.innerHTML = '<div class="yt-searching">Searching YouTube…</div>';
+    try {
+      const r = await fetch(`/api/search?q=${encodeURIComponent(q)}`);
+      const data = await r.json();
+      const results: { id: string; title: string; duration: string; channel: string }[] = data?.results ?? [];
+      if (!results.length) { resultsBox.innerHTML = ''; err.textContent = 'No results — try different words or paste a link.'; return; }
+      resultsBox.innerHTML = results.map((v) => `
+        <button class="yt-result" data-id="${v.id}">
+          <img src="https://i.ytimg.com/vi/${v.id}/mqdefault.jpg" alt="" loading="lazy">
+          <span class="ytr-meta"><span class="ytr-title">${escapeHtml(v.title)}</span>
+          <span class="ytr-sub">${escapeHtml(v.channel)}${v.duration ? ' · ' + escapeHtml(v.duration) : ''}</span></span>
+        </button>`).join('');
+      resultsBox.querySelectorAll<HTMLElement>('.yt-result').forEach((b) =>
+        b.addEventListener('click', () => startYouTube(b.dataset.id!)));
+    } catch {
+      resultsBox.innerHTML = '';
+      err.textContent = 'Search is unavailable right now — paste a YouTube link instead.';
+    }
   };
-  renderLocker();
-  menu.appendChild(locker);
+  yt.querySelector('#yt-go')!.addEventListener('click', go);
+  input.addEventListener('keydown', (e) => { if (e.key === 'Enter') go(); });
 
   // --- dance-off (multiplayer) panel ---
   const mp = div('yt-panel mp-panel');
   mp.innerHTML = `
-    <div class="yt-title mp-title">⚔ DANCE OFF — UP TO ${MAX_PLAYERS} PLAYERS</div>
+    <div class="yt-title mp-title">\u2694 DANCE OFF \u2014 UP TO ${MAX_PLAYERS} PLAYERS</div>
     <div class="yt-sub">Create a room, drop a YouTube link, share the 4-digit code. Everyone dances the same routine live.</div>
     <div class="yt-row">
       <button id="mp-create" class="mp-btn">CREATE ROOM</button>
@@ -260,7 +225,7 @@ function showMenu() {
   menu.appendChild(mp);
   const mpErr = mp.querySelector('#mp-err') as HTMLElement;
   mp.querySelector('#mp-create')!.addEventListener('click', async () => {
-    mpErr.textContent = 'Creating room…';
+    mpErr.textContent = 'Creating room\u2026';
     try {
       activeRoom = await Room.create(playerNameFromMenu());
       openLobby(activeRoom);
@@ -269,7 +234,7 @@ function showMenu() {
   mp.querySelector('#mp-join')!.addEventListener('click', async () => {
     const code = (mp.querySelector('#mp-code') as HTMLInputElement).value.trim();
     if (!/^\d{4}$/.test(code)) { mpErr.textContent = 'Enter the 4-digit code.'; return; }
-    mpErr.textContent = 'Joining…';
+    mpErr.textContent = 'Joining\u2026';
     try {
       activeRoom = await Room.join(code, playerNameFromMenu());
       openLobby(activeRoom);
@@ -277,9 +242,14 @@ function showMenu() {
   });
 
   const foot = div('menu-foot');
-  foot.innerHTML = `<label>Dancer name <input id="pname" maxlength="14" value="${localStorage.getItem('gs-name') ?? 'DANCER'}"></label>
-    <div class="cam-note" id="cam-note">📷 The webcam scans your look (hair, skin, outfit, build) into a neon avatar and scores your moves. Earn stars to unlock styles. No camera? Demo Mode — full show, simulated scoring.</div>`;
+  foot.innerHTML = `
+    <div class="foot-row">
+      <label>Dancer name <input id="pname" maxlength="14" value="${localStorage.getItem('gs-name') ?? 'DANCER'}"></label>
+      <button id="calib" class="calib-btn">\u{1F4D0} CALIBRATE${localStorage.getItem('gs-style') ? ' \u2713' : ''}</button>
+    </div>
+    <div class="cam-note" id="cam-note">\u{1F4F7} The webcam scans your look into a neon avatar and scores your moves. No camera? Demo Mode \u2014 full show, simulated scoring.</div>`;
   menu.appendChild(foot);
+  foot.querySelector('#calib')!.addEventListener('click', () => openCalibrate());
   app.appendChild(menu);
 
   const loop = () => {
@@ -341,7 +311,16 @@ async function readyFlow(song: Song, bannerHtml: string) {
   }
   const tip = document.getElementById('ready-tip');
   if (cameraOk) {
-    if (tip) tip.innerHTML = '<span class="scanline">SCANNING YOUR STYLE…</span> stand back so your upper body is in frame';
+    // stored calibration profile wins — the player already scanned in detail
+    const stored = loadStoredStyle();
+    if (stored) {
+      playerStyle = stored;
+      if (tip) tip.innerHTML = 'Style loaded from your calibration \u2713 \u2014 you are the dancer!';
+      await wait(1100);
+      card.remove();
+      return;
+    }
+    if (tip) tip.innerHTML = '<span class="scanline">SCANNING YOUR STYLE\u2026</span> stand back so your upper body is in frame';
     const scanned = await scanStyle(song);
     playerStyle = scanned ?? defaultStyle(song);
     if (tip) {
@@ -387,21 +366,21 @@ function swatches(s: StyleProfile): string {
 // ---------------------------------------------------------------------------
 // YouTube flow
 
-async function startYouTube(videoId: string, bpm: number, difficulty: 1 | 2 | 3) {
+async function startYouTube(videoId: string) {
   const playerName = playerNameFromMenu();
   state = 'ready';
   cancelAnimationFrame(raf);
   app.querySelectorAll('.overlay, .yt-holder').forEach((e) => e.remove());
 
   const loadCard = div('overlay ready-card');
-  loadCard.innerHTML = `<div class="ready-inner"><div class="get-ready">TUNING IN…</div>
-    <div class="ready-tip">Loading the video & choreographing your routine</div></div>`;
+  loadCard.innerHTML = `<div class="ready-inner"><div class="get-ready">TUNING IN\u2026</div>
+    <div class="ready-tip" id="tune-tip">Loading the video\u2026</div></div>`;
   app.appendChild(loadCard);
 
   const src = new YouTubeSource();
   const ok = await src.load(videoId);
-  loadCard.remove();
   if (!ok) {
+    loadCard.remove();
     src.destroy();
     showMenu();
     setTimeout(() => {
@@ -411,16 +390,28 @@ async function startYouTube(videoId: string, bpm: number, difficulty: 1 | 2 | 3)
     return;
   }
 
+  // tempo (Claude's music knowledge) + synced lyrics, in parallel
+  const tuneTip = document.getElementById('tune-tip');
+  if (tuneTip) tuneTip.textContent = 'Detecting tempo & fetching lyrics\u2026';
+  const [meta, lyr] = await Promise.all([
+    fetchSongMeta(videoId, src.title, src.duration),
+    Promise.race([fetchSyncedLyrics(src.title, src.duration), wait(9000).then(() => null)]),
+  ]);
+  loadCard.remove();
+  const bpm = meta ?? 120;
+  const difficulty = 2 as const;
+  const introBeats = introBeatsOf(lyr, bpm, 4);
+
   // build a Song from the video: generated sections + choreography
   const seedNum = [...videoId].reduce((n, ch) => n + ch.charCodeAt(0), 0);
   const accents = YT_ACCENTS[seedNum % YT_ACCENTS.length];
   const scenes = ['city', 'bokeh', 'disco'] as const;
   const totalBeats = Math.max(48, Math.floor((src.duration * bpm) / 60) - 8);
-  const gen = generateChoreo(videoId, totalBeats, difficulty);
+  const gen = generateChoreo(videoId, totalBeats, difficulty, introBeats);
   const song: Song = {
     id: 'yt-' + videoId,
     title: src.title || 'YouTube Track',
-    artist: 'your pick · generated routine',
+    artist: 'your pick \u00b7 generated routine',
     bpm,
     beats: totalBeats,
     scene: scenes[seedNum % 3],
@@ -431,28 +422,23 @@ async function startYouTube(videoId: string, bpm: number, difficulty: 1 | 2 | 3)
     root: 57, chords: [[0, 3, 7]],
     sections: gen.sections,
     choreo: gen.choreo,
-    lyrics: [],
+    lyrics: lyr ? lyricsToLines(lyr, bpm, 4) : [],
   };
 
-  // lyrics + AI choreography fetch runs in parallel with the camera scan
-  const cacheKey = `gs-ai2-${videoId}-${difficulty}-${bpm}`;
-  const lyricsPromise = fetchSyncedLyrics(song.title, src.duration);
+  // AI choreography fetch runs in parallel with the camera scan
+  const cacheKey = `gs-ai3-${videoId}-${Math.round(bpm)}`;
   const aiPromise: Promise<Song['choreo'] | null> = (async () => {
-    const lyr = await lyricsPromise;
     if (!lyr) return null;
     try {
       const cached = localStorage.getItem(cacheKey);
       if (cached) return JSON.parse(cached);
     } catch { /* bad cache */ }
-    const lines = lyricsToLines(lyr, bpm, 4);
     const result = await fetchAiChoreo({
-      title: song.title, bpm, totalBeats, difficulty,
+      title: song.title, bpm, totalBeats, difficulty, introBeat: introBeats,
       sections: gen.sections,
-      lyrics: lines.map((l) => ({ beat: Math.round(l.beat * 10) / 10, text: l.text })),
+      lyrics: song.lyrics.map((l) => ({ beat: Math.round(l.beat * 10) / 10, text: l.text })),
       moves: [
-        // real-motion clips (2 beats each) — the routine's fabric
         ...Object.values(CLIPS).map((c) => ({ id: c.id, energy: c.e, genre: c.g, beats: c.b })),
-        // static gold finishers for climaxes
         ...Object.values(MOVES).filter((m) => m.id.startsWith('gold_')).map((m) => ({ id: m.id, energy: m.energy })),
       ],
     });
@@ -460,27 +446,23 @@ async function startYouTube(videoId: string, bpm: number, difficulty: 1 | 2 | 3)
     return result;
   })();
 
-  await readyFlow(song, `<b>${escapeHtml(song.title)}</b><span>${bpm} BPM · routine generated from your link</span>`);
+  await readyFlow(song, `<b>${escapeHtml(song.title)}</b><span>${Math.round(bpm)} BPM${meta === null ? ' (auto-sync)' : ''}${introBeats > 10 ? ' \u00b7 intro detected' : ''}</span>`);
 
-  // integrate lyrics (karaoke) + the best available choreography tier
-  const lyr = await lyricsPromise;
   if (lyr) {
-    song.lyrics = lyricsToLines(lyr, bpm, 4);
-    // give the AI choreographer a bounded extra wait, with a status card
     const waitCard = div('overlay ready-card');
-    waitCard.innerHTML = `<div class="ready-inner"><div class="ready-tip"><span class="scanline">♪ CHOREOGRAPHING TO THE LYRICS…</span></div></div>`;
+    waitCard.innerHTML = `<div class="ready-inner"><div class="ready-tip"><span class="scanline">\u266a CHOREOGRAPHING TO THE LYRICS\u2026</span></div></div>`;
     app.appendChild(waitCard);
     const ai = await Promise.race([aiPromise, wait(12000).then(() => 'timeout' as const)]);
     waitCard.remove();
     if (ai && ai !== 'timeout') {
       song.choreo = ai;
     } else {
-      // tier 1: keyword-matched moves on the generated routine
       song.choreo = applyKeywordChoreo(gen.choreo, song.lyrics).choreo;
     }
   }
 
   const clock = new YouTubeClock(src, bpm, gen.sections, totalBeats, 4);
+  clock.freeTempo = meta === null; // unknown tempo: let the mic adopt the real one
   const mic = new BeatListener();
   mic.start(); // fire and forget — sync silently disabled if mic is denied
   const run = () => {
@@ -513,12 +495,6 @@ function openLobby(room: Room) {
         <div class="yt-row">
           <input id="mp-url" placeholder="Paste a YouTube link for the battle…" spellcheck="false">
         </div>
-        <div class="yt-row yt-opts">
-          <span class="yt-label">TEMPO</span><span id="mp-bpm-val" class="bpm-val">120 BPM</span>
-          <span class="yt-presets">${[100, 110, 120, 128, 140].map((b) => `<button class="preset" data-bpm="${b}">${b}</button>`).join('')}</span>
-          <span class="yt-label">LEVEL</span>
-          <span class="yt-diff">${[1, 2, 3].map((d) => `<button class="diff ${d === 2 ? 'sel' : ''}" data-d="${d}">${'●'.repeat(d)}</button>`).join('')}</span>
-        </div>
         <div class="yt-row">
           <button id="mp-start" class="mp-btn big">START THE DANCE OFF</button>
           <span id="lobby-err" class="yt-err"></span>
@@ -541,31 +517,32 @@ function openLobby(room: Room) {
   room.onMessage = (_from, msg) => {
     if (msg.t === 'start' && !room.isHost) {
       lobby.remove();
-      startYouTubeMP(msg.videoId, msg.bpm, msg.difficulty as 1 | 2 | 3, room);
+      startYouTubeMP(msg.videoId, msg.bpm, msg.intro, room);
     }
   };
 
   document.getElementById('lobby-leave')!.addEventListener('click', () => showMenu());
 
   if (room.isHost) {
-    let bpm = 120, diff: 1 | 2 | 3 = 2;
-    const bpmVal = document.getElementById('mp-bpm-val')!;
-    lobby.querySelectorAll('.preset').forEach((b) => b.addEventListener('click', () => {
-      bpm = Number((b as HTMLElement).dataset.bpm);
-      bpmVal.textContent = `${bpm} BPM`;
-    }));
-    lobby.querySelectorAll('.diff').forEach((b) => b.addEventListener('click', () => {
-      lobby.querySelectorAll('.diff').forEach((x) => x.classList.remove('sel'));
-      b.classList.add('sel');
-      diff = Number((b as HTMLElement).dataset.d) as 1 | 2 | 3;
-    }));
-    document.getElementById('mp-start')!.addEventListener('click', () => {
+    document.getElementById('mp-start')!.addEventListener('click', async () => {
       const err = document.getElementById('lobby-err')!;
       const id = parseYouTubeId((document.getElementById('mp-url') as HTMLInputElement).value.trim());
       if (!id) { err.textContent = 'That does not look like a YouTube link.'; return; }
-      room.send({ t: 'start', videoId: id, bpm, difficulty: diff });
+      err.textContent = 'Preparing the battle track\u2026';
+      // host resolves tempo + intro so every client dances the same grid
+      const probe = new YouTubeSource();
+      const ok = await probe.load(id);
+      if (!ok) { probe.destroy(); err.textContent = probe.error ?? 'Could not load that video.'; return; }
+      const [meta, lyr] = await Promise.all([
+        fetchSongMeta(id, probe.title, probe.duration),
+        Promise.race([fetchSyncedLyrics(probe.title, probe.duration), wait(8000).then(() => null)]),
+      ]);
+      probe.destroy();
+      const bpm = meta ?? 120;
+      const intro = introBeatsOf(lyr, bpm, 4);
+      room.send({ t: 'start', videoId: id, bpm, intro });
       lobby.remove();
-      startYouTubeMP(id, bpm, diff, room);
+      startYouTubeMP(id, bpm, intro, room);
     });
   }
 }
@@ -578,7 +555,7 @@ function alertOverlay(text: string) {
 }
 
 /** multiplayer song start: deterministic choreography so every client matches */
-async function startYouTubeMP(videoId: string, bpm: number, difficulty: 1 | 2 | 3, room: Room) {
+async function startYouTubeMP(videoId: string, bpm: number, introBeats: number, room: Room) {
   state = 'ready';
   cancelAnimationFrame(raf);
   app.querySelectorAll('.overlay, .yt-holder').forEach((e) => e.remove());
@@ -622,13 +599,13 @@ async function startYouTubeMP(videoId: string, bpm: number, difficulty: 1 | 2 | 
   const accents = YT_ACCENTS[seedNum % YT_ACCENTS.length];
   const scenes = ['city', 'bokeh', 'disco'] as const;
   const totalBeats = Math.max(48, Math.floor((src.duration * bpm) / 60) - 8);
-  const gen = generateChoreo(videoId, totalBeats, difficulty);
+  const gen = generateChoreo(videoId, totalBeats, 2, introBeats);
   const song: Song = {
     id: 'yt-' + videoId,
     title: src.title || 'YouTube Track',
     artist: `dance off · room ${room.code}`,
     bpm, beats: totalBeats,
-    scene: scenes[seedNum % 3], difficulty,
+    scene: scenes[seedNum % 3], difficulty: 2,
     accent: accents[0], accent2: accents[1],
     coach: { skin: '#e8b89a', hair: '#20182a', top: accents[0], vest: '#191d2e', pants: '#2c3352', glove: '#ffd23e', boots: '#14121c' },
     root: 57, chords: [[0, 3, 7]],
@@ -648,6 +625,134 @@ async function startYouTubeMP(videoId: string, bpm: number, difficulty: 1 | 2 | 
   play(song, room.myName, {
     clock, yt: src, room, remotes, streams,
     onAgain: () => openLobby(room),
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Calibration: find the right distance, scan the outfit in detail, store it
+
+function loadStoredStyle(): StyleProfile | null {
+  try {
+    const raw = localStorage.getItem('gs-style');
+    if (!raw) return null;
+    const p = JSON.parse(raw);
+    return p && p.top && p.body ? p as StyleProfile : null;
+  } catch { return null; }
+}
+
+async function openCalibrate() {
+  const overlay = div('overlay calib');
+  overlay.innerHTML = `
+    <div class="calib-box">
+      <div class="lobby-title">CALIBRATE</div>
+      <canvas id="calib-view" width="640" height="480"></canvas>
+      <div id="calib-status" class="calib-status">Starting camera\u2026</div>
+      <div id="calib-chips" class="ready-tip"></div>
+      <div class="yt-row">
+        <button id="calib-scan" class="mp-btn" disabled>SCAN MY STYLE</button>
+        <button id="calib-close" class="lobby-leave">CLOSE</button>
+      </div>
+    </div>`;
+  app.appendChild(overlay);
+  let open = true;
+  overlay.querySelector('#calib-close')!.addEventListener('click', () => { open = false; overlay.remove(); });
+
+  if (!trackerStarted) {
+    trackerStarted = true;
+    cameraOk = await tracker.init();
+  }
+  const status = overlay.querySelector('#calib-status') as HTMLElement;
+  const scanBtn = overlay.querySelector('#calib-scan') as HTMLButtonElement;
+  const chips = overlay.querySelector('#calib-chips') as HTMLElement;
+  if (!cameraOk) {
+    status.textContent = `Camera unavailable (${tracker.error ?? 'denied'}) \u2014 calibration needs a webcam.`;
+    return;
+  }
+  const cv = overlay.querySelector('#calib-view') as HTMLCanvasElement;
+  const c2 = cv.getContext('2d')!;
+  let framedSince = 0;
+  let scanning = false;
+  let resultShownAt = 0; // keep scan-result messages on screen briefly
+
+  const loop = () => {
+    if (!open) return;
+    requestAnimationFrame(loop);
+    tracker.update();
+    // mirrored live view + landmark dots (same language as the in-game preview)
+    c2.save();
+    c2.translate(cv.width, 0); c2.scale(-1, 1);
+    try { c2.drawImage(tracker.video, 0, 0, cv.width, cv.height); } catch { /* not ready */ }
+    c2.restore();
+    c2.fillStyle = 'rgba(6,8,18,0.25)';
+    c2.fillRect(0, 0, cv.width, cv.height);
+    const pts = tracker.latest.points;
+    if (pts) {
+      c2.fillStyle = '#54f0ff';
+      for (const p of pts) {
+        c2.beginPath(); c2.arc(p.x * cv.width, p.y * cv.height, 3.4, 0, Math.PI * 2); c2.fill();
+      }
+    }
+    // framing quality from raw landmark visibility
+    const lms = tracker.latestLandmarks;
+    if (!scanning && performance.now() - resultShownAt > 4500) {
+      if (!lms) {
+        status.textContent = '\u{1F464} Step into frame';
+        status.className = 'calib-status bad';
+        framedSince = 0; scanBtn.disabled = true;
+      } else {
+        const vis = (i: number) => lms[i]?.visibility ?? 0;
+        const head = vis(0), hips = Math.min(vis(23), vis(24)), ankles = Math.min(vis(27), vis(28));
+        if (head < 0.5) {
+          status.textContent = '\u2195 Adjust the camera \u2014 your head is cut off';
+          status.className = 'calib-status warn'; framedSince = 0; scanBtn.disabled = true;
+        } else if (hips < 0.5) {
+          status.textContent = '\u2b05 Step back \u2014 we can only see your upper body';
+          status.className = 'calib-status warn'; framedSince = 0; scanBtn.disabled = true;
+        } else if (ankles < 0.4) {
+          status.textContent = '\u{1F45F} Almost \u2014 step back a little more so your feet are in frame';
+          status.className = 'calib-status warn'; scanBtn.disabled = false; framedSince = 0;
+        } else {
+          if (!framedSince) framedSince = performance.now();
+          status.textContent = '\u2705 Perfect distance \u2014 full body tracked! Hold still and scan your style.';
+          status.className = 'calib-status good';
+          scanBtn.disabled = false;
+        }
+      }
+    }
+  };
+  loop();
+
+  scanBtn.addEventListener('click', async () => {
+    if (scanning) return;
+    scanning = true;
+    scanBtn.disabled = true;
+    status.textContent = '\u2728 Scanning your outfit \u2014 hold your pose\u2026';
+    status.className = 'calib-status scan';
+    const scanner = new StyleScanner();
+    const t0 = performance.now();
+    while (performance.now() - t0 < 3000 && open) {
+      tracker.update();
+      if (tracker.latestLandmarks) scanner.feed(tracker.video, tracker.latestLandmarks);
+      await new Promise(requestAnimationFrame);
+    }
+    scanning = false;
+    scanBtn.disabled = false;
+    if (!open) return;
+    if (scanner.sampleCount < 6) {
+      status.textContent = 'Could not read your look \u2014 make sure you are well lit and try again.';
+      status.className = 'calib-status warn';
+      resultShownAt = performance.now();
+      return;
+    }
+    const profile = scanner.build('#ffd23e');
+    try { localStorage.setItem('gs-style', JSON.stringify(profile)); } catch { /* full */ }
+    playerStyle = profile;
+    status.textContent = '\u2705 Style saved! Every dance now uses this look. Rescan any time.';
+    status.className = 'calib-status good';
+    resultShownAt = performance.now();
+    chips.innerHTML = `Your style: ${swatches(profile)}`;
+    const btn = document.getElementById('calib');
+    if (btn) btn.textContent = '\u{1F4D0} CALIBRATE \u2713';
   });
 }
 
@@ -922,28 +1027,38 @@ interface Corners { root: HTMLElement; update: (room: Room, remotes: Map<string,
 function buildCorners(room: Room, streams: Map<string, MediaStream>): Corners {
   const root = div('mp-corners');
   app.appendChild(root);
-  const POS = ['tl', 'tr', 'bl', 'br'];
-  const cells = new Map<string, { meter: HTMLElement; stars: HTMLElement }>();
+  // viewer-relative order: YOU bottom-left, then rivals BR -> TR -> TL
+  const POS = ['bl', 'br', 'tr', 'tl'];
+  const cells = new Map<string, { meter: HTMLElement; stars: HTMLElement; view: HTMLCanvasElement; vid: HTMLVideoElement }>();
+
+  const orderedPlayers = () => {
+    const others = room.players.filter((p) => p.id !== room.myId);
+    const me = room.players.find((p) => p.id === room.myId);
+    return me ? [me, ...others] : others;
+  };
 
   const build = () => {
     root.innerHTML = '';
     cells.clear();
-    room.players.forEach((p, i) => {
-      const cell = div(`mp-corner ${POS[i % 4]}`);
+    orderedPlayers().forEach((p, i) => {
+      if (i >= 4) return;
       const isMe = p.id === room.myId;
+      const cell = div(`mp-corner ${POS[i]}`);
       cell.innerHTML = `
-        <div class="mpc-name">${escapeHtml(p.name)}${isMe ? ' · YOU' : ''}</div>
-        <video data-peer="${p.id}" autoplay playsinline muted></video>
+        <div class="mpc-name">${escapeHtml(p.name)}${isMe ? ' \u00b7 YOU' : ''}</div>
+        <canvas class="mpc-view" width="176" height="132"></canvas>
+        <video data-peer="${p.id}" autoplay playsinline muted style="display:none"></video>
         <div class="mpc-meter"><div class="mpc-fill"></div></div>
         <div class="mpc-stars"></div>`;
       root.appendChild(cell);
-      const v = cell.querySelector('video') as HTMLVideoElement;
-      const stream = isMe ? (tracker.video.srcObject as MediaStream | null) : streams.get(p.id) ?? null;
-      if (stream) { v.srcObject = stream; v.play().catch(() => { /* autoplay */ }); }
-      if (isMe) v.classList.add('me');
+      const vid = cell.querySelector('video') as HTMLVideoElement;
+      const stream = isMe ? null : streams.get(p.id) ?? null;
+      if (stream) { vid.srcObject = stream; vid.play().catch(() => { /* autoplay */ }); }
       cells.set(p.id, {
         meter: cell.querySelector('.mpc-fill') as HTMLElement,
         stars: cell.querySelector('.mpc-stars') as HTMLElement,
+        view: cell.querySelector('.mpc-view') as HTMLCanvasElement,
+        vid,
       });
     });
   };
@@ -960,7 +1075,35 @@ function buildCorners(room: Room, streams: Map<string, MediaStream>): Corners {
         const score = isMe ? scorer.score : remotes.get(p.id)?.score ?? 0;
         const stars = isMe ? scorer.stars() : remotes.get(p.id)?.stars ?? 0;
         cell.meter.style.width = `${Math.min(100, (score / 13333) * 100)}%`;
-        cell.stars.textContent = '★'.repeat(stars) + '☆'.repeat(5 - stars);
+        cell.stars.textContent = '\u2605'.repeat(stars) + '\u2606'.repeat(5 - stars);
+        // single-player-style preview: mirrored cam + tracked landmark dots
+        const c = cell.view.getContext('2d')!;
+        const w = cell.view.width, h = cell.view.height;
+        const source: HTMLVideoElement | null = isMe ? tracker.video : (cell.vid.srcObject ? cell.vid : null);
+        c.clearRect(0, 0, w, h);
+        if (source) {
+          c.save();
+          c.translate(w, 0); c.scale(-1, 1);
+          try { c.drawImage(source, 0, 0, w, h); } catch { /* not ready */ }
+          c.restore();
+        } else {
+          c.fillStyle = '#0a0c1e'; c.fillRect(0, 0, w, h);
+        }
+        c.fillStyle = 'rgba(6,8,18,0.45)';
+        c.fillRect(0, 0, w, h);
+        c.fillStyle = '#54f0ff';
+        if (isMe) {
+          const pts = tracker.latest.points;
+          if (pts) for (const pt of pts) {
+            c.beginPath(); c.arc(pt.x * w, pt.y * h, 2.4, 0, Math.PI * 2); c.fill();
+          }
+        } else {
+          const lms = remotes.get(p.id)?.lms;
+          if (lms) for (const lm of lms) {
+            if (lm.visibility < 0.3) continue;
+            c.beginPath(); c.arc((1 - lm.x) * w, lm.y * h, 2.4, 0, Math.PI * 2); c.fill();
+          }
+        }
       }
     },
   };

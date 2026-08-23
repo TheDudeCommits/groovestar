@@ -105,6 +105,8 @@ export class YouTubeClock {
   private lastEstForBeat = 0;
   /** true once the mic listener has locked onto the track */
   synced = false;
+  /** true when no reliable BPM was known up front — mic sync may adopt any tempo */
+  freeTempo = false;
 
   constructor(
     private src: YouTubeSource,
@@ -155,14 +157,20 @@ export class YouTubeClock {
    */
   applySync(est: { bpm: number; anchorMs: number; confidence: number }) {
     if (est.confidence < 0.12) return;
-    // tempo: accept the detected bpm (or its half/double) if within 12%
+    // tempo: accept the detected bpm (or its half/double) if within 12% of the
+    // known tempo — or, with no known tempo, adopt whatever octave lands in
+    // the danceable 85-170 band
     const cands = [est.bpm, est.bpm * 2, est.bpm / 2];
     let detected: number | null = null;
     for (const c of cands) {
       if (Math.abs(c / this.baseBpm - 1) < 0.12) { detected = c; break; }
     }
+    if (detected === null && this.freeTempo && est.confidence > 0.2) {
+      detected = cands.find((c) => c >= 85 && c <= 170) ?? est.bpm;
+    }
     if (detected !== null) {
-      this.bpm += Math.max(-0.35, Math.min(0.35, detected - this.bpm));
+      const step = this.freeTempo ? 1.2 : 0.35;
+      this.bpm += Math.max(-step, Math.min(step, detected - this.bpm));
       // phase: what fractional beat does the detected beat land on?
       const dtSec = (performance.now() - est.anchorMs) / 1000;
       const anchorBeat = this.beatAccum - (dtSec * this.bpm) / 60;

@@ -16,7 +16,7 @@ export type NetMsg =
   | { t: 'roster'; players: { id: string; name: string }[] }
   | { t: 'full' }
   | { t: 'style'; style: StyleProfile }
-  | { t: 'start'; videoId: string; bpm: number; difficulty: number }
+  | { t: 'start'; videoId: string; bpm: number; intro: number }
   | { t: 'pose'; d: number[] }          // quantized landmarks (see poseCodec)
   | { t: 'score'; s: number; stars: number }
   | { t: 'end'; s: number };

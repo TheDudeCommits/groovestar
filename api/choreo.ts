@@ -30,7 +30,7 @@ export default async function handler(req: any, res: any) {
   if (req.method !== 'POST') { res.status(405).json({ error: 'POST only' }); return; }
   if (!process.env.ANTHROPIC_API_KEY) { res.status(503).json({ error: 'no api key configured' }); return; }
 
-  const { title, bpm, totalBeats, difficulty, sections, lyrics, moves } = req.body ?? {};
+  const { title, bpm, totalBeats, difficulty, introBeat, sections, lyrics, moves } = req.body ?? {};
   if (!Array.isArray(moves) || !Array.isArray(lyrics) || !totalBeats || moves.length > 200 || lyrics.length > 300) {
     res.status(400).json({ error: 'bad request' });
     return;
@@ -56,7 +56,10 @@ export default async function handler(req: any, res: any) {
         '  recurring hook of the same clips each time it returns.',
         '- Variety: avoid using any one clip more than ~5 times; never the same clip back-to-back.',
         '- Gold moves: exactly 5-7, ids starting with gold_, marked g:true, at section climaxes and the finale.',
-        '- Cover the whole song from beat 8 to the final beats with no gaps longer than 4 beats.',
+        '- INTRO: the video may open with a non-musical intro (dialogue, skit, titles). intro_beat marks where the',
+        '  song actually starts — schedule NOTHING before intro_beat except at most 2 gentle low-energy clips right',
+        '  before it as a warmup. Also leave visible instrumental breaks (long gaps between lyric lines) low-energy.',
+        '- Cover the song from intro_beat to the final beats with no gaps longer than 4 beats.',
       ].join('\n'),
       messages: [{
         role: 'user',
