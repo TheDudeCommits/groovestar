@@ -17,6 +17,7 @@ import { CLIPS } from './motion';
 import { PlayerAvatar, type Cosmetics } from './avatar';
 import { generateChoreo, freestyleWindows, carveFreestyle, smoothChoreo, type FreestyleWindow } from './choreograph';
 import { fetchVibe, vibeAt, type VibePalette } from './vibe';
+import { fetchRoutineIndex, loadRoutine, type RoutineEntry } from './routines';
 import { parseYouTubeId, YouTubeSource, YouTubeClock } from './youtube';
 import { BeatListener } from './audio/beatsync';
 import { fetchSyncedLyrics, lyricsToLines, applyKeywordChoreo, fetchAiChoreo, fetchSongMeta, introBeatsOf } from './lyrics';
@@ -268,6 +269,26 @@ function showMenu() {
     row.appendChild(tile);
   }
   menu.appendChild(row);
+
+  // --- Just Dance classics: real extracted routines, lazily listed ---
+  const classics = div('classics-panel');
+  classics.innerHTML = `<div class="yt-title">🕹 JUST DANCE CLASSICS — REAL ROUTINES</div>
+    <div class="yt-sub">The original choreographies, motion-captured from the most-loved Just Dance gameplay videos.</div>
+    <div class="classics-row" id="classics-row"></div>`;
+  menu.appendChild(classics);
+  fetchRoutineIndex().then((idx) => {
+    if (!idx.length) { classics.remove(); return; }
+    const crow = classics.querySelector('#classics-row')!;
+    for (const e of idx) {
+      const tile = div('song-tile classic-tile');
+      tile.innerHTML = `<img src="https://i.ytimg.com/vi/${e.v}/mqdefault.jpg" alt="" loading="lazy">
+        <div class="song-meta"><div class="song-title">${escapeHtml(e.title)}</div>
+        <div class="song-artist">${escapeHtml(e.artist || 'Just Dance')}</div>
+        <div class="song-diff">★ classic · ${Math.round(e.bpm)} BPM</div></div>`;
+      tile.addEventListener('click', () => startClassic(e));
+      crow.appendChild(tile);
+    }
+  });
 
   // --- YouTube search / import panel ---
   const yt = div('yt-panel');
@@ -558,6 +579,64 @@ async function startYouTube(videoId: string) {
   const run = () => {
     clock.restart();
     play(song, playerName, { clock, yt: src, mic, vibe, freestyle, onAgain: run });
+  };
+  run();
+}
+
+/** a Just Dance classic: the extracted routine + the original gameplay video as the stage */
+async function startClassic(entry: RoutineEntry) {
+  const playerName = playerNameFromMenu();
+  state = 'ready';
+  cancelAnimationFrame(raf);
+  app.querySelectorAll('.overlay, .yt-holder').forEach((e) => e.remove());
+
+  const loadCard = div('overlay ready-card');
+  loadCard.innerHTML = `<div class="ready-inner"><div class="get-ready">LOADING THE CLASSIC…</div>
+    <div class="ready-tip">${escapeHtml(entry.title)}</div></div>`;
+  app.appendChild(loadCard);
+
+  const [routine, src] = await Promise.all([
+    loadRoutine(entry.v),
+    (async () => { const s = new YouTubeSource(); await s.load(entry.v); return s; })(),
+  ]);
+  if (!routine || src.error) {
+    loadCard.remove();
+    src.destroy();
+    toast(src.error ?? 'Could not load that routine.');
+    showMenu();
+    return;
+  }
+  const [lyr, vibe] = await Promise.all([
+    Promise.race([fetchSyncedLyrics(entry.title, src.duration), wait(6000).then(() => null)]),
+    fetchVibe(entry.v),
+  ]);
+  loadCard.remove();
+
+  const seedNum = [...entry.v].reduce((n, ch) => n + ch.charCodeAt(0), 0);
+  const accents = YT_ACCENTS[seedNum % YT_ACCENTS.length];
+  const song: Song = {
+    id: 'jd-' + entry.v,
+    title: entry.title,
+    artist: entry.artist || 'Just Dance classic',
+    bpm: routine.bpm,
+    beats: routine.totalBeats,
+    scene: (['city', 'bokeh', 'disco'] as const)[seedNum % 3],
+    difficulty: 3,
+    accent: accents[0], accent2: accents[1],
+    coach: { skin: '#e8b89a', hair: '#20182a', top: accents[0], vest: '#191d2e', pants: '#2c3352', glove: '#ffd23e', boots: '#14121c' },
+    root: 57, chords: [[0, 3, 7]],
+    sections: routine.sections,
+    choreo: routine.choreo,
+    lyrics: lyr ? lyricsToLines(lyr, routine.bpm, 4) : [],
+  };
+
+  await readyFlow(song, `<b>${escapeHtml(song.title)}</b><span>the real routine · ${Math.round(routine.bpm)} BPM</span>`);
+
+  // tempo and phase are measured from this exact video — no mic correction
+  const clock = new YouTubeClock(src, routine.bpm, routine.sections, routine.totalBeats, 4);
+  const run = () => {
+    clock.restart();
+    play(song, playerName, { clock, yt: src, vibe, onAgain: run });
   };
   run();
 }

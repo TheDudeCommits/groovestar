@@ -114,7 +114,7 @@ export class Scorer {
         if (sim !== null) {
           slot.sawPlayer = true;
           // timing shaping: dead-center hits count meaningfully more
-          const timing = 1 - 0.25 * Math.min(1, Math.abs(d) / WINDOW);
+          const timing = 1 - 0.3 * Math.min(1, Math.abs(d) / WINDOW);
           slot.best = Math.max(slot.best, sim * timing);
         }
       } else {
@@ -145,8 +145,8 @@ export class Scorer {
     let acc = 0, wsum = 0;
     for (let i = 0; i < target.length; i++) {
       const diff = wrapDiff(target[i], f[i]);
-      // 0° → 1.0, 80°+ → 0 — you have to actually hit the shape
-      const s = Math.max(0, 1 - diff / 80);
+      // 0° → 1.0, 70°+ → 0 — you have to actually hit the shape
+      const s = Math.max(0, 1 - diff / 70);
       acc += s * weights[i];
       wsum += weights[i];
     }
@@ -162,10 +162,10 @@ export class Scorer {
     let judgment: Judgment;
     const b = slot.best;
     if (!slot.sawPlayer && !this.demoMode) judgment = 'X';
-    else if (b >= 0.8) judgment = 'PERFECT';
-    else if (b >= 0.68) judgment = 'SUPER';
-    else if (b >= 0.52) judgment = 'GOOD';
-    else if (b >= 0.3) judgment = 'OK';
+    else if (b >= 0.85) judgment = 'PERFECT';
+    else if (b >= 0.73) judgment = 'SUPER';
+    else if (b >= 0.58) judgment = 'GOOD';
+    else if (b >= 0.36) judgment = 'OK';
     else judgment = 'X';
 
     const frac: Record<Judgment, number> = { X: 0, OK: 0.35, GOOD: 0.65, SUPER: 0.85, PERFECT: 1, YEAH: 1 };
