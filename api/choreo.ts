@@ -4,8 +4,8 @@
 // GET /api/choreo?v=<videoId>&t=<title>&dur=<sec>&bpm=<n>&i=<introBeat>&tb=<totalBeats>
 
 import Anthropic from '@anthropic-ai/sdk';
-import { checkOrigin, rateLimit, fetchLyricsServer } from './_utils';
-import clipsData from '../src/data/clips.json';
+import { checkOrigin, rateLimit, fetchLyricsServer } from './_utils.js';
+import clipsData from '../src/data/clips.json' with { type: 'json' };
 
 const GOLDS = ['gold_sky', 'gold_star', 'gold_bow', 'gold_hero', 'gold_x', 'gold_kneel'];
 

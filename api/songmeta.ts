@@ -3,7 +3,7 @@
 // GET /api/songmeta?t=<title>&d=<durationSec>
 
 import Anthropic from '@anthropic-ai/sdk';
-import { checkOrigin, rateLimit } from './_utils';
+import { checkOrigin, rateLimit } from './_utils.js';
 
 const SCHEMA = {
   type: 'object',

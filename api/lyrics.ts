@@ -1,7 +1,7 @@
 // LRCLIB proxy — used only if the browser can't reach lrclib.net directly.
 // GET /api/lyrics?path=<encoded "get?artist_name=...&track_name=...">
 
-import { checkOrigin, rateLimit } from './_utils';
+import { checkOrigin, rateLimit } from './_utils.js';
 
 export default async function handler(req: any, res: any) {
   if (!checkOrigin(req, res)) return;

@@ -2,7 +2,7 @@
 // key needed) and returns a compact list of videos.
 // GET /api/search?q=<terms>
 
-import { checkOrigin, rateLimit } from './_utils';
+import { checkOrigin, rateLimit } from './_utils.js';
 
 export default async function handler(req: any, res: any) {
   if (!checkOrigin(req, res)) return;
