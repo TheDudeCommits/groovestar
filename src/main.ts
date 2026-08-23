@@ -137,6 +137,74 @@ function paletteFromStyle(s: StyleProfile): Song['coach'] {
   return { skin: s.skin, hair: s.hair, top: s.top, vest: s.topDeep, pants: s.bottom, glove: s.glove, boots: s.boots };
 }
 
+/**
+ * Live YouTube search box: results appear as you type (350ms debounce,
+ * in-flight requests aborted). Pasting a link resolves it directly.
+ * GO / Enter picks the first result. Used on the homepage and in lobbies.
+ */
+function attachYtSearch(
+  input: HTMLInputElement,
+  resultsBox: HTMLElement,
+  err: HTMLElement,
+  goBtn: HTMLButtonElement | null,
+  onPick: (id: string, title: string) => void,
+) {
+  let timer = 0;
+  let ctrl: AbortController | null = null;
+  let firstResult: { id: string; title: string } | null = null;
+
+  const render = (results: { id: string; title: string; duration: string; channel: string }[]) => {
+    firstResult = results[0] ? { id: results[0].id, title: results[0].title } : null;
+    resultsBox.innerHTML = results.map((v) => `
+      <button class="yt-result" data-id="${v.id}" data-title="${escapeHtml(v.title)}">
+        <img src="https://i.ytimg.com/vi/${v.id}/mqdefault.jpg" alt="" loading="lazy">
+        <span class="ytr-meta"><span class="ytr-title">${escapeHtml(v.title)}</span>
+        <span class="ytr-sub">${escapeHtml(v.channel)}${v.duration ? ' \u00b7 ' + escapeHtml(v.duration) : ''}</span></span>
+      </button>`).join('');
+    resultsBox.querySelectorAll<HTMLElement>('.yt-result').forEach((b) =>
+      b.addEventListener('click', () => onPick(b.dataset.id!, b.dataset.title ?? '')));
+  };
+
+  const search = async (q: string) => {
+    ctrl?.abort();
+    ctrl = new AbortController();
+    const mine = ctrl;
+    if (!resultsBox.childElementCount) resultsBox.innerHTML = '<div class="yt-searching">Searching YouTube\u2026</div>';
+    try {
+      const r = await fetch(`/api/search?q=${encodeURIComponent(q)}`, { signal: mine.signal });
+      const data = await r.json();
+      if (mine.signal.aborted) return;
+      const results = (data?.results ?? []) as { id: string; title: string; duration: string; channel: string }[];
+      if (!results.length) { resultsBox.innerHTML = ''; err.textContent = 'No results \u2014 try different words or paste a link.'; return; }
+      err.textContent = '';
+      render(results);
+    } catch (e) {
+      if ((e as Error).name === 'AbortError') return;
+      resultsBox.innerHTML = '';
+      err.textContent = 'Search is unavailable right now \u2014 paste a YouTube link instead.';
+    }
+  };
+
+  input.addEventListener('input', () => {
+    const q = input.value.trim();
+    clearTimeout(timer);
+    if (parseYouTubeId(q)) { resultsBox.innerHTML = ''; err.textContent = ''; return; }
+    if (q.length < 3) { resultsBox.innerHTML = ''; firstResult = null; err.textContent = ''; return; }
+    timer = window.setTimeout(() => search(q), 350);
+  });
+
+  const go = () => {
+    const q = input.value.trim();
+    if (!q) return;
+    const id = parseYouTubeId(q);
+    if (id) { err.textContent = ''; onPick(id, ''); return; }
+    if (firstResult) { onPick(firstResult.id, firstResult.title); return; }
+    search(q);
+  };
+  goBtn?.addEventListener('click', go);
+  input.addEventListener('keydown', (e) => { if (e.key === 'Enter') go(); });
+}
+
 function showMenu() {
   state = 'menu';
   cancelAnimationFrame(raf);
@@ -178,37 +246,13 @@ function showMenu() {
     <div id="yt-err" class="yt-err"></div>`;
   menu.appendChild(yt);
 
-  const err = yt.querySelector('#yt-err') as HTMLElement;
-  const resultsBox = yt.querySelector('#yt-results') as HTMLElement;
-  const input = yt.querySelector('#yt-url') as HTMLInputElement;
-  const go = async () => {
-    const q = input.value.trim();
-    if (!q) return;
-    const id = parseYouTubeId(q);
-    if (id) { err.textContent = ''; startYouTube(id); return; }
-    // search mode
-    err.textContent = '';
-    resultsBox.innerHTML = '<div class="yt-searching">Searching YouTube…</div>';
-    try {
-      const r = await fetch(`/api/search?q=${encodeURIComponent(q)}`);
-      const data = await r.json();
-      const results: { id: string; title: string; duration: string; channel: string }[] = data?.results ?? [];
-      if (!results.length) { resultsBox.innerHTML = ''; err.textContent = 'No results — try different words or paste a link.'; return; }
-      resultsBox.innerHTML = results.map((v) => `
-        <button class="yt-result" data-id="${v.id}">
-          <img src="https://i.ytimg.com/vi/${v.id}/mqdefault.jpg" alt="" loading="lazy">
-          <span class="ytr-meta"><span class="ytr-title">${escapeHtml(v.title)}</span>
-          <span class="ytr-sub">${escapeHtml(v.channel)}${v.duration ? ' · ' + escapeHtml(v.duration) : ''}</span></span>
-        </button>`).join('');
-      resultsBox.querySelectorAll<HTMLElement>('.yt-result').forEach((b) =>
-        b.addEventListener('click', () => startYouTube(b.dataset.id!)));
-    } catch {
-      resultsBox.innerHTML = '';
-      err.textContent = 'Search is unavailable right now — paste a YouTube link instead.';
-    }
-  };
-  yt.querySelector('#yt-go')!.addEventListener('click', go);
-  input.addEventListener('keydown', (e) => { if (e.key === 'Enter') go(); });
+  attachYtSearch(
+    yt.querySelector('#yt-url') as HTMLInputElement,
+    yt.querySelector('#yt-results') as HTMLElement,
+    yt.querySelector('#yt-err') as HTMLElement,
+    yt.querySelector('#yt-go') as HTMLButtonElement,
+    (id) => startYouTube(id),
+  );
 
   // --- dance-off (multiplayer) panel ---
   const mp = div('yt-panel mp-panel');
@@ -493,8 +537,10 @@ function openLobby(room: Room) {
       <div class="lobby-players" id="lobby-players"></div>
       ${room.isHost ? `
         <div class="yt-row">
-          <input id="mp-url" placeholder="Paste a YouTube link for the battle…" spellcheck="false">
+          <input id="mp-url" placeholder="Search a song\u2026 or paste a YouTube link" spellcheck="false">
         </div>
+        <div id="mp-results" class="yt-results"></div>
+        <div id="mp-picked" class="mp-picked"></div>
         <div class="yt-row">
           <button id="mp-start" class="mp-btn big">START THE DANCE OFF</button>
           <span id="lobby-err" class="yt-err"></span>
@@ -524,10 +570,23 @@ function openLobby(room: Room) {
   document.getElementById('lobby-leave')!.addEventListener('click', () => showMenu());
 
   if (room.isHost) {
+    let pickedId: string | null = null;
+    const picked = document.getElementById('mp-picked')!;
+    attachYtSearch(
+      document.getElementById('mp-url') as HTMLInputElement,
+      document.getElementById('mp-results') as HTMLElement,
+      document.getElementById('lobby-err')!,
+      null,
+      (id, title) => {
+        pickedId = id;
+        picked.innerHTML = `\u2705 Battle track: <b>${escapeHtml(title || id)}</b>`;
+        (document.getElementById('mp-results') as HTMLElement).innerHTML = '';
+      },
+    );
     document.getElementById('mp-start')!.addEventListener('click', async () => {
       const err = document.getElementById('lobby-err')!;
-      const id = parseYouTubeId((document.getElementById('mp-url') as HTMLInputElement).value.trim());
-      if (!id) { err.textContent = 'That does not look like a YouTube link.'; return; }
+      const id = pickedId ?? parseYouTubeId((document.getElementById('mp-url') as HTMLInputElement).value.trim());
+      if (!id) { err.textContent = 'Search and pick a track (or paste a link) first.'; return; }
       err.textContent = 'Preparing the battle track\u2026';
       // host resolves tempo + intro so every client dances the same grid
       const probe = new YouTubeSource();

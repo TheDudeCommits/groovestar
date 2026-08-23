@@ -365,3 +365,7 @@ body {
   padding: 12px 28px; border-radius: 999px; cursor: pointer; transition: all 0.15s ease;
 }
 .result-btns button:hover { background: #ffd23e; border-color: #ffd23e; color: #1b1430; box-shadow: 0 0 30px rgba(255,210,62,0.5); }
+
+/* lobby picked-track chip */
+.mp-picked { font-size: 13px; color: #7cf95c; min-height: 16px; }
+.mp-picked b { color: var(--ink); }
