@@ -17,6 +17,7 @@ interface Parts {
   thigh: HTMLCanvasElement; shin: HTMLCanvasElement;
   sneaker: HTMLCanvasElement;
   head: HTMLCanvasElement;
+  skirt: HTMLCanvasElement | null;
 }
 
 function cv(w: number, h: number): [HTMLCanvasElement, CanvasRenderingContext2D] {
@@ -102,6 +103,35 @@ function bakeTorso(style: StyleProfile, T: number): HTMLCanvasElement {
   grad.addColorStop(1, shade(style.top, 0.7));
   g.fillStyle = grad;
   g.fill();
+  // outfit pattern, clipped to the jacket silhouette
+  const look = style.look;
+  if (look && look.pattern !== 'solid') {
+    const c2 = look.pattern2 ?? style.topDeep;
+    g.save();
+    body(); g.clip();
+    g.fillStyle = c2;
+    if (look.pattern === 'halves') {
+      g.fillRect(0, -T * 0.12, hw * 1.2, len * 1.1);
+      // re-shade the seam
+      g.fillStyle = 'rgba(0,0,0,0.18)';
+      g.fillRect(-T * 0.008, -T * 0.12, T * 0.016, len * 1.1);
+    } else if (look.pattern === 'stripes') {
+      for (let y = len * 0.12; y < len; y += len * 0.24) {
+        g.fillRect(-hw * 1.1, y, hw * 2.2, len * 0.11);
+      }
+    } else if (look.pattern === 'chevron') {
+      g.lineWidth = len * 0.09;
+      g.strokeStyle = c2;
+      for (let y = len * 0.18; y < len * 1.15; y += len * 0.3) {
+        g.beginPath();
+        g.moveTo(-hw * 1.05, y - len * 0.12);
+        g.lineTo(0, y);
+        g.lineTo(hw * 1.05, y - len * 0.12);
+        g.stroke();
+      }
+    }
+    g.restore();
+  }
   // collar
   g.fillStyle = style.topDeep;
   g.beginPath();
@@ -178,14 +208,54 @@ function bakeSneaker(style: StyleProfile, T: number): HTMLCanvasElement {
 
 function bakeHead(style: StyleProfile, T: number): HTMLCanvasElement {
   const r = T * 0.23 * style.body.headScale;
-  const pad = r * 0.6;
+  const pad = r * 1.3;                     // room for big hair
   const [c, g] = cv(r * 2 + pad * 2, r * 2 + pad * 2);
   g.translate(c.width / 2, c.height / 2);
-  // hood ring behind the head (long sleeves = hoodie)
-  if (style.longSleeves) {
+  const hairKind = style.look?.hair ?? (style.longSleeves ? 'hood' : 'swoop');
+
+  // behind-the-head hair mass
+  g.fillStyle = style.hair;
+  if (hairKind === 'hood') {
     g.fillStyle = style.topDeep;
     g.beginPath(); g.arc(0, r * 0.18, r * 1.28, 0, Math.PI * 2); g.fill();
+  } else if (hairKind === 'afro' && !style.hairIsSkin) {
+    for (let i = 0; i < 9; i++) {
+      const a = (i / 9) * Math.PI * 2;
+      g.beginPath();
+      g.arc(Math.cos(a) * r * 0.78, Math.sin(a) * r * 0.78 - r * 0.22, r * 0.62, 0, Math.PI * 2);
+      g.fill();
+    }
+    g.beginPath(); g.arc(0, -r * 0.22, r * 1.05, 0, Math.PI * 2); g.fill();
+  } else if (hairKind === 'spiky' && !style.hairIsSkin) {
+    for (let i = -2; i <= 2; i++) {
+      const x = i * r * 0.42;
+      g.beginPath();
+      g.moveTo(x - r * 0.24, -r * 0.55);
+      g.lineTo(x + (i === 0 ? 0 : i * r * 0.12), -r * (1.55 - Math.abs(i) * 0.18));
+      g.lineTo(x + r * 0.24, -r * 0.55);
+      g.closePath(); g.fill();
+    }
+  } else if (hairKind === 'bob' && !style.hairIsSkin) {
+    g.beginPath();
+    g.arc(0, -r * 0.05, r * 1.22, Math.PI * 0.86, Math.PI * 2.14);
+    g.lineTo(r * 1.05, r * 0.75);
+    g.quadraticCurveTo(r * 0.6, r * 0.95, r * 0.55, r * 0.45);
+    g.lineTo(-r * 0.55, r * 0.45);
+    g.quadraticCurveTo(-r * 0.6, r * 0.95, -r * 1.05, r * 0.75);
+    g.closePath(); g.fill();
+  } else if (hairKind === 'buns' && !style.hairIsSkin) {
+    for (const s of [-1, 1]) {
+      g.beginPath(); g.arc(s * r * 0.85, -r * 0.85, r * 0.42, 0, Math.PI * 2); g.fill();
+    }
+  } else if (hairKind === 'ponytail' && !style.hairIsSkin) {
+    g.beginPath();
+    g.moveTo(r * 0.7, -r * 0.55);
+    g.quadraticCurveTo(r * 1.9, -r * 0.2, r * 1.45, r * 1.15);
+    g.quadraticCurveTo(r * 1.15, r * 0.45, r * 0.55, r * 0.05);
+    g.closePath(); g.fill();
+    g.beginPath(); g.arc(r * 0.72, -r * 0.42, r * 0.24, 0, Math.PI * 2); g.fill();
   }
+
   // skin sphere with shading
   const grad = g.createRadialGradient(-r * 0.3, -r * 0.3, r * 0.2, 0, 0, r);
   grad.addColorStop(0, shade(style.skin, 1.12));
@@ -198,15 +268,77 @@ function bakeHead(style: StyleProfile, T: number): HTMLCanvasElement {
   fg.addColorStop(1, 'rgba(255,255,255,0)');
   g.fillStyle = fg;
   g.beginPath(); g.arc(0, r * 0.1, r * 0.85, 0, Math.PI * 2); g.fill();
-  // hair swoop (skip when hooded or shaved)
-  if (!style.hairIsSkin && !style.longSleeves) {
+
+  // front hair: fringe caps for most styles, cap gets fabric + brim
+  if (hairKind === 'swoop' && !style.hairIsSkin) {
     g.fillStyle = style.hair;
     g.beginPath();
     g.arc(0, -r * 0.12, r * 1.03, Math.PI * 0.93, Math.PI * 2.07);
     g.quadraticCurveTo(r * 0.95, -r * 0.85, -r * 0.15, -r * 0.72);
     g.closePath();
     g.fill();
+  } else if ((hairKind === 'bob' || hairKind === 'buns' || hairKind === 'spiky' || hairKind === 'afro' || hairKind === 'ponytail') && !style.hairIsSkin) {
+    g.fillStyle = style.hair;
+    g.beginPath();
+    g.arc(0, 0, r * 1.02, Math.PI * 1.05, Math.PI * 1.95);
+    g.quadraticCurveTo(0, -r * 0.55, -r * 0.86, -r * 0.55 * 0.98);
+    g.closePath();
+    g.fill();
+  } else if (hairKind === 'cap') {
+    g.fillStyle = style.hair;
+    g.beginPath();
+    g.arc(0, -r * 0.18, r * 1.04, Math.PI, Math.PI * 2);
+    g.closePath(); g.fill();
+    g.fillStyle = shade(style.hair, 0.8);
+    g.beginPath();
+    g.ellipse(r * 0.72, -r * 0.18, r * 0.62, r * 0.16, -0.12, 0, Math.PI * 2);
+    g.fill();
   }
+
+  // headband
+  if (style.look?.headband) {
+    g.fillStyle = style.look.headband;
+    g.fillRect(-r * 1.02, -r * 0.62, r * 2.04, r * 0.24);
+  }
+  // shades: JD coaches love them
+  if (style.look?.shades) {
+    g.fillStyle = '#12101a';
+    const sy = -r * 0.14, sh = r * 0.34;
+    for (const s of [-1, 1]) {
+      g.beginPath();
+      g.roundRect(s * r * 0.5 - r * 0.38, sy, r * 0.76, sh, r * 0.12);
+      g.fill();
+    }
+    g.fillRect(-r * 0.2, sy + sh * 0.25, r * 0.4, r * 0.08);
+    g.fillStyle = 'rgba(255,255,255,0.35)';
+    g.fillRect(-r * 0.78, sy + r * 0.05, r * 0.3, r * 0.07);
+  }
+  return c;
+}
+
+/** flared skirt stamped over the hips (drawn between legs and torso) */
+function bakeSkirt(style: StyleProfile, T: number): HTMLCanvasElement {
+  const w = T * 0.95, len = T * 0.42, pad = 8;
+  const [c, g] = cv(w + pad * 2, len + pad * 2);
+  g.translate(c.width / 2, pad);
+  const hw = w / 2;
+  g.beginPath();
+  g.moveTo(-hw * 0.62, 0);
+  g.lineTo(hw * 0.62, 0);
+  g.quadraticCurveTo(hw * 0.95, len * 0.75, hw, len);
+  // zigzag hem
+  for (let i = 4; i >= -4; i--) {
+    g.lineTo((i / 4.5) * hw, len - (Math.abs(i) % 2 === 0 ? 0 : len * 0.14));
+  }
+  g.closePath();
+  const grad = g.createLinearGradient(-hw, 0, hw, 0);
+  grad.addColorStop(0, shade(style.bottom, 1.2));
+  grad.addColorStop(0.5, style.bottom);
+  grad.addColorStop(1, shade(style.bottom, 0.72));
+  g.fillStyle = grad;
+  g.fill();
+  g.fillStyle = 'rgba(255,255,255,0.35)';
+  g.fillRect(-hw * 0.62, 0, hw * 1.24, len * 0.1);
   return c;
 }
 
@@ -215,7 +347,7 @@ export class SpriteRig {
   private bakedFor = '';
 
   ensure(style: StyleProfile) {
-    const key = JSON.stringify([style.top, style.bottom, style.skin, style.hair, style.boots, style.longSleeves, style.body]);
+    const key = JSON.stringify([style.top, style.bottom, style.skin, style.hair, style.boots, style.longSleeves, style.body, style.look]);
     if (this.parts && this.bakedFor === key) return;
     this.bakedFor = key;
     const T = BASE;
@@ -230,6 +362,7 @@ export class SpriteRig {
       shin: bakeLimb(T * 0.088 * b, T * 0.06 * b, T * 0.48, style.bottom, { seam: true, cuff: shade(style.bottom, 0.75) }),
       sneaker: bakeSneaker(style, T),
       head: bakeHead(style, T),
+      skirt: style.look?.skirt ? bakeSkirt(style, T) : null,
     };
   }
 
@@ -287,6 +420,16 @@ export class SpriteRig {
     if (!J.frontB) arm(J.shB, J.elB, J.wrB, J.dz('elB'), J.dz('wrB'));
     leg(J.hipA, J.kneeA, J.ankA, -1, J.dz('kneeA'), J.dz('ankA'));
     leg(J.hipB, J.kneeB, J.ankB, 1, J.dz('kneeB'), J.dz('ankB'));
+    // skirt sits on the hips, over the thighs, under the torso
+    if (p.skirt) {
+      const s = T / BASE;
+      o.save();
+      o.translate(J.pelvis[0], J.pelvis[1] - T * 0.06);
+      o.rotate(Math.atan2(J.pelvis[1] - J.midSh[1], J.pelvis[0] - J.midSh[0]) - Math.PI / 2);
+      o.scale(s, s);
+      o.drawImage(p.skirt, -p.skirt.width / 2, -8);
+      o.restore();
+    }
     // torso: shoulders → pelvis
     {
       const a = J.midSh, b = J.pelvis;

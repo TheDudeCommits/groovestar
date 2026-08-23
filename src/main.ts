@@ -5,7 +5,6 @@
 
 import './style.css';
 import { SONGS, type Song, type SectionDef } from './songs';
-import { AudioEngine } from './audio/engine';
 import { PoseTracker } from './pose/tracker';
 import { Scorer, type JudgmentEvent } from './pose/scorer';
 import { choreoPose, addGroove, drawCoach } from './coach';
@@ -13,6 +12,7 @@ import { drawScene } from './scenes';
 import { Hud, drawPictograms } from './ui/hud';
 import { MOVES } from './moves';
 import { StyleScanner, type StyleProfile } from './appearance';
+import { CAST, applyCharacter } from './characters';
 import { CLIPS } from './motion';
 import { PlayerAvatar, type Cosmetics } from './avatar';
 import { generateChoreo, freestyleWindows, carveFreestyle, smoothChoreo, type FreestyleWindow } from './choreograph';
@@ -40,7 +40,6 @@ canvas.id = 'stage';
 app.appendChild(canvas);
 const ctx = canvas.getContext('2d')!;
 
-let audio: AudioEngine | null = null;
 const tracker = new PoseTracker();
 let trackerStarted = false;
 let cameraOk = false;
@@ -79,7 +78,8 @@ function toast(text: string) {
   requestAnimationFrame(() => t.classList.add('show'));
   setTimeout(() => { t.classList.remove('show'); setTimeout(() => t.remove(), 400); }, 4200);
 }
-const skinPref = () => (localStorage.getItem('gs-skin') ?? 'toon') as 'toon' | 'sprite' | 'wire';
+const skinPref = () => (localStorage.getItem('gs-skin') ?? 'sprite') as 'toon' | 'sprite' | 'wire';
+const charPref = () => localStorage.getItem('gs-char') ?? 'auto';
 const animePref = () => localStorage.getItem('gs-anime') === '1';
 let playerStyle: StyleProfile | null = null;
 let activeRoom: Room | null = null;
@@ -253,23 +253,6 @@ function showMenu() {
   menu.innerHTML = `
     <div class="logo">GROOVE<span>STAR</span></div>
   `;
-  const row = div('song-row');
-  for (const song of SONGS) {
-    const tile = div('song-tile');
-    const cv = document.createElement('canvas');
-    cv.width = 320; cv.height = 200;
-    drawCover(cv, song);
-    tile.appendChild(cv);
-    const meta = div('song-meta');
-    meta.innerHTML = `<div class="song-title">${song.title}</div>
-      <div class="song-artist">${song.artist}</div>
-      <div class="song-diff">${'●'.repeat(song.difficulty)}${'○'.repeat(3 - song.difficulty)} · ${song.bpm} BPM</div>`;
-    tile.appendChild(meta);
-    tile.addEventListener('click', () => startSong(song));
-    row.appendChild(tile);
-  }
-  menu.appendChild(row);
-
   // --- Just Dance classics: real extracted routines, lazily listed ---
   const classics = div('classics-panel');
   classics.innerHTML = `<div class="yt-title">🕹 JUST DANCE CLASSICS — REAL ROUTINES</div>
@@ -349,6 +332,7 @@ function showMenu() {
       <button id="calib" class="calib-btn">\u{1F4D0} CALIBRATE${localStorage.getItem('gs-style') ? ' \u2713' : ''}</button>
       <button id="fit-toggle" class="calib-btn ${fitnessOn() ? 'on' : ''}">\u{1F525} FITNESS ${fitnessOn() ? 'ON' : 'OFF'}${fitStreak() > 1 ? ` \u00b7 ${fitStreak()}d streak` : ''}</button>
       <button id="phone-cam" class="calib-btn">\u{1F4FA} PHONE CAM${phoneCam?.connected ? ' \u2713' : ''}</button>
+      <button id="char-cycle" class="calib-btn">\u{1F483} DANCER: ${charPref() === 'auto' ? 'MY LOOK' : (CAST.find((c) => c.id === charPref())?.name ?? 'MY LOOK')}</button>
     </div>
     <div class="cam-note" id="cam-note">\u{1F4F7} The webcam scans your look into a neon avatar and scores your moves. No camera? Demo Mode \u2014 full show, simulated scoring.</div>`;
   menu.appendChild(foot);
@@ -358,6 +342,13 @@ function showMenu() {
     showMenu();
   });
   foot.querySelector('#phone-cam')!.addEventListener('click', () => openPhoneCam());
+  foot.querySelector('#char-cycle')!.addEventListener('click', () => {
+    const ids = ['auto', ...CAST.map((c) => c.id)];
+    const next = ids[(ids.indexOf(charPref()) + 1) % ids.length];
+    localStorage.setItem('gs-char', next);
+    const btn = foot.querySelector('#char-cycle')!;
+    btn.textContent = `\u{1F483} DANCER: ${next === 'auto' ? 'MY LOOK' : CAST.find((c) => c.id === next)!.name}`;
+  });
   app.appendChild(menu);
 
   const loop = () => {
@@ -371,13 +362,6 @@ function showMenu() {
   loop();
 }
 
-function drawCover(cv: HTMLCanvasElement, song: Song) {
-  const c = cv.getContext('2d')!;
-  drawScene({ ctx: c, w: cv.width, h: cv.height, beat: 0.9, section: 'chorus', song, goldBurst: 0 });
-  const pose = MOVES[song.scene === 'disco' ? 'letter_v' : song.scene === 'bokeh' ? 'lasso' : 'point_up_r'].pose;
-  drawCoach(c, song, pose, cv.width / 2, cv.height * 0.94, cv.height * 0.62);
-}
-
 function playerNameFromMenu(): string {
   const nameInput = document.getElementById('pname') as HTMLInputElement | null;
   const name = (nameInput?.value || 'DANCER').toUpperCase();
@@ -387,15 +371,6 @@ function playerNameFromMenu(): string {
 
 // ---------------------------------------------------------------------------
 // Get ready → play (built-in synth songs)
-
-async function startSong(song: Song) {
-  const playerName = playerNameFromMenu();
-  await readyFlow(song, `<b>${song.title}</b><span>${song.artist}</span>`);
-  audio?.stop();
-  audio = new AudioEngine();
-  audio.play(song, 4);
-  play(song, playerName, { clock: audio, onAgain: () => startSong(song) });
-}
 
 /** shared ready-card: camera init + style scan; draws the song cover behind */
 async function readyFlow(song: Song, bannerHtml: string) {
@@ -420,11 +395,12 @@ async function readyFlow(song: Song, bannerHtml: string) {
     cameraOk = await tracker.init();
   }
   const tip = document.getElementById('ready-tip');
+  const charSeed = [...song.id].reduce((n, c2) => n + c2.charCodeAt(0), 0);
   if (cameraOk) {
     // stored calibration profile wins — the player already scanned in detail
     const stored = loadStoredStyle();
     if (stored) {
-      playerStyle = stored;
+      playerStyle = applyCharacter(stored, charPref(), charSeed);
       if (tip) tip.innerHTML = 'Style loaded from your calibration \u2713 \u2014 you are the dancer!';
       await wait(1100);
       card.remove();
@@ -432,7 +408,7 @@ async function readyFlow(song: Song, bannerHtml: string) {
     }
     if (tip) tip.innerHTML = '<span class="scanline">SCANNING YOUR STYLE\u2026</span> stand back so your upper body is in frame';
     const scanned = await scanStyle(song);
-    playerStyle = scanned ?? defaultStyle(song);
+    playerStyle = applyCharacter(scanned ?? defaultStyle(song), charPref(), charSeed);
     if (tip) {
       tip.innerHTML = scanned
         ? `Style locked — you're the dancer! ${swatches(scanned)} Follow the pictograms & mini coach.`

@@ -106,6 +106,9 @@ export class PlayerAvatar {
   // offscreen for the floor reflection (flipped body + fade mask)
   private refl = document.createElement('canvas');
   private reflCtx = this.refl.getContext('2d')!;
+  // offscreen for the white sticker-outline silhouette (the Just Dance look)
+  private sil = document.createElement('canvas');
+  private silCtx = this.sil.getContext('2d')!;
 
   update(lms: NormalizedLandmark[] | null, aspect: number, now: number) {
     if (!lms) { this.hasPose = now - this.lastSeen < 600; return; }
@@ -614,6 +617,28 @@ export class PlayerAvatar {
       ctx.setTransform(1, 0, 0, 1, 0, 0);
       ctx.globalAlpha = 0.6;
       ctx.drawImage(this.refl, 0, 0);
+      ctx.restore();
+    }
+
+    // white sticker outline around the whole silhouette — the JD coach look
+    if (skin !== 'wire') {
+      if (this.sil.width !== cw || this.sil.height !== ch) { this.sil.width = cw; this.sil.height = ch; }
+      const sc = this.silCtx;
+      sc.setTransform(1, 0, 0, 1, 0, 0);
+      sc.clearRect(0, 0, cw, ch);
+      sc.drawImage(this.off, 0, 0);
+      sc.globalCompositeOperation = 'source-in';
+      sc.fillStyle = '#ffffff';
+      sc.fillRect(0, 0, cw, ch);
+      sc.globalCompositeOperation = 'source-over';
+      const m2 = ctx.getTransform();
+      const rOut = Math.max(2, torsoPx * 0.045 * m2.a);
+      ctx.save();
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      for (let i = 0; i < 8; i++) {
+        const a = (i / 8) * Math.PI * 2;
+        ctx.drawImage(this.sil, Math.cos(a) * rOut, Math.sin(a) * rOut);
+      }
       ctx.restore();
     }
 

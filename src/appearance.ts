@@ -12,6 +12,16 @@ export interface BodyShape {
   buildScale: number;  // limb thickness multiplier (from shoulder-width ratio)
 }
 
+/** character styling on top of the captured colors — the Just Dance flavor */
+export interface Look {
+  hair: 'swoop' | 'afro' | 'spiky' | 'bob' | 'buns' | 'ponytail' | 'cap' | 'hood';
+  shades: boolean;
+  pattern: 'solid' | 'stripes' | 'chevron' | 'halves';
+  pattern2?: string;   // secondary color for patterned tops
+  skirt: boolean;
+  headband?: string;
+}
+
 export interface StyleProfile {
   skin: string;
   hair: string;
@@ -23,6 +33,7 @@ export interface StyleProfile {
   longSleeves: boolean;
   hairIsSkin: boolean; // shaved/bald → skip hair swoop
   body: BodyShape;
+  look?: Look;
 }
 
 type RGB = [number, number, number];
