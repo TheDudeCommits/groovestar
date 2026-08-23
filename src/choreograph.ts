@@ -5,7 +5,7 @@
 // and a global anti-repetition budget so no move outstays its welcome.
 
 import { MOVES } from './moves';
-import { CLIPS, CLIP_GENRES } from './motion';
+import { CLIPS, CLIP_GENRES, transitionCost } from './motion';
 import type { ChoreoMove, SectionDef } from './songs';
 
 export interface GenResult {
@@ -78,10 +78,11 @@ export function generateChoreo(seed: string, totalBeats: number, difficulty: 1 |
   }
   sections.push({ beat: bodyEnd, kind: 'outro' });
 
-  // --- move picking with anti-repetition ------------------------------------
+  // --- move picking with anti-repetition + transition chaining --------------
   const used: Record<string, number> = {};
-  const pick = (candidates: string[], avoid: Set<string>): string => {
-    // among the least-used candidates, choose randomly
+  const pick = (candidates: string[], avoid: Set<string>, prev?: string): string => {
+    // among the least-used candidates, prefer the ones whose start pose flows
+    // from the previous clip's end pose — chains read as one continuous dance
     let best: string[] = [];
     let bestCount = Infinity;
     for (const id of candidates) {
@@ -90,7 +91,18 @@ export function generateChoreo(seed: string, totalBeats: number, difficulty: 1 |
       if (c < bestCount) { bestCount = c; best = [id]; }
       else if (c === bestCount) best.push(id);
     }
-    const chosen = best.length ? best[Math.floor(rand() * best.length)] : candidates[Math.floor(rand() * candidates.length)];
+    if (!best.length) best = candidates.slice();
+    let chosen: string;
+    if (prev && CLIPS[prev]) {
+      let bestScore = Infinity;
+      chosen = best[0];
+      for (const id of best) {
+        const score = transitionCost(prev, id) + rand() * 18; // noise keeps routines varied
+        if (score < bestScore) { bestScore = score; chosen = id; }
+      }
+    } else {
+      chosen = best[Math.floor(rand() * best.length)];
+    }
     used[chosen] = (used[chosen] ?? 0) + 1;
     return chosen;
   };
@@ -112,7 +124,7 @@ export function generateChoreo(seed: string, totalBeats: number, difficulty: 1 |
         const mir = mirror(p[i - 1]);
         if (mir && !avoid.has(mir)) { p.push(mir); avoid.add(mir); used[mir] = (used[mir] ?? 0) + 1; continue; }
       }
-      const id = pick(candidates, avoid);
+      const id = pick(candidates, avoid, p[i - 1]);
       avoid.add(id);
       const mir = mirror(id);
       if (mir) avoid.add(mir); // avoid l/r duplicates beyond the intentional echo
@@ -149,7 +161,7 @@ export function generateChoreo(seed: string, totalBeats: number, difficulty: 1 |
       const avoid = new Set(chorusHook);
       const back: string[] = [];
       for (let i = 0; i < 4; i++) {
-        const id = pick(poolFor('chorus'), avoid);
+        const id = pick(poolFor('chorus'), avoid, back[i - 1] ?? chorusHook[chorusHook.length - 1]);
         avoid.add(id);
         back.push(id);
       }
@@ -217,4 +229,36 @@ export function carveFreestyle(choreo: ChoreoMove[], wins: FreestyleWindow[]): C
     })
     .filter((m): m is ChoreoMove => !!m)
     .sort((a, b) => a.beat - b.beat);
+}
+
+// ---------------------------------------------------------------------------
+// Fluidity pass over any routine (AI or generated): where two consecutive
+// clips cut with a jarring pose discontinuity, swap the second one for a
+// same-genre, similar-energy clip that flows. Deterministic (argmin, no RNG)
+// so multiplayer clients that share a routine stay identical.
+
+const JARRING = 55;   // mean weighted degrees between end/start poses
+
+export function smoothChoreo(choreo: ChoreoMove[]): ChoreoMove[] {
+  const out = choreo.map((m) => ({ ...m }));
+  const recent: string[] = [];
+  for (let i = 1; i < out.length; i++) {
+    const a = out[i - 1], m = out[i];
+    recent.push(a.move);
+    if (recent.length > 6) recent.shift();
+    if (m.gold || !CLIPS[m.move] || !CLIPS[a.move]) continue;
+    if (m.beat - a.beat > 4) continue;               // across a gap, cuts are fine
+    const cost = transitionCost(a.move, m.move);
+    if (cost <= JARRING) continue;
+    const cur = CLIPS[m.move];
+    let bestId = m.move, bestCost = cost;
+    for (const cand of Object.values(CLIPS)) {
+      if (cand.g !== cur.g || Math.abs(cand.e - cur.e) > 0.18) continue;
+      if (recent.includes(cand.id)) continue;
+      const c = transitionCost(a.move, cand.id);
+      if (c < bestCost) { bestCost = c; bestId = cand.id; }
+    }
+    if (bestCost < cost * 0.6) m.move = bestId;      // only swap for a real improvement
+  }
+  return out;
 }

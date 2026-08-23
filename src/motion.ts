@@ -64,3 +64,25 @@ export function poseForId(id: string, movesPose: Pose | undefined, t = 0): Pose 
   const c = CLIPS[id];
   return c ? clipPose(c, t) : null;
 }
+
+// ---------------------------------------------------------------------------
+// Transition analysis: how far apart is the END pose of clip A from the START
+// pose of clip B? Used to chain clips into fluid phrases (choreographer picks
+// low-cost successors; playback stretches the blend for high-cost cuts).
+
+const TW = [1.2, 1.5, 1.0, 0.7, 1.0, 0.7, 0.9, 0.6, 0.9, 0.6]; // lean,crouch,arms,legs
+
+/** weighted mean pose discontinuity in degrees (~0 seamless, 90+ jarring); 0 if either isn't a clip */
+export function transitionCost(aId: string, bId: string): number {
+  const a = CLIPS[aId], b = CLIPS[bId];
+  if (!a || !b) return 0;
+  const ea = a.f[a.f.length - 1], sb = b.f[0];
+  let acc = 0, ws = 0;
+  for (let i = 0; i < 10; i++) {
+    let d = Math.abs(ea[i] - sb[i]);
+    if (i === 1) d *= 90;                 // crouch is in body-lengths → degrees-comparable
+    else { d = d % 360; if (d > 180) d = 360 - d; }
+    acc += d * TW[i]; ws += TW[i];
+  }
+  return acc / ws;
+}

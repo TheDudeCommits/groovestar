@@ -5,7 +5,7 @@
 // transitions snap onto the beat with a springy ease.
 
 import { MOVES, forward, lerpPose, snapEase, type Pose, type Skeleton } from './moves';
-import { CLIPS, clipPose } from './motion';
+import { CLIPS, clipPose, transitionCost } from './motion';
 import type { ChoreoMove } from './songs';
 import type { Song } from './songs';
 
@@ -41,7 +41,9 @@ export function choreoPose(choreo: ChoreoMove[], beat: number): { pose: Pose; cu
     const t = beat - prev.beat;
     let pose = clipPose(clip, Math.min(t, clip.b));
     if (next) {
-      const lead = 0.22;
+      // adaptive crossfade: seamless cuts keep their snap, jarring ones get a
+      // longer morph so the body travels instead of teleporting
+      const lead = Math.min(0.6, 0.22 + transitionCost(prev.move, next.move) / 200);
       const tn = beat - (next.beat - lead);
       if (tn > 0) pose = lerpPose(pose, startPose(next.move), Math.min(1, tn / lead));
     }

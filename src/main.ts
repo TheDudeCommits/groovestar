@@ -15,7 +15,7 @@ import { MOVES } from './moves';
 import { StyleScanner, type StyleProfile } from './appearance';
 import { CLIPS } from './motion';
 import { PlayerAvatar, type Cosmetics } from './avatar';
-import { generateChoreo, freestyleWindows, carveFreestyle, type FreestyleWindow } from './choreograph';
+import { generateChoreo, freestyleWindows, carveFreestyle, smoothChoreo, type FreestyleWindow } from './choreograph';
 import { fetchVibe, vibeAt, type VibePalette } from './vibe';
 import { parseYouTubeId, YouTubeSource, YouTubeClock } from './youtube';
 import { BeatListener } from './audio/beatsync';
@@ -534,9 +534,10 @@ async function startYouTube(videoId: string) {
   if (meta === null) toast('Tempo unknown \u2014 the mic will lock onto the beat as the song plays.');
   if (lyr) {
     const waitCard = div('overlay ready-card');
-    waitCard.innerHTML = `<div class="ready-inner"><div class="ready-tip"><span class="scanline">\u266a CHOREOGRAPHING TO THE LYRICS\u2026</span></div></div>`;
+    waitCard.innerHTML = `<div class="ready-inner"><div class="ready-tip"><span class="scanline">\u266a CHOREOGRAPHING TO THE LYRICS\u2026</span></div>
+      <div class="ready-tip" style="opacity:0.6;font-size:0.85em">First dance on a new song takes ~30 s \u2014 after that it's saved for everyone, forever.</div></div>`;
     app.appendChild(waitCard);
-    const ai = await Promise.race([aiPromise, wait(12000).then(() => 'timeout' as const)]);
+    const ai = await Promise.race([aiPromise, wait(45000).then(() => 'timeout' as const)]);
     waitCard.remove();
     if (ai && ai !== 'timeout') {
       song.choreo = ai;
@@ -546,9 +547,9 @@ async function startYouTube(videoId: string) {
     }
   }
 
-  // freestyle GO-OFF windows: the routine steps aside, you improvise
+  // fluidity pass, then carve the freestyle GO-OFF windows out of the routine
   const freestyle = freestyleWindows(totalBeats, introBeats);
-  song.choreo = carveFreestyle(song.choreo, freestyle);
+  song.choreo = carveFreestyle(smoothChoreo(song.choreo), freestyle);
 
   const clock = new YouTubeClock(src, bpm, gen.sections, totalBeats, 4);
   clock.freeTempo = meta === null; // unknown tempo: let the mic adopt the real one
@@ -608,7 +609,7 @@ function openLobby(room: Room) {
   room.onMessage = (_from, msg) => {
     if (msg.t === 'start' && !room.isHost) {
       lobby.remove();
-      startYouTubeMP(msg.videoId, msg.bpm, msg.intro, room);
+      startYouTubeMP(msg.videoId, msg.bpm, msg.intro, room, msg.choreo ?? null);
     }
   };
 
@@ -641,12 +642,23 @@ function openLobby(room: Room) {
         fetchSongMeta(id, probe.title, probe.duration),
         Promise.race([fetchSyncedLyrics(probe.title, probe.duration), wait(8000).then(() => null)]),
       ]);
-      probe.destroy();
       const bpm = meta ?? 120;
       const intro = introBeatsOf(lyr, bpm, 4);
-      room.send({ t: 'start', videoId: id, bpm, intro });
+      // host fetches the AI routine once and hands the exact same moves to
+      // every client — guests never need their own (possibly diverging) fetch
+      let aiChoreo: Song['choreo'] | null = null;
+      if (lyr) {
+        err.textContent = '♪ AI is choreographing to the lyrics… first time on a song takes ~30 s.';
+        const totalBeats = Math.max(48, Math.floor((probe.duration * bpm) / 60) - 8);
+        aiChoreo = await Promise.race([
+          fetchAiChoreo(id, probe.title, probe.duration, bpm, intro, totalBeats),
+          wait(45000).then(() => null),
+        ]);
+      }
+      probe.destroy();
+      room.send({ t: 'start', videoId: id, bpm, intro, choreo: aiChoreo ?? undefined });
       lobby.remove();
-      startYouTubeMP(id, bpm, intro, room);
+      startYouTubeMP(id, bpm, intro, room, aiChoreo);
     });
   }
 }
@@ -659,7 +671,7 @@ function alertOverlay(text: string) {
 }
 
 /** multiplayer song start: deterministic choreography so every client matches */
-async function startYouTubeMP(videoId: string, bpm: number, introBeats: number, room: Room) {
+async function startYouTubeMP(videoId: string, bpm: number, introBeats: number, room: Room, aiChoreo: Song['choreo'] | null = null) {
   state = 'ready';
   cancelAnimationFrame(raf);
   app.querySelectorAll('.overlay, .yt-holder').forEach((e) => e.remove());
@@ -726,9 +738,11 @@ async function startYouTubeMP(videoId: string, bpm: number, introBeats: number, 
   if (lyr) song.lyrics = lyricsToLines(lyr, bpm, 4);
   const vibe = await Promise.race([vibePromise, wait(1500).then(() => null)]);
 
-  // deterministic from (totalBeats, introBeats) → identical on every client
+  // host-provided AI routine (identical on every client), else the seeded
+  // generator (also identical); smooth + carve both deterministically
+  if (aiChoreo?.length) song.choreo = aiChoreo;
   const freestyle = freestyleWindows(totalBeats, introBeats);
-  song.choreo = carveFreestyle(song.choreo, freestyle);
+  song.choreo = carveFreestyle(smoothChoreo(song.choreo), freestyle);
 
   const clock = new YouTubeClock(src, bpm, gen.sections, totalBeats, 4);
   clock.restart();

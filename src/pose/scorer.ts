@@ -40,7 +40,9 @@ function wrapDiff(a: number, b: number) {
 export class Scorer {
   private slots: Slot[];
   private perMove: number;
-  score = 0;
+  /** raw accumulated points — normalized against a simulated flawless run */
+  private raw = 0;
+  private maxRaw = 1;
   combo = 0;
   judged = 0;
   counts: Record<Judgment, number> = { X: 0, OK: 0, GOOD: 0, SUPER: 0, PERFECT: 0, YEAH: 0 };
@@ -59,11 +61,27 @@ export class Scorer {
   constructor(choreo: ChoreoMove[], freestyle: FreestyleWindow[] = []) {
     this.slots = choreo.map((move, index) => ({ move, index, best: 0, sawPlayer: false, done: false }));
     this.fs = freestyle.map((w) => ({ w, energySum: 0, n: 0, samples: [], done: false }));
-    // gold moves are worth double; each freestyle window ~5 moves. The combo
-    // multiplier inflates points, so the per-move base shrinks: keeping combos
-    // alive is what fills the star meter now.
     const weight = choreo.reduce((n, m) => n + (m.gold ? 2 : 1), 0) + freestyle.length * 5;
-    this.perMove = MAX_SCORE / (weight * 1.9);
+    this.perMove = MAX_SCORE / Math.max(1, weight);
+    // Normalize against a simulated FLAWLESS run (every move PERFECT, full
+    // combo growth, perfect freestyles): only that run scores exactly 13333.
+    // No cap — so two different performances can't collide at a ceiling.
+    const events = [
+      ...choreo.map((m) => ({ beat: m.beat, worth: m.gold ? 2 : 1 })),
+      ...freestyle.map((w) => ({ beat: w.end, worth: 5 })),
+    ].sort((a, b) => a.beat - b.beat);
+    let combo = 0, max = 0;
+    for (const ev of events) {
+      const mult = combo >= 12 ? 4 : combo >= 8 ? 3 : combo >= 4 ? 2 : 1;
+      max += this.perMove * ev.worth * mult;
+      combo++;
+    }
+    this.maxRaw = Math.max(1, max);
+  }
+
+  /** displayed score: flawless = exactly MAX_SCORE, everything else below it */
+  get score(): number {
+    return (this.raw / this.maxRaw) * MAX_SCORE;
   }
 
   /** combo multiplier: 4+ in a row ×2, 8+ ×3, 12+ ×4 */
@@ -95,8 +113,8 @@ export class Scorer {
         const sim = this.similarity(slot, frame, beat);
         if (sim !== null) {
           slot.sawPlayer = true;
-          // slight timing shaping: dead-center hits count a touch more
-          const timing = 1 - 0.15 * Math.min(1, Math.abs(d) / WINDOW);
+          // timing shaping: dead-center hits count meaningfully more
+          const timing = 1 - 0.25 * Math.min(1, Math.abs(d) / WINDOW);
           slot.best = Math.max(slot.best, sim * timing);
         }
       } else {
@@ -127,16 +145,16 @@ export class Scorer {
     let acc = 0, wsum = 0;
     for (let i = 0; i < target.length; i++) {
       const diff = wrapDiff(target[i], f[i]);
-      // 0° → 1.0, 90°+ → 0; generous curve
-      const s = Math.max(0, 1 - diff / 105);
+      // 0° → 1.0, 80°+ → 0 — you have to actually hit the shape
+      const s = Math.max(0, 1 - diff / 80);
       acc += s * weights[i];
       wsum += weights[i];
     }
     const poseSim = acc / wsum;
     const energyTarget = clip ? clip.e : MOVES[slot.move.move].energy;
-    const energySim = Math.min(1, frame.energy / Math.max(0.12, energyTarget * 0.5));
-    // 70% pose accuracy, 30% "are you actually moving with it"
-    return poseSim * 0.7 + energySim * 0.3;
+    const energySim = Math.min(1, frame.energy / Math.max(0.15, energyTarget * 0.7));
+    // 80% pose accuracy, 20% "are you actually moving with it"
+    return poseSim * 0.8 + energySim * 0.2;
   }
 
   private judge(slot: Slot): JudgmentEvent {
@@ -144,10 +162,10 @@ export class Scorer {
     let judgment: Judgment;
     const b = slot.best;
     if (!slot.sawPlayer && !this.demoMode) judgment = 'X';
-    else if (b >= 0.78) judgment = 'PERFECT';
-    else if (b >= 0.66) judgment = 'SUPER';
-    else if (b >= 0.5) judgment = 'GOOD';
-    else if (b >= 0.32) judgment = 'OK';
+    else if (b >= 0.8) judgment = 'PERFECT';
+    else if (b >= 0.68) judgment = 'SUPER';
+    else if (b >= 0.52) judgment = 'GOOD';
+    else if (b >= 0.3) judgment = 'OK';
     else judgment = 'X';
 
     const frac: Record<Judgment, number> = { X: 0, OK: 0.35, GOOD: 0.65, SUPER: 0.85, PERFECT: 1, YEAH: 1 };
@@ -160,11 +178,11 @@ export class Scorer {
     }
     pts *= this.multiplier;
     this.bumpCombo(judgment);
-    this.score = Math.min(MAX_SCORE, this.score + pts);
+    this.raw += pts;
     this.judged++;
     this.counts[judgment]++;
     this.log.push({ move: slot.move.move, judgment });
-    return { judgment, gold, score: pts, moveIndex: slot.index };
+    return { judgment, gold, score: (pts / this.maxRaw) * MAX_SCORE, moveIndex: slot.index };
   }
 
   /** X breaks the combo, OK merely holds it — only real hits build it */
@@ -197,20 +215,20 @@ export class Scorer {
       perf >= 0.72 ? 'YEAH' : perf >= 0.52 ? 'SUPER' : perf >= 0.34 ? 'GOOD' : perf >= 0.15 ? 'OK' : 'X';
     const pts = this.perMove * 5 * perf * this.multiplier;
     this.bumpCombo(judgment);
-    this.score = Math.min(MAX_SCORE, this.score + pts);
+    this.raw += pts;
     this.judged++;
     this.counts[judgment]++;
-    return { judgment, gold: judgment === 'YEAH', score: pts, moveIndex: -1, freestyle: true };
+    return { judgment, gold: judgment === 'YEAH', score: (pts / this.maxRaw) * MAX_SCORE, moveIndex: -1, freestyle: true };
   }
 
   /** 0..5 stars + superstar beyond, matching the reference meter feel */
   stars(): number {
-    const r = this.score / MAX_SCORE;
+    const r = this.ratio;
     const th = [0.12, 0.26, 0.42, 0.58, 0.74];
     let s = 0;
     for (const t of th) if (r >= t) s++;
     return s;
   }
-  get superstar() { return this.score / MAX_SCORE >= 0.88; }
-  get ratio() { return Math.min(1, this.score / MAX_SCORE); }
+  get superstar() { return this.ratio >= 0.88; }
+  get ratio() { return Math.min(1, this.raw / this.maxRaw); }
 }
