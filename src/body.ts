@@ -35,6 +35,8 @@ export interface BodyOpts {
   faceState: 'idle' | 'smile' | 'stars' | 'wobble';
   /** screen x the key light comes from (beam), for shade side */
   lightX?: number;
+  /** background characters: flat fills, no smears — half the draw cost */
+  lite?: boolean;
 }
 
 // ---- tiny vector helpers ----------------------------------------------------
@@ -114,6 +116,11 @@ export class BodyArt {
     /** fill a limb with a cross-lit gradient + crease line at the joint */
     const limb = (a: P2, m: P2, e: P2, wA: number, wM: number, wE: number, color: string, crease = true) => {
       const { nm, mid } = limbPath(a, m, e, wA, wM, wE);
+      if (opts.lite) {
+        o.fillStyle = color;
+        o.fill();
+        return;
+      }
       const g1 = add(mid, mul(nm, wM * 1.4 * lightSide));
       const g2 = sub(mid, mul(nm, wM * 1.4 * lightSide));
       const grad = o.createLinearGradient(g1[0], g1[1], g2[0], g2[1]);
@@ -241,7 +248,7 @@ export class BodyArt {
     };
 
     // ---- motion smears (before everything — they sit behind the body) ------
-    for (const key of ['A', 'B'] as const) {
+    if (!opts.lite) for (const key of ['A', 'B'] as const) {
       const hist = this.prevWr[key];
       if (hist.length >= 3) {
         const a = hist[0].p, e2 = key === 'A' ? J.wrA : J.wrB;
@@ -366,15 +373,18 @@ export class BodyArt {
     // torso
     {
       torsoPath();
-      const g1 = at(0.5, -chestH * 1.5 * lightSide === -1 ? -chestH * 1.5 : chestH * 1.5);
-      void g1;
-      const gA = at(0.5, -chestH * 1.5 * -lightSide), gB = at(0.5, chestH * 1.5 * -lightSide);
-      const grad = o.createLinearGradient(gB[0], gB[1], gA[0], gA[1]);
-      grad.addColorStop(0, shadeCss(style.top, 1.14));
-      grad.addColorStop(0.55, style.top);
-      grad.addColorStop(1, shadeCss(style.top, 0.7));
-      o.fillStyle = grad;
-      o.fill();
+      if (opts.lite) {
+        o.fillStyle = style.top;
+        o.fill();
+      } else {
+        const gA = at(0.5, -chestH * 1.5 * -lightSide), gB = at(0.5, chestH * 1.5 * -lightSide);
+        const grad = o.createLinearGradient(gB[0], gB[1], gA[0], gA[1]);
+        grad.addColorStop(0, shadeCss(style.top, 1.14));
+        grad.addColorStop(0.55, style.top);
+        grad.addColorStop(1, shadeCss(style.top, 0.7));
+        o.fillStyle = grad;
+        o.fill();
+      }
 
       o.save();
       torsoPath();

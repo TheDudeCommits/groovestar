@@ -100,9 +100,13 @@ interface RemotePlayer {
 }
 
 function resize() {
-  canvas.width = window.innerWidth * devicePixelRatio;
-  canvas.height = window.innerHeight * devicePixelRatio;
-  ctx.setTransform(devicePixelRatio, 0, 0, devicePixelRatio, 0, 0);
+  // cap the render scale: full Retina DPR doubles every fill's pixel cost for
+  // no visible gain at dance-game viewing distance, and the avatar pipeline
+  // does a dozen full-surface composites per frame
+  const dpr = Math.min(devicePixelRatio, 1.5);
+  canvas.width = window.innerWidth * dpr;
+  canvas.height = window.innerHeight * dpr;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 }
 window.addEventListener('resize', resize);
 resize();

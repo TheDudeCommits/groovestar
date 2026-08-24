@@ -284,6 +284,7 @@ export function drawCharacter(
     gloveFlash: opts.gloveFlash ?? 0,
     goldHold: !!opts.goldHold,
     faceState: opts.faceState ?? (opts.goldHold ? 'stars' : 'idle'),
+    lite: true,
   });
   ctx.restore();
 }
