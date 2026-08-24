@@ -1,6 +1,7 @@
 // Shared bits for the movement suite games.
 
 import type { NormalizedLandmark } from '@mediapipe/tasks-vision';
+import type { HandRig } from '../pose/rig';
 
 export type Ctx = CanvasRenderingContext2D;
 
@@ -17,6 +18,8 @@ export interface GameOpts {
   ctx: Ctx;
   tracker: TrackerLike;
   cameraOk: boolean;
+  /** filtered + predictive input layer; feed it per frame, read hands from it */
+  rig?: HandRig;
   onExit: (score: number, label?: string) => void;
 }
 

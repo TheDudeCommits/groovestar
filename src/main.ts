@@ -26,6 +26,11 @@ import { BoxGame } from './games/box';
 import { BeatBladeGame } from './games/beatblade';
 import type { Game, GameOpts } from './games/shared';
 import { coverFruit, coverBlade, coverRush, coverBowl, coverTennis, coverBox } from './games/covers';
+import { HandRig } from './pose/rig';
+import { installDebugHotkey } from './games/debug';
+import { calibrateBody, countdown, countUp } from './games/flow';
+import { sfx } from './games/sfx';
+import './games/tuning';
 import { parseYouTubeId, YouTubeSource, YouTubeClock } from './youtube';
 import { BeatListener } from './audio/beatsync';
 import { fetchSyncedLyrics, lyricsToLines, applyKeywordChoreo, fetchAiChoreo, fetchSongMeta, introBeatsOf } from './lyrics';
@@ -59,6 +64,8 @@ let stageLight: { x: number; color: string } | null = null;
 /** phone-as-camera link (TV side) — when connected it replaces the local webcam */
 let phoneCam: TvCamHost | null = null;
 const cam = () => (phoneCam?.connected ? phoneCam : tracker);
+/** gesture debug overlay (backquote during any arcade game) */
+const debugCtl = installDebugHotkey(() => cam(), () => arcadeGame !== null);
 
 // fitness mode: kcal + active time, lifetime totals + day streak
 const fitnessOn = () => localStorage.getItem('gs-fitness') === '1';
@@ -488,7 +495,8 @@ async function arcadeCamera(title: string, tip: string): Promise<boolean> {
   app.querySelectorAll('.overlay, .yt-holder').forEach((e) => e.remove());
   const card = div('overlay ready-card');
   card.innerHTML = `<div class="ready-inner"><div class="get-ready">${title.toUpperCase()}</div>
-    <div class="ready-tip" id="arc-tip">Starting the camera</div></div>`;
+    <div class="ready-tip" id="arc-tip">Starting the camera</div>
+    <div class="ready-tip" id="arc-status"></div></div>`;
   app.appendChild(card);
   if (phoneCam?.connected) {
     cameraOk = true;
@@ -498,7 +506,13 @@ async function arcadeCamera(title: string, tip: string): Promise<boolean> {
   }
   const tipEl = document.getElementById('arc-tip');
   if (tipEl) tipEl.textContent = cameraOk ? tip : 'No camera, watching the demo.';
-  await wait(1700);
+  const statusEl = document.getElementById('arc-status');
+  if (cameraOk && statusEl) {
+    await calibrateBody(cam(), statusEl);
+  } else {
+    await wait(900);
+  }
+  await countdown(card.querySelector('.ready-inner') as HTMLElement);
   card.remove();
   return cameraOk;
 }
@@ -507,23 +521,30 @@ async function startArcade(def: ArcadeDef, make: (o: GameOpts) => Game) {
   await arcadeCamera(def.title, def.tip);
   const preview = cameraOk ? buildPreview() : null;
   arcadeGame = make({
-    canvas, ctx, tracker: cam(), cameraOk,
+    canvas, ctx, tracker: cam(), cameraOk, rig: new HandRig(),
     onExit: (score, label) => {
       preview?.remove();
+      debugCtl.exit();
       endArcade(def, score, label);
     },
   });
   arcadeGame.start();
+  debugCtl.enter();
 }
 
 function endArcade(def: ArcadeDef, score: number, label?: string) {
   state = 'results';
+  arcadeGame = null;
+  // games persist their own best under gs-<id>-best just before exiting, so
+  // matching it here means this run set (or tied) the record
+  const best = Number(localStorage.getItem(`gs-${def.id}-best`) ?? 0);
+  const newBest = score > 0 && score >= best;
   const res = div('overlay results');
   res.innerHTML = `
-    <div class="congrats">Time!</div>
+    <div class="congrats">${newBest ? 'New best!' : 'Time!'}</div>
     <div class="result-banner">
       <div class="result-name">${def.title.toUpperCase()}</div>
-      <div class="result-score">${score}</div>
+      <div class="result-score" id="arc-score">0</div>
     </div>
     ${label ? `<div class="fit-row">${label}</div>` : ''}
     <div class="result-btns">
@@ -531,6 +552,8 @@ function endArcade(def: ArcadeDef, score: number, label?: string) {
       <button id="tolist">Menu</button>
     </div>`;
   app.appendChild(res);
+  countUp(res.querySelector('#arc-score') as HTMLElement, score, 1100);
+  setTimeout(() => sfx.fanfare(newBest), 1100);
   const bg = () => {
     if (state !== 'results') return;
     const t = performance.now() / 1000;
@@ -565,10 +588,11 @@ async function startBowling() {
   await arcadeCamera('Bowling', choice === 2 ? 'Pass and play: player 1 bowls first, swap each frame.' : def.tip);
   const preview = cameraOk ? buildPreview() : null;
   arcadeGame = new BowlGame({
-    canvas, ctx, tracker: cam(), cameraOk,
-    onExit: (score, label) => { preview?.remove(); endArcade(def, score, label); },
+    canvas, ctx, tracker: cam(), cameraOk, rig: new HandRig(),
+    onExit: (score, label) => { preview?.remove(); debugCtl.exit(); endArcade(def, score, label); },
   }, choice);
   arcadeGame.start();
+  debugCtl.enter();
 }
 
 async function startBeatBlade() {
@@ -618,7 +642,9 @@ async function startBeatBlade() {
   }
   const tipEl = document.getElementById('bb-tip');
   if (tipEl) tipEl.textContent = cameraOk ? def.tip : 'No camera, watching the autoplay.';
-  await wait(1600);
+  if (cameraOk && tipEl) await calibrateBody(cam(), tipEl);
+  else await wait(900);
+  await countdown(card.querySelector('.ready-inner') as HTMLElement);
   card.remove();
 
   const clock = new YouTubeClock(src, bpm, [{ beat: 0, kind: 'intro' }], totalBeats, 4);
@@ -627,14 +653,16 @@ async function startBeatBlade() {
   src.setBounds(0, 0, W(), Math.round(H() * 0.56));
   const preview = cameraOk ? buildPreview() : null;
   arcadeGame = new BeatBladeGame({
-    canvas, ctx, tracker: cam(), cameraOk, clock, totalBeats, seed: chosen,
+    canvas, ctx, tracker: cam(), cameraOk, clock, totalBeats, seed: chosen, rig: new HandRig(),
     onExit: (score, label) => {
       preview?.remove();
       src.destroy();
+      debugCtl.exit();
       endArcade(def, score, label);
     },
   });
   arcadeGame.start();
+  debugCtl.enter();
 }
 
 function playerNameFromMenu(): string {

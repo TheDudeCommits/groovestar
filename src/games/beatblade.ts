@@ -3,6 +3,7 @@
 // right hand gold. Uses the same beat clock as the dance mode.
 
 import { drawSky, flashText, type Game, type Ctx, type TrackerLike } from './shared';
+import type { HandRig } from '../pose/rig';
 
 export interface BeatClockLike { beat(): number; readonly finished: boolean }
 
@@ -22,6 +23,7 @@ export interface BeatBladeOpts {
   clock: BeatClockLike;
   totalBeats: number;
   seed: string;
+  rig?: HandRig;
   onExit: (score: number, label?: string) => void;
 }
 
