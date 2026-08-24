@@ -18,6 +18,7 @@ import { PlayerAvatar, type Cosmetics } from './avatar';
 import { generateChoreo, freestyleWindows, carveFreestyle, smoothChoreo, type FreestyleWindow } from './choreograph';
 import { fetchVibe, vibeAt, type VibePalette } from './vibe';
 import { fetchRoutineIndex, loadRoutine, type RoutineEntry } from './routines';
+import { FruitGame } from './games/fruit';
 import { parseYouTubeId, YouTubeSource, YouTubeClock } from './youtube';
 import { BeatListener } from './audio/beatsync';
 import { fetchSyncedLyrics, lyricsToLines, applyKeywordChoreo, fetchAiChoreo, fetchSongMeta, introBeatsOf } from './lyrics';
@@ -279,6 +280,26 @@ function showMenu() {
     }
   });
 
+  // --- movement games ---
+  const games = div('classics-panel games-panel');
+  games.innerHTML = `<div class="yt-title">Games</div>
+    <div class="classics-row" id="games-row"></div>`;
+  menu.appendChild(games);
+  {
+    const tile = div('song-tile classic-tile game-tile');
+    const cv2 = document.createElement('canvas');
+    cv2.width = 400; cv2.height = 224;
+    drawFruitCover(cv2);
+    tile.appendChild(cv2);
+    const meta = div('song-meta');
+    meta.innerHTML = `<div class="song-title">Fruit Slice</div>
+      <div class="song-artist">Slice with your hands</div>
+      <div class="song-diff">60 seconds</div>`;
+    tile.appendChild(meta);
+    tile.addEventListener('click', () => startFruitGame());
+    games.querySelector('#games-row')!.appendChild(tile);
+  }
+
   // --- YouTube search / import panel ---
   const yt = div('yt-panel');
   yt.innerHTML = `
@@ -364,6 +385,105 @@ function showMenu() {
     raf = requestAnimationFrame(loop);
   };
   loop();
+}
+
+function drawFruitCover(cv: HTMLCanvasElement) {
+  const c = cv.getContext('2d')!;
+  const w = cv.width, h = cv.height;
+  const sky = c.createLinearGradient(0, 0, 0, h);
+  sky.addColorStop(0, '#2a1a5e'); sky.addColorStop(1, '#3c1e63');
+  c.fillStyle = sky; c.fillRect(0, 0, w, h);
+  // watermelon halves + a blade streak
+  c.save();
+  c.translate(w * 0.38, h * 0.52);
+  c.rotate(-0.3);
+  c.fillStyle = '#ff5d73';
+  c.beginPath(); c.arc(0, 0, h * 0.3, 0, Math.PI); c.closePath(); c.fill();
+  c.lineWidth = h * 0.055; c.strokeStyle = '#39b356';
+  c.beginPath(); c.arc(0, 0, h * 0.285, 0, Math.PI); c.stroke();
+  c.fillStyle = '#28203a';
+  for (let i = -2; i <= 2; i++) {
+    c.beginPath(); c.ellipse(i * h * 0.09, h * 0.09, h * 0.016, h * 0.028, i * 0.4, 0, Math.PI * 2); c.fill();
+  }
+  c.restore();
+  c.save();
+  c.translate(w * 0.62, h * 0.34);
+  c.rotate(0.5);
+  c.fillStyle = '#ffa63e';
+  c.beginPath(); c.arc(0, 0, h * 0.16, 0, Math.PI * 2); c.fill();
+  c.fillStyle = '#2f9e39';
+  c.beginPath(); c.ellipse(h * 0.05, -h * 0.16, h * 0.07, h * 0.032, -0.5, 0, Math.PI * 2); c.fill();
+  c.restore();
+  c.strokeStyle = '#ffd23e';
+  c.lineCap = 'round';
+  c.lineWidth = h * 0.03;
+  c.shadowColor = '#ffd23e'; c.shadowBlur = 18;
+  c.beginPath();
+  c.moveTo(w * 0.16, h * 0.78);
+  c.quadraticCurveTo(w * 0.5, h * 0.1, w * 0.86, h * 0.42);
+  c.stroke();
+}
+
+let fruitGame: FruitGame | null = null;
+
+async function startFruitGame() {
+  state = 'play';
+  cancelAnimationFrame(raf);
+  app.querySelectorAll('.overlay, .yt-holder').forEach((e) => e.remove());
+
+  const card = div('overlay ready-card');
+  card.innerHTML = `<div class="ready-inner"><div class="get-ready">FRUIT SLICE</div>
+    <div class="ready-tip" id="fruit-tip">Starting the camera</div></div>`;
+  app.appendChild(card);
+  if (phoneCam?.connected) {
+    cameraOk = true;
+  } else if (!trackerStarted) {
+    trackerStarted = true;
+    cameraOk = await tracker.init();
+  }
+  const tip = document.getElementById('fruit-tip');
+  if (tip) tip.textContent = cameraOk
+    ? 'Your hands are the blades. Swipe fast to slice, avoid the bombs.'
+    : 'No camera, watching the demo blade.';
+  await wait(1600);
+  card.remove();
+
+  const preview = cameraOk ? buildPreview() : null;
+  fruitGame = new FruitGame({
+    canvas, ctx, tracker: cam(), cameraOk,
+    onExit: (score) => {
+      preview?.remove();
+      endFruitGame(score);
+    },
+  });
+  fruitGame.start();
+}
+
+function endFruitGame(score: number) {
+  state = 'results';
+  const best = Number(localStorage.getItem('gs-fruit-best') ?? 0);
+  const res = div('overlay results');
+  res.innerHTML = `
+    <div class="congrats">Time!</div>
+    <div class="result-banner">
+      <div class="result-name">FRUIT SLICE</div>
+      <div class="result-score">${score}</div>
+    </div>
+    <div class="fit-row">Best ${Math.max(best, score)}</div>
+    <div class="result-btns">
+      <button id="again">Play again</button>
+      <button id="tolist">Menu</button>
+    </div>`;
+  app.appendChild(res);
+  const bg = () => {
+    if (state !== 'results') return;
+    const t = performance.now() / 1000;
+    drawScene({ ctx, w: W(), h: H(), beat: t * 1.9, section: 'chorus', song: SONGS[0], goldBurst: 0 });
+    raf = requestAnimationFrame(bg);
+  };
+  bg();
+  document.getElementById('again')!.addEventListener('click', () => { res.remove(); cancelAnimationFrame(raf); startFruitGame(); });
+  document.getElementById('tolist')!.addEventListener('click', () => { res.remove(); showMenu(); });
 }
 
 function playerNameFromMenu(): string {
