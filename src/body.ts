@@ -108,34 +108,23 @@ export class BodyArt {
       o.quadraticCurveTo(mR[0], mR[1], aR[0], aR[1]);
       o.arc(a[0], a[1], wA, Math.atan2(aR[1] - a[1], aR[0] - a[0]), Math.atan2(aL[1] - a[1], aL[0] - a[0]));
       o.closePath();
-      return { nm, mid: m, bend: Math.max(0, 1 - (n1[0] * n2[0] + n1[1] * n2[1])) };
+      return { nm, mid: m };
     };
 
-    /** hard two-tone cel fill + bend-deepened crease line at the joint */
+    /** fill a limb with a cross-lit gradient + crease line at the joint */
     const limb = (a: P2, m: P2, e: P2, wA: number, wM: number, wE: number, color: string, crease = true) => {
-      const trace = () => limbPath(a, m, e, wA, wM, wE);
-      const { nm, mid, bend } = trace();
-      o.fillStyle = color;
+      const { nm, mid } = limbPath(a, m, e, wA, wM, wE);
+      const g1 = add(mid, mul(nm, wM * 1.4 * lightSide));
+      const g2 = sub(mid, mul(nm, wM * 1.4 * lightSide));
+      const grad = o.createLinearGradient(g1[0], g1[1], g2[0], g2[1]);
+      grad.addColorStop(0, shadeCss(color, 1.16));
+      grad.addColorStop(0.62, color);
+      grad.addColorStop(1, shadeCss(color, 0.68));
+      o.fillStyle = grad;
       o.fill();
-      // cel: clip to the limb, flood with the shadow tone, then stamp the
-      // shape again shifted toward the light — the uncovered sliver on the
-      // far side becomes one hard-edged core shadow
-      o.save();
-      trace(); o.clip();
-      trace(); o.fillStyle = shadeCss(color, 0.66); o.fill();
-      o.translate(lightSide * -wM * 0.5, -wM * 0.3);
-      trace(); o.fillStyle = color; o.fill();
-      // cool bounce light kissing the dark edge
-      o.translate(lightSide * wM * 1.35, wM * 0.8);
-      trace();
-      o.strokeStyle = 'rgba(150,195,255,0.24)';
-      o.lineWidth = wM * 0.34;
-      o.stroke();
-      o.restore();
       if (crease) {
-        // the more the joint bends, the deeper the fold reads
-        o.strokeStyle = `rgba(0,0,0,${0.16 + bend * 0.3})`;
-        o.lineWidth = Math.max(1, wM * (0.18 + bend * 0.34));
+        o.strokeStyle = 'rgba(0,0,0,0.22)';
+        o.lineWidth = Math.max(1, wM * 0.24);
         o.beginPath();
         const c1 = add(mid, mul(nm, wM * 0.66)), c2 = sub(mid, mul(nm, wM * 0.2));
         o.moveTo(c1[0], c1[1]);
@@ -317,19 +306,6 @@ export class BodyArt {
         limb(sh, mix(sh, cap, 0.6), cap, armW[0] * dU * 1.12, armW[0] * dU * 1.05, armW[1] * dL * 1.15, style.top, false);
       } else {
         limb(sh, el, wr, armW[0] * dU, armW[1] * dL, armW[2] * dL, armColor(true));
-        // sleeve fold lines gathering at the elbow
-        const foldDir = norm(sub(wr, el));
-        const foldN = perp(foldDir);
-        o.strokeStyle = 'rgba(0,0,0,0.2)';
-        o.lineWidth = Math.max(1, armW[1] * 0.16);
-        for (const fOff of [0.12, 0.3]) {
-          const fp = mix(el, wr, fOff);
-          o.beginPath();
-          o.moveTo(fp[0] + foldN[0] * armW[1] * 0.7, fp[1] + foldN[1] * armW[1] * 0.7);
-          o.quadraticCurveTo(fp[0] + foldDir[0] * armW[1] * 0.5, fp[1] + foldDir[1] * armW[1] * 0.5,
-            fp[0] - foldN[0] * armW[1] * 0.7, fp[1] - foldN[1] * armW[1] * 0.7);
-          o.stroke();
-        }
         // cuff
         const cf = mix(el, wr, 0.86);
         o.fillStyle = shadeCss(style.top, 0.66);
@@ -390,20 +366,15 @@ export class BodyArt {
     // torso
     {
       torsoPath();
-      o.fillStyle = style.top;
+      const g1 = at(0.5, -chestH * 1.5 * lightSide === -1 ? -chestH * 1.5 : chestH * 1.5);
+      void g1;
+      const gA = at(0.5, -chestH * 1.5 * -lightSide), gB = at(0.5, chestH * 1.5 * -lightSide);
+      const grad = o.createLinearGradient(gB[0], gB[1], gA[0], gA[1]);
+      grad.addColorStop(0, shadeCss(style.top, 1.14));
+      grad.addColorStop(0.55, style.top);
+      grad.addColorStop(1, shadeCss(style.top, 0.7));
+      o.fillStyle = grad;
       o.fill();
-      // hard cel shadow across the torso
-      o.save();
-      torsoPath(); o.clip();
-      torsoPath(); o.fillStyle = shadeCss(style.top, 0.68); o.fill();
-      o.translate(lightSide * -chestH * 0.34, -chestH * 0.18);
-      torsoPath(); o.fillStyle = style.top; o.fill();
-      o.translate(lightSide * chestH * 0.94, chestH * 0.5);
-      torsoPath();
-      o.strokeStyle = 'rgba(150,195,255,0.2)';
-      o.lineWidth = chestH * 0.16;
-      o.stroke();
-      o.restore();
 
       o.save();
       torsoPath();
@@ -495,16 +466,6 @@ export class BodyArt {
           o.stroke();
         }
       }
-      // line art: clavicle hints from the neckline toward each shoulder
-      o.strokeStyle = 'rgba(0,0,0,0.18)';
-      o.lineWidth = Math.max(1, 0.014 * T);
-      for (const s of [-1, 1]) {
-        const c0 = at(0.94, s * 0.06 * T), c1x = at(0.9, s * 0.22 * T);
-        o.beginPath();
-        o.moveTo(c0[0], c0[1]);
-        o.quadraticCurveTo(...at(0.9, s * 0.12 * T), c1x[0], c1x[1]);
-        o.stroke();
-      }
       // contact shadow under the chin
       const nb = at(1.02, 0);
       o.fillStyle = 'rgba(0,0,10,0.22)';
@@ -531,32 +492,18 @@ export class BodyArt {
     this.hairBehind(o, head, hr, style, opts);
 
     // head: skull + jaw
-    const headTrace = () => {
-      o.beginPath();
-      o.moveTo(head[0] - hr, head[1]);
-      o.arc(head[0], head[1] - hr * 0.06, hr, Math.PI, 0);            // skull dome
-      o.quadraticCurveTo(head[0] + hr * 0.96, head[1] + hr * 0.62, head[0] + hr * 0.34, head[1] + hr * 0.94);
-      o.quadraticCurveTo(head[0], head[1] + hr * 1.06, head[0] - hr * 0.34, head[1] + hr * 0.94);  // jaw
-      o.quadraticCurveTo(head[0] - hr * 0.96, head[1] + hr * 0.62, head[0] - hr, head[1]);
-      o.closePath();
-    };
-    headTrace();
-    o.fillStyle = style.skin;
-    o.fill();
-    // hard cel crescent on the shadow side of the face
-    o.save();
-    headTrace(); o.clip();
-    headTrace(); o.fillStyle = shadeCss(style.skin, 0.78); o.fill();
-    o.translate(lightSide * -hr * 0.3, -hr * 0.16);
-    headTrace(); o.fillStyle = style.skin; o.fill();
-    o.restore();
-    // jaw line art
-    o.strokeStyle = 'rgba(0,0,0,0.14)';
-    o.lineWidth = Math.max(1, hr * 0.055);
+    const hg = o.createRadialGradient(head[0] - hr * 0.3 * lightSide, head[1] - hr * 0.35, hr * 0.2, head[0], head[1], hr * 1.05);
+    hg.addColorStop(0, shadeCss(style.skin, 1.12));
+    hg.addColorStop(1, shadeCss(style.skin, 0.84));
+    o.fillStyle = hg;
     o.beginPath();
-    o.moveTo(head[0] + hr * 0.5, head[1] + hr * 0.78);
-    o.quadraticCurveTo(head[0], head[1] + hr * 0.98, head[0] - hr * 0.5, head[1] + hr * 0.78);
-    o.stroke();
+    o.moveTo(head[0] - hr, head[1]);
+    o.arc(head[0], head[1] - hr * 0.06, hr, Math.PI, 0);            // skull dome
+    o.quadraticCurveTo(head[0] + hr * 0.96, head[1] + hr * 0.62, head[0] + hr * 0.34, head[1] + hr * 0.94);
+    o.quadraticCurveTo(head[0], head[1] + hr * 1.06, head[0] - hr * 0.34, head[1] + hr * 0.94);  // jaw
+    o.quadraticCurveTo(head[0] - hr * 0.96, head[1] + hr * 0.62, head[0] - hr, head[1]);
+    o.closePath();
+    o.fill();
     // ears
     for (const s of [-1, 1]) {
       o.fillStyle = shadeCss(style.skin, 0.95);

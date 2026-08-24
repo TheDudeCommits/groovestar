@@ -64,36 +64,7 @@ interface Ghost {
 
 type HandState = 'open' | 'fist' | 'point' | 'relaxed';
 
-/**
- * One-Euro filter: heavy smoothing at low speed (no jitter), almost no
- * smoothing at high speed (no lag) — the standard for responsive mocap.
- */
-class OneEuro {
-  private xf: number | null = null;
-  private dxf = 0;
-  private lastT = 0;
-  constructor(private minCutoff = 1.1, private beta = 3.2, private dCutoff = 1.0) {}
-  private static alpha(cutoff: number, dt: number) {
-    const tau = 1 / (2 * Math.PI * cutoff);
-    return 1 / (1 + tau / dt);
-  }
-  filter(x: number, tSec: number): { v: number; vel: number } {
-    if (this.xf === null) { this.xf = x; this.lastT = tSec; return { v: x, vel: 0 }; }
-    const dt = Math.max(1e-3, Math.min(0.1, tSec - this.lastT));
-    this.lastT = tSec;
-    const dx = (x - this.xf) / dt;
-    this.dxf += (dx - this.dxf) * OneEuro.alpha(this.dCutoff, dt);
-    const cutoff = this.minCutoff + this.beta * Math.abs(this.dxf);
-    this.xf += (x - this.xf) * OneEuro.alpha(cutoff, dt);
-    return { v: this.xf, vel: this.dxf };
-  }
-}
-
-/** predict this far ahead to cancel camera + detection latency */
-const LOOKAHEAD = 0.07;
-
 export class PlayerAvatar {
-  private euro: Partial<Record<Named, { x: OneEuro; y: OneEuro }>> = {};
   private sm: Partial<Record<Named, Pt>> = {};
   private vis: Partial<Record<Named, number>> = {};
   private torsoEMA = 0.22;
@@ -146,18 +117,12 @@ export class PlayerAvatar {
     // anime mode: hold the pose between 12fps steps for a hand-animated feel
     if (this.anime && now - this.lastAccept < 83) return;
     this.lastAccept = now;
-    const tSec = now / 1000;
+    const A = 0.45;
     for (const key of Object.keys(MAP) as Named[]) {
       const lm = lms[MAP[key]];
       const p = { x: (1 - lm.x) * aspect, y: lm.y };
-      let f = this.euro[key];
-      if (!f) { f = { x: new OneEuro(), y: new OneEuro() }; this.euro[key] = f; }
-      const fx = f.x.filter(p.x, tSec);
-      const fy = f.y.filter(p.y, tSec);
-      // velocity extrapolation: predict past the camera/detection latency,
-      // clamped so a tracking spike can't fling a joint
-      const cl = (v: number) => Math.max(-0.9, Math.min(0.9, v));
-      this.sm[key] = { x: fx.v + cl(fx.vel) * LOOKAHEAD, y: fy.v + cl(fy.vel) * LOOKAHEAD };
+      const prev = this.sm[key];
+      this.sm[key] = prev ? { x: prev.x + (p.x - prev.x) * A, y: prev.y + (p.y - prev.y) * A } : p;
       this.vis[key] = lm.visibility ?? 1;
       const z = (lm as { z?: number }).z ?? 0;
       this.zr[key] = (this.zr[key] ?? z) * 0.6 + z * 0.4;
