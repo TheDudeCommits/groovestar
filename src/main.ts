@@ -78,7 +78,10 @@ function toast(text: string) {
   requestAnimationFrame(() => t.classList.add('show'));
   setTimeout(() => { t.classList.remove('show'); setTimeout(() => t.remove(), 400); }, 4200);
 }
-const skinPref = () => (localStorage.getItem('gs-skin') ?? '3d') as 'toon' | 'sprite' | 'wire' | '3d';
+const skinPref = (): 'toon' | 'sprite' | 'wire' => {
+  const v = localStorage.getItem('gs-skin');
+  return v === 'toon' || v === 'wire' ? v : 'sprite';
+};
 const charPref = () => localStorage.getItem('gs-char') ?? 'auto';
 const animePref = () => localStorage.getItem('gs-anime') === '1';
 let playerStyle: StyleProfile | null = null;
@@ -947,7 +950,6 @@ async function openCalibrate() {
       <div id="calib-chips" class="ready-tip"></div>
       <div class="yt-row calib-skins">
         <span class="yt-label">DANCER SKIN</span>
-        <button class="preset skin-opt" data-skin="3d">3D</button>
         <button class="preset skin-opt" data-skin="toon">TOON</button>
         <button class="preset skin-opt" data-skin="sprite">SPRITE</button>
         <button class="preset skin-opt" data-skin="wire">NEON WIRE</button>
@@ -1227,7 +1229,7 @@ function play(song: Song, playerName: string, opts: PlayOpts) {
           r.avatar.draw(ctx, r.style ?? defaultStyle(song), W() * slots[i][0], H() * 0.8, H() * slots[i][1], {
             beat: Math.max(0, beat), accent: song.accent2, w: W(), cosmetics: DEFAULT_COSMETICS,
             // one WebGL context per rival is too heavy — rivals stay sprites
-            skin: skinPref() === '3d' ? 'sprite' : skinPref(), light: stageLight ?? undefined,
+            skin: skinPref(), light: stageLight ?? undefined,
           });
         }
       });

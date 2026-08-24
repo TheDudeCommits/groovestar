@@ -13,11 +13,10 @@
 
 import type { NormalizedLandmark } from '@mediapipe/tasks-vision';
 import type { StyleProfile } from './appearance';
-import { Dancer3D } from './dancer3d';
 import type { Judgment } from './pose/scorer';
 import { SpriteRig } from './rig';
 
-export type SkinId = 'toon' | 'sprite' | 'wire' | '3d';
+export type SkinId = 'toon' | 'sprite' | 'wire';
 
 interface Pt { x: number; y: number }
 type Named =
@@ -110,9 +109,6 @@ export class PlayerAvatar {
   // offscreen for the white sticker-outline silhouette (the Just Dance look)
   private sil = document.createElement('canvas');
   private silCtx = this.sil.getContext('2d')!;
-  // 3D character renderer (created on first use of the '3d' skin)
-  private d3: Dancer3D | null = null;
-  private d3Model = '';
 
   update(lms: NormalizedLandmark[] | null, aspect: number, now: number) {
     if (!lms) { this.hasPose = now - this.lastSeen < 600; return; }
@@ -225,19 +221,7 @@ export class PlayerAvatar {
     const build = style.body.buildScale;
     const lw = (u: number) => u * torsoPx * build;
     const lwT = (u: number) => u * torsoPx; // thickness-independent (layout)
-    let skin = opts.skin ?? 'toon';
-    // 3D skin: load the character on demand; dance in sprite until it's in
-    if (skin === '3d') {
-      const model = style.look?.model ?? 'W_Casual';
-      this.d3 ??= new Dancer3D();
-      if (this.d3Model !== model) {
-        this.d3Model = model;
-        this.d3.load(model).then((ok) => {
-          if (ok && style.look?.tint3d) this.d3!.tint(style);
-        });
-      }
-      if (!this.d3.ready) skin = 'sprite';
-    }
+    const skin = opts.skin ?? 'sprite';
 
     // pseudo-3D: MediaPipe z scales limbs as they come toward the camera and
     // decides whether each arm passes in front of or behind the body
@@ -378,30 +362,6 @@ export class PlayerAvatar {
         o.beginPath(); o.arc(head[0] + s * hr * 0.32, head[1] - hr * 0.05, lwT(0.028), 0, Math.PI * 2); o.fill();
       }
       o.restore();
-    } else if (skin === '3d') {
-      // 3D CHARACTER skin: retarget the Quaternius rig to the same joints,
-      // render offscreen via three.js and blit into the body layer (so the
-      // sticker rim, reflection and particles all apply unchanged)
-      const d3 = this.d3!;
-      if (opts.light) d3.setLight(opts.light.x / opts.w, opts.light.color);
-      const hz = hipZ;
-      d3.pose({
-        pelvis: [pelvis.x, pelvis.y], midSh: midShPx, head,
-        shA, elA, wrA, shB, elB, wrB, hipA, kneeA, ankA, hipB, kneeB, ankB,
-        zElA: (this.zr.elA ?? hz) - hz, zWrA: (this.zr.wrA ?? hz) - hz,
-        zElB: (this.zr.elB ?? hz) - hz, zWrB: (this.zr.wrB ?? hz) - hz,
-        legsTracked,
-      });
-      // anchor by hip height so the model's feet land exactly on the floor.
-      // The character is drawn 22% larger than the human-proportioned 2D
-      // pelvis would imply, so its anchor rises by the same amount (keeps
-      // feet grounded while jumps/crouches still track through liftY).
-      const t3 = torsoPx * 1.22;
-      const s3 = (1.06 * t3) / (d3.hipsRestY * d3.pxPerUnit);
-      const py3 = pelvis.y + 1.06 * (torsoPx - t3);
-      o.drawImage(d3.canvas,
-        pelvis.x - d3.hipsPx[0] * s3, py3 - d3.hipsPx[1] * s3,
-        d3.canvas.width * s3, d3.canvas.height * s3);
     } else if (skin === 'sprite') {
       // SPRITE RIG skin: baked illustrated parts stamped onto the bones
       this.rig.render(o, {
@@ -597,7 +557,7 @@ export class PlayerAvatar {
     // Key light follows the actual stage beam when one is shining (YouTube
     // stage mode); otherwise it drifts gently with the beat. (The 3D skin has
     // real lighting — no cel pass.)
-    if (skin !== 'wire' && skin !== '3d') {
+    if (skin !== 'wire') {
       const bboxX = pelvis.x;
       const keyLight = opts.light
         ? Math.max(-torsoPx * 1.2, Math.min(torsoPx * 1.2, (opts.light.x - pelvis.x) * 0.4))
