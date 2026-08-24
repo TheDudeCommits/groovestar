@@ -142,6 +142,14 @@ export class Hud {
     this.lyricNext.textContent = next ? next.text : '';
   }
 
+  /** fitness milestone: a burning number that flashes for ~2 seconds */
+  flashCalories(n: number) {
+    const f = el('div', 'cal-flash');
+    f.innerHTML = `<span class="cal-num">${n}</span><span class="cal-label">calories burned</span>`;
+    this.root.appendChild(f);
+    setTimeout(() => f.remove(), 2000);
+  }
+
   destroy() { this.root.remove(); }
 }
 

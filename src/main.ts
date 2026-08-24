@@ -1123,6 +1123,8 @@ function play(song: Song, playerName: string, opts: PlayOpts) {
   const corners = opts.room ? buildCorners(opts.room, opts.streams!) : null;
   let lastPoseSend = 0, lastScoreSend = 0;
   const fit = { kcal: 0, active: 0 };
+  const CAL_STEP = Number(localStorage.getItem('gs-calstep') ?? 25);
+  let calMilestone = CAL_STEP;
   opts.fitness = fit;
   let lastFitT = performance.now();
   const countdown = div('overlay countdown');
@@ -1162,7 +1164,11 @@ function play(song: Song, playerName: string, opts: PlayOpts) {
         fit.kcal += ((3.2 + 9 * en) / 60) * dtF;
         if (en > 0.15) fit.active += dtF;
       }
-      hud.setSync(`${Math.round(fit.kcal)} kcal · ${Math.floor(fit.active / 60)}:${String(Math.floor(fit.active % 60)).padStart(2, '0')} active`, en > 0.45);
+      // no live readout; milestones flash instead, total shows at the end
+      if (fit.kcal >= calMilestone) {
+        hud.flashCalories(calMilestone);
+        calMilestone += CAL_STEP;
+      }
     } else {
       lastFitT = performance.now();
     }

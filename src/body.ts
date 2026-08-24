@@ -485,6 +485,42 @@ export class BodyArt {
       o.restore();
     }
 
+    // ---- joint covers: no daylight at the shoulders or hips ----------------
+    // Limbs and torso are separate shapes; these caps overlap both so wide
+    // moves can't open seams at the attachment points.
+    {
+      // pelvis wedge (briefs): bridges torso hem and both thigh tops
+      const crotch = at(-0.22, 0);
+      const hipCapR = W.thigh * 1.02;
+      o.fillStyle = style.bottom;
+      o.beginPath();
+      o.moveTo(J.hipA[0] - hipCapR * 0.9, J.hipA[1] - hipCapR * 0.55);
+      o.quadraticCurveTo(...at(0.1, 0), J.hipB[0] + hipCapR * 0.9, J.hipB[1] - hipCapR * 0.55);
+      o.lineTo(J.hipB[0] + hipCapR * 0.6, J.hipB[1] + hipCapR * 0.75);
+      o.quadraticCurveTo(crotch[0], crotch[1], J.hipA[0] - hipCapR * 0.6, J.hipA[1] + hipCapR * 0.75);
+      o.closePath();
+      o.fill();
+      for (const [hip, knee] of [[J.hipA, J.kneeA], [J.hipB, J.kneeB]] as const) {
+        const cx2 = hip[0] + (knee[0] - hip[0]) * 0.1;
+        const cy2 = hip[1] + (knee[1] - hip[1]) * 0.1;
+        o.beginPath(); o.arc(cx2, cy2, hipCapR * 0.92, 0, Math.PI * 2); o.fill();
+      }
+      // deltoid caps at the shoulders, in the sleeve color
+      o.fillStyle = style.top;
+      for (const sh of [J.shA, J.shB]) {
+        o.beginPath(); o.arc(sh[0], sh[1], W.shoulder * 1.22, 0, Math.PI * 2); o.fill();
+      }
+      if (!opts.lite) {
+        // soft under-shade so the caps read as rounded, not stickers
+        o.fillStyle = 'rgba(0,0,0,0.12)';
+        for (const sh of [J.shA, J.shB]) {
+          o.beginPath();
+          o.arc(sh[0] + W.shoulder * 0.28 * -lightSide, sh[1] + W.shoulder * 0.3, W.shoulder * 0.95, 0, Math.PI * 2);
+          o.fill();
+        }
+      }
+    }
+
     // ---- neck + head --------------------------------------------------------
     const hr = J.hr;
     const head = J.head;
