@@ -58,15 +58,23 @@ export class PoseTracker {
     }
   }
 
+  /** rolling average of what one detection costs (ms) */
+  private detCost = 8;
+
   /** call once per rAF */
   update() {
     if (!this.ready || !this.lm || this.video.readyState < 2) return;
     const now = performance.now();
-    if (now - this.lastT < 33) return; // ~30 fps detection is plenty
+    // full-frame-rate detection when the machine can afford it; fall back to
+    // ~30fps only when a detection costs a real chunk of the frame budget
+    const minGap = this.detCost > 9 ? 33 : 0;
+    if (now - this.lastT < minGap) return;
     let res;
+    const t0 = performance.now();
     try {
       res = this.lm.detectForVideo(this.video, now);
     } catch { return; }
+    this.detCost = this.detCost * 0.9 + (performance.now() - t0) * 0.1;
     this.lastT = now;
     const lms = res.landmarks?.[0];
     if (!lms || lms.length < 33) {
