@@ -1,0 +1,23 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>d3 test</title>
+<style>body{background:#223;margin:0}canvas{border:1px solid #f0f;background:#111}</style></head>
+<body>
+<script type="module">
+import { Dancer3D } from '/src/dancer3d.ts';
+const d3 = new Dancer3D();
+document.body.appendChild(d3.canvas);
+const ok = await d3.load('W_Casual');
+console.log('loaded', ok, 'torsoWorld', d3.torsoWorld, 'hipsPx', d3.hipsPx);
+// synthetic pose: arms up-ish V, legs apart (screen coords, y down)
+const J = {
+  pelvis: [200, 400], midSh: [200, 300], head: [200, 260],
+  shA: [170, 300], elA: [130, 260], wrA: [110, 200],
+  shB: [230, 300], elB: [270, 260], wrB: [290, 200],
+  hipA: [185, 400], kneeA: [165, 470], ankA: [160, 540],
+  hipB: [215, 400], kneeB: [235, 470], ankB: [240, 540],
+  zElA: -0.05, zWrA: -0.1, zElB: 0, zWrB: 0,
+};
+d3.pose(J);
+window.__done = true;
+</script>
+</body></html>

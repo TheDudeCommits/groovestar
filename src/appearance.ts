@@ -20,6 +20,10 @@ export interface Look {
   pattern2?: string;   // secondary color for patterned tops
   skirt: boolean;
   headband?: string;
+  /** 3D skin: which GLB character to wear (public/models/<model>.glb) */
+  model?: string;
+  /** 3D skin: recolor the outfit from the scanned style (AUTO mode) */
+  tint3d?: boolean;
 }
 
 export interface StyleProfile {
