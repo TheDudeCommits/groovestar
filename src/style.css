@@ -291,8 +291,8 @@ body {
   background: #55f0ff; color: #0b2030; border: 0; border-radius: 999px; padding: 11px 22px;
   transition: all 0.15s ease;
 }
-.mp-btn:hover { box-shadow: 0 0 26px rgba(85, 240, 255, 0.6); transform: translateY(-1px); }
-.mp-btn.big { font-size: 16px; padding: 14px 30px; background: #7cf95c; color: #12300b; }
+
+
 #mp-code { width: 90px; text-align: center; letter-spacing: 0.3em; font-weight: 900; font-size: 16px; flex: none !important; min-width: 0 !important; }
 
 .lobby { justify-content: center; background: linear-gradient(180deg, rgba(5,3,15,0.7), rgba(5,3,15,0.9)); }
@@ -706,3 +706,129 @@ body {
 .calib-btn { color: var(--mut); }
 .calib-btn:hover { color: var(--acc); opacity: 1; }
 .calib-btn.on { color: var(--ink); }
+
+/* ========================================================== UI v3 =====
+   Same discipline, happier weather: warm gradient sky, rounded party
+   type, chip toggles, sweeping underline hovers. */
+:root {
+  --ink: #fff7ee;
+  --mut: #b3a8d6;
+  --acc: #ffd23e;
+  --line: rgba(255, 255, 255, 0.16);
+}
+body { font-family: 'Baloo 2', system-ui, sans-serif; background: #1a1140; }
+
+.overlay.menu {
+  background:
+    radial-gradient(52vw 44vh at 10% -8%, rgba(255, 106, 193, 0.34), transparent 62%),
+    radial-gradient(56vw 50vh at 98% 10%, rgba(101, 90, 255, 0.38), transparent 64%),
+    radial-gradient(70vw 54vh at 50% 114%, rgba(255, 170, 64, 0.26), transparent 62%),
+    linear-gradient(180deg, rgba(38, 22, 92, 0.92), rgba(24, 16, 52, 0.94) 60%, rgba(20, 14, 44, 0.96));
+}
+
+.logo {
+  font-family: 'Lilita One', sans-serif;
+  font-weight: 400;
+  letter-spacing: 0.01em;
+  text-shadow: 0 6px 0 rgba(0, 0, 0, 0.18);
+}
+.logo span { color: var(--acc); }
+
+.yt-title, .mp-title {
+  font-family: 'Baloo 2', sans-serif;
+  font-weight: 700;
+  color: var(--mut);
+}
+.song-title { font-family: 'Baloo 2', sans-serif; font-weight: 700; }
+.lobby-title, .get-ready, .congrats, .result-score {
+  font-family: 'Lilita One', sans-serif;
+  font-weight: 400;
+}
+.ready-tip, .lobby-wait, .gs-toast, .result-name { font-family: 'Baloo 2', sans-serif; }
+
+/* text buttons: sweeping underline, color lift — no dimming */
+#yt-go, .mp-btn, .lobby-leave, .result-btns button {
+  position: relative;
+  font-family: 'Baloo 2', sans-serif;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  color: var(--acc);
+  overflow: visible;
+}
+#yt-go::after, .mp-btn::after, .lobby-leave::after, .result-btns button::after {
+  content: '';
+  position: absolute;
+  left: 0; right: 0; bottom: 2px;
+  height: 3px;
+  border-radius: 2px;
+  background: var(--acc);
+  transform: scaleX(0);
+  transform-origin: left;
+  transition: transform 0.28s cubic-bezier(0.2, 0.9, 0.25, 1);
+}
+#yt-go:hover, .mp-btn:hover, .lobby-leave:hover, .result-btns button:hover {
+  opacity: 1;
+  color: #ffffff;
+}
+#yt-go:hover::after, .mp-btn:hover::after, .lobby-leave:hover::after, .result-btns button:hover::after {
+  transform: scaleX(1);
+}
+
+/* chip toggles: rounded, stateful, springy */
+.calib-btn {
+  font-family: 'Baloo 2', sans-serif;
+  font-weight: 700;
+  font-size: 13px;
+  letter-spacing: 0.06em;
+  text-transform: none;
+  color: var(--ink);
+  background: rgba(255, 255, 255, 0.09);
+  border: none;
+  border-radius: 999px;
+  padding: 9px 20px;
+  transition: background 0.2s, color 0.2s, transform 0.18s cubic-bezier(0.2, 1.4, 0.4, 1);
+}
+.calib-btn:hover {
+  background: rgba(255, 255, 255, 0.18);
+  color: #ffffff;
+  transform: translateY(-2px);
+  opacity: 1;
+}
+.calib-btn:active { transform: translateY(0) scale(0.97); }
+.calib-btn.on {
+  background: var(--acc);
+  color: #241a06;
+}
+.calib-btn.on:hover { background: #ffdd6b; color: #241a06; }
+.calib-btn.on::after { content: none; }
+.foot-row { align-items: center; }
+.foot-row label { font-family: 'Baloo 2', sans-serif; text-transform: none; letter-spacing: 0.04em; font-size: 13px; font-weight: 600; }
+
+/* tiles: lift + warm glow on hover */
+.classic-tile { transition: transform 0.25s cubic-bezier(0.2, 1.2, 0.35, 1); }
+.classic-tile:hover { transform: translateY(-5px); }
+.classic-tile img { transition: box-shadow 0.25s, opacity 0.2s; }
+.classic-tile:hover img {
+  opacity: 1;
+  box-shadow: 0 10px 34px rgba(255, 170, 64, 0.35);
+}
+
+/* inputs pick up the warmth */
+.yt-row input, #mp-code, .foot-row input { font-family: 'Baloo 2', sans-serif; }
+.yt-row input::placeholder { color: #8d82b5; }
+
+/* lobby + results sit on the same sky */
+.lobby-box { background: rgba(26, 17, 64, 0.94); border-radius: 20px; }
+.lobby-code b { color: var(--acc); }
+.lobby-player { border-radius: 999px; border-color: var(--line); font-family: 'Baloo 2', sans-serif; }
+.result-banner { background: rgba(255, 255, 255, 0.1); border-radius: 16px; }
+.gs-toast { background: rgba(38, 26, 84, 0.96); border-radius: 12px; }
+
+/* v3 patch: no legacy glows or fills anywhere on text buttons */
+#yt-go:hover, .mp-btn:hover, .lobby-leave:hover, .result-btns button:hover {
+  box-shadow: none;
+  background: none;
+  transform: none;
+  text-shadow: none;
+}
+.mp-btn, .mp-btn.big { background: none; box-shadow: none; }
