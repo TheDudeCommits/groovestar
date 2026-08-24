@@ -28,6 +28,8 @@ export class PoseTracker {
   latest: PlayerFrame = { t: 0, features: null, energy: 0, points: null };
   /** raw (unmirrored) landmarks from the last successful detection */
   latestLandmarks: NormalizedLandmark[] | null = null;
+  /** world landmarks in meters (true 3D, hip-centered) — gesture fuel */
+  latestWorld: NormalizedLandmark[] | null = null;
   ready = false;
   error: string | null = null;
 
@@ -80,9 +82,11 @@ export class PoseTracker {
     if (!lms || lms.length < 33) {
       this.latest = { t: now, features: null, energy: this.decayEnergy(), points: null };
       this.latestLandmarks = null;
+      this.latestWorld = null;
       return;
     }
     this.latestLandmarks = lms;
+    this.latestWorld = (res as { worldLandmarks?: NormalizedLandmark[][] }).worldLandmarks?.[0] ?? null;
     this.latest = computeFrame(lms, now, this.st, this.latest.t);
   }
 

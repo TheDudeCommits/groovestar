@@ -19,6 +19,13 @@ import { generateChoreo, freestyleWindows, carveFreestyle, smoothChoreo, type Fr
 import { fetchVibe, vibeAt, type VibePalette } from './vibe';
 import { fetchRoutineIndex, loadRoutine, type RoutineEntry } from './routines';
 import { FruitGame } from './games/fruit';
+import { RushGame } from './games/rush';
+import { BowlGame } from './games/bowl';
+import { TennisGame } from './games/tennis';
+import { BoxGame } from './games/box';
+import { BeatBladeGame } from './games/beatblade';
+import type { Game, GameOpts } from './games/shared';
+import { coverFruit, coverBlade, coverRush, coverBowl, coverTennis, coverBox } from './games/covers';
 import { parseYouTubeId, YouTubeSource, YouTubeClock } from './youtube';
 import { BeatListener } from './audio/beatsync';
 import { fetchSyncedLyrics, lyricsToLines, applyKeywordChoreo, fetchAiChoreo, fetchSongMeta, introBeatsOf } from './lyrics';
@@ -285,18 +292,18 @@ function showMenu() {
   games.innerHTML = `<div class="yt-title">Games</div>
     <div class="classics-row" id="games-row"></div>`;
   menu.appendChild(games);
-  {
+  for (const gdef of ARCADE) {
     const tile = div('song-tile classic-tile game-tile');
     const cv2 = document.createElement('canvas');
     cv2.width = 400; cv2.height = 224;
-    drawFruitCover(cv2);
+    gdef.cover(cv2);
     tile.appendChild(cv2);
     const meta = div('song-meta');
-    meta.innerHTML = `<div class="song-title">Fruit Slice</div>
-      <div class="song-artist">Slice with your hands</div>
-      <div class="song-diff">60 seconds</div>`;
+    meta.innerHTML = `<div class="song-title">${gdef.title}</div>
+      <div class="song-artist">${gdef.sub}</div>
+      <div class="song-diff">${gdef.extra}</div>`;
     tile.appendChild(meta);
-    tile.addEventListener('click', () => startFruitGame());
+    tile.addEventListener('click', () => gdef.launch());
     games.querySelector('#games-row')!.appendChild(tile);
   }
 
@@ -424,16 +431,64 @@ function drawFruitCover(cv: HTMLCanvasElement) {
   c.stroke();
 }
 
-let fruitGame: FruitGame | null = null;
+interface ArcadeDef {
+  id: string;
+  title: string;
+  sub: string;
+  extra: string;
+  tip: string;
+  cover: (cv: HTMLCanvasElement) => void;
+  launch: () => void;
+}
 
-async function startFruitGame() {
+let arcadeGame: Game | null = null;
+
+const ARCADE: ArcadeDef[] = [
+  {
+    id: 'fruit', title: 'Fruit Slice', sub: 'Slice with your hands', extra: '60 seconds',
+    tip: 'Your hands are the blades. Swipe fast to slice, avoid the bombs.',
+    cover: coverFruit,
+    launch: () => startArcade(ARCADE[0], (o) => new FruitGame(o)),
+  },
+  {
+    id: 'blade', title: 'Beat Blade', sub: 'Slice notes on the beat', extra: 'Any song',
+    tip: 'Left hand cyan, right hand gold. Slice each note as it hits its ring.',
+    cover: coverBlade,
+    launch: () => startBeatBlade(),
+  },
+  {
+    id: 'rush', title: 'Rush', sub: 'Run, jump, duck', extra: 'Endless',
+    tip: 'Step sideways to change lanes. Really jump the hurdles, duck the bars.',
+    cover: coverRush,
+    launch: () => startArcade(ARCADE[2], (o) => new RushGame(o)),
+  },
+  {
+    id: 'bowl', title: 'Bowling', sub: 'Swing your arm to roll', extra: '1 or 2 players',
+    tip: 'Step sideways to aim, then swing your arm like you mean it.',
+    cover: coverBowl,
+    launch: () => startBowling(),
+  },
+  {
+    id: 'tennis', title: 'Tennis', sub: 'Rally against the AI', extra: 'First to 5',
+    tip: 'Move with the ball, swing when it reaches your ring.',
+    cover: coverTennis,
+    launch: () => startArcade(ARCADE[4], (o) => new TennisGame(o)),
+  },
+  {
+    id: 'box', title: 'Boxing', sub: 'Punch the pads', extra: '60 seconds',
+    tip: 'Punch TOWARD the camera with the matching hand. Lean to dodge.',
+    cover: coverBox,
+    launch: () => startArcade(ARCADE[5], (o) => new BoxGame(o)),
+  },
+];
+
+async function arcadeCamera(title: string, tip: string): Promise<boolean> {
   state = 'play';
   cancelAnimationFrame(raf);
   app.querySelectorAll('.overlay, .yt-holder').forEach((e) => e.remove());
-
   const card = div('overlay ready-card');
-  card.innerHTML = `<div class="ready-inner"><div class="get-ready">FRUIT SLICE</div>
-    <div class="ready-tip" id="fruit-tip">Starting the camera</div></div>`;
+  card.innerHTML = `<div class="ready-inner"><div class="get-ready">${title.toUpperCase()}</div>
+    <div class="ready-tip" id="arc-tip">Starting the camera</div></div>`;
   app.appendChild(card);
   if (phoneCam?.connected) {
     cameraOk = true;
@@ -441,35 +496,36 @@ async function startFruitGame() {
     trackerStarted = true;
     cameraOk = await tracker.init();
   }
-  const tip = document.getElementById('fruit-tip');
-  if (tip) tip.textContent = cameraOk
-    ? 'Your hands are the blades. Swipe fast to slice, avoid the bombs.'
-    : 'No camera, watching the demo blade.';
-  await wait(1600);
+  const tipEl = document.getElementById('arc-tip');
+  if (tipEl) tipEl.textContent = cameraOk ? tip : 'No camera, watching the demo.';
+  await wait(1700);
   card.remove();
-
-  const preview = cameraOk ? buildPreview() : null;
-  fruitGame = new FruitGame({
-    canvas, ctx, tracker: cam(), cameraOk,
-    onExit: (score) => {
-      preview?.remove();
-      endFruitGame(score);
-    },
-  });
-  fruitGame.start();
+  return cameraOk;
 }
 
-function endFruitGame(score: number) {
+async function startArcade(def: ArcadeDef, make: (o: GameOpts) => Game) {
+  await arcadeCamera(def.title, def.tip);
+  const preview = cameraOk ? buildPreview() : null;
+  arcadeGame = make({
+    canvas, ctx, tracker: cam(), cameraOk,
+    onExit: (score, label) => {
+      preview?.remove();
+      endArcade(def, score, label);
+    },
+  });
+  arcadeGame.start();
+}
+
+function endArcade(def: ArcadeDef, score: number, label?: string) {
   state = 'results';
-  const best = Number(localStorage.getItem('gs-fruit-best') ?? 0);
   const res = div('overlay results');
   res.innerHTML = `
     <div class="congrats">Time!</div>
     <div class="result-banner">
-      <div class="result-name">FRUIT SLICE</div>
+      <div class="result-name">${def.title.toUpperCase()}</div>
       <div class="result-score">${score}</div>
     </div>
-    <div class="fit-row">Best ${Math.max(best, score)}</div>
+    ${label ? `<div class="fit-row">${label}</div>` : ''}
     <div class="result-btns">
       <button id="again">Play again</button>
       <button id="tolist">Menu</button>
@@ -482,8 +538,103 @@ function endFruitGame(score: number) {
     raf = requestAnimationFrame(bg);
   };
   bg();
-  document.getElementById('again')!.addEventListener('click', () => { res.remove(); cancelAnimationFrame(raf); startFruitGame(); });
+  document.getElementById('again')!.addEventListener('click', () => { res.remove(); cancelAnimationFrame(raf); def.launch(); });
   document.getElementById('tolist')!.addEventListener('click', () => { res.remove(); showMenu(); });
+}
+
+async function startBowling() {
+  // mode chooser: solo or pass-and-play
+  const def = ARCADE[3];
+  const pick = div('overlay lobby');
+  pick.innerHTML = `<div class="lobby-box">
+    <div class="lobby-title">Bowling</div>
+    <div class="yt-row" style="justify-content:center">
+      <button id="b1" class="mp-btn">Solo</button>
+      <button id="b2" class="mp-btn">Two players</button>
+    </div>
+    <button id="bx" class="lobby-leave">Back</button>
+  </div>`;
+  app.appendChild(pick);
+  const choice = await new Promise<number>((resolve) => {
+    pick.querySelector('#b1')!.addEventListener('click', () => resolve(1));
+    pick.querySelector('#b2')!.addEventListener('click', () => resolve(2));
+    pick.querySelector('#bx')!.addEventListener('click', () => resolve(0));
+  });
+  pick.remove();
+  if (choice === 0) return;
+  await arcadeCamera('Bowling', choice === 2 ? 'Pass and play: player 1 bowls first, swap each frame.' : def.tip);
+  const preview = cameraOk ? buildPreview() : null;
+  arcadeGame = new BowlGame({
+    canvas, ctx, tracker: cam(), cameraOk,
+    onExit: (score, label) => { preview?.remove(); endArcade(def, score, label); },
+  }, choice);
+  arcadeGame.start();
+}
+
+async function startBeatBlade() {
+  const def = ARCADE[1];
+  // pick a song with the live search
+  const pick = div('overlay lobby');
+  pick.innerHTML = `<div class="lobby-box" style="width:min(680px,92vw)">
+    <div class="lobby-title">Beat Blade</div>
+    <div class="yt-row"><input id="bb-url" placeholder="Search or paste a YouTube link" spellcheck="false"></div>
+    <div id="bb-results" class="yt-results"></div>
+    <div id="bb-err" class="yt-err"></div>
+    <button id="bb-back" class="lobby-leave">Back</button>
+  </div>`;
+  app.appendChild(pick);
+  const chosen = await new Promise<string | null>((resolve) => {
+    attachYtSearch(
+      pick.querySelector('#bb-url') as HTMLInputElement,
+      pick.querySelector('#bb-results') as HTMLElement,
+      pick.querySelector('#bb-err') as HTMLElement,
+      null,
+      (id) => resolve(id),
+    );
+    pick.querySelector('#bb-back')!.addEventListener('click', () => resolve(null));
+  });
+  pick.remove();
+  if (!chosen) return;
+
+  state = 'play';
+  cancelAnimationFrame(raf);
+  app.querySelectorAll('.overlay, .yt-holder').forEach((e) => e.remove());
+  const card = div('overlay ready-card');
+  card.innerHTML = `<div class="ready-inner"><div class="get-ready">BEAT BLADE</div>
+    <div class="ready-tip" id="bb-tip">Loading the song</div></div>`;
+  app.appendChild(card);
+
+  const src = new YouTubeSource();
+  const ok = await src.load(chosen);
+  if (!ok) { card.remove(); src.destroy(); toast(src.error ?? 'Could not load that video.'); showMenu(); return; }
+  const meta = await fetchSongMeta(chosen, src.title, src.duration);
+  const bpm = meta ?? 120;
+  const totalBeats = Math.min(200, Math.max(64, Math.floor((src.duration * bpm) / 60) - 8));
+  if (phoneCam?.connected) {
+    cameraOk = true;
+  } else if (!trackerStarted) {
+    trackerStarted = true;
+    cameraOk = await tracker.init();
+  }
+  const tipEl = document.getElementById('bb-tip');
+  if (tipEl) tipEl.textContent = cameraOk ? def.tip : 'No camera, watching the autoplay.';
+  await wait(1600);
+  card.remove();
+
+  const clock = new YouTubeClock(src, bpm, [{ beat: 0, kind: 'intro' }], totalBeats, 4);
+  clock.restart();
+  // dim the video into a backdrop
+  src.setBounds(0, 0, W(), Math.round(H() * 0.56));
+  const preview = cameraOk ? buildPreview() : null;
+  arcadeGame = new BeatBladeGame({
+    canvas, ctx, tracker: cam(), cameraOk, clock, totalBeats, seed: chosen,
+    onExit: (score, label) => {
+      preview?.remove();
+      src.destroy();
+      endArcade(def, score, label);
+    },
+  });
+  arcadeGame.start();
 }
 
 function playerNameFromMenu(): string {
