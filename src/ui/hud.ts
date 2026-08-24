@@ -6,7 +6,7 @@
 //  results — white flash → banner → count-up score with popping stars
 
 import { MOVES, forward, type Pose } from '../moves';
-import { CLIPS, clipPeakPose } from '../motion';
+import { CLIPS, clipPeakPose, clipPose } from '../motion';
 import type { Song, LyricLine } from '../songs';
 
 export class Hud {
@@ -161,14 +161,50 @@ export function drawPictograms(
   ctx.save();
   for (const m of song.choreo) {
     const d = m.beat - beat;               // beats until arrival
-    if (d < -0.6 || d > 7) continue;
+    if (d < -1.9 || d > 7) continue;
+    if (d <= 0.12) {
+      // CURRENT move: parked in the now slot, ANIMATED through the actual
+      // motion, with a countdown ring emptying over its two beats
+      const into = Math.min(2, -d + 0.12);
+      const fade = d < -1.55 ? Math.max(0, (1.9 + d) / 0.35) : 1;
+      drawNowSlot(ctx, m.move, !!m.gold, nowX, stripY, size * 1.3, fade, song.accent, Math.max(0, beat - m.beat));
+      void into;
+      continue;
+    }
     const x = nowX + d * speed;
     if (x > w + size) continue;
-    let alpha = 1, scale = 1;
-    if (d < 0) { alpha = 1 + d / 0.6; scale = 1 + (-d) * 0.45; } // arrival pop & fade
-    else if (d > 5.4) alpha = (7 - d) / 1.6;                     // ease in from the right
-    drawPicto(ctx, m.move, !!m.gold, x, stripY, size * scale, alpha, song.accent);
+    let alpha = 1;
+    if (d > 5.4) alpha = (7 - d) / 1.6;    // ease in from the right
+    drawPicto(ctx, m.move, !!m.gold, x, stripY, size, alpha, song.accent, true);
   }
+  ctx.restore();
+}
+
+function poseOf(moveId: string, t: number | null): Pose | null {
+  const clip = CLIPS[moveId];
+  if (clip) return t === null ? clipPeakPose(clip) : clipPose(clip, Math.min(clip.b, t));
+  return MOVES[moveId]?.pose ?? null;
+}
+
+/** the current move: animated figure + countdown ring */
+function drawNowSlot(
+  ctx: CanvasRenderingContext2D,
+  moveId: string, gold: boolean,
+  x: number, y: number, size: number, alpha: number, accent: string, tBeats: number,
+) {
+  ctx.save();
+  ctx.globalAlpha = Math.max(0, alpha);
+  // slot ring: fills down as the move plays out
+  const cy = y - size * 0.42;
+  const r = size * 0.66;
+  ctx.lineWidth = Math.max(3, size * 0.05);
+  ctx.strokeStyle = 'rgba(255,255,255,0.22)';
+  ctx.beginPath(); ctx.arc(x, cy, r, 0, Math.PI * 2); ctx.stroke();
+  ctx.strokeStyle = gold ? '#ffd23e' : accent;
+  ctx.beginPath();
+  ctx.arc(x, cy, r, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * (1 - tBeats / 2));
+  ctx.stroke();
+  drawPicto(ctx, moveId, gold, x, y, size, alpha, accent, false, tBeats);
   ctx.restore();
 }
 
@@ -176,9 +212,9 @@ function drawPicto(
   ctx: CanvasRenderingContext2D,
   moveId: string, gold: boolean,
   x: number, y: number, size: number, alpha: number, accent: string,
+  withArrows: boolean, liveT: number | null = null,
 ) {
-  let pose: Pose | null = MOVES[moveId]?.pose ?? null;
-  if (!pose && CLIPS[moveId]) pose = clipPeakPose(CLIPS[moveId]);
+  const pose = poseOf(moveId, liveT);
   if (!pose) return;
   const move = MOVES[moveId];
   const sk = forward(pose);
@@ -187,63 +223,116 @@ function drawPicto(
 
   ctx.save();
   ctx.globalAlpha = Math.max(0, alpha);
-  // card glow for gold
   if (gold) {
     ctx.shadowColor = '#ffd23e';
     ctx.shadowBlur = 16;
   }
-  const stroke = gold ? '#ffd23e' : '#ffffff';
-  ctx.strokeStyle = stroke;
-  ctx.fillStyle = stroke;
   ctx.lineCap = 'round';
   ctx.lineJoin = 'round';
-  ctx.lineWidth = Math.max(3, size * 0.055);
 
-  const seg = (...pts: [number, number][]) => {
+  // chunky silhouette: dark outline pass, then a solid filled figure — reads
+  // as a body at a glance instead of thin sticks
+  const fillCol = gold ? '#ffd23e' : '#ffffff';
+  const outCol = 'rgba(10,8,24,0.85)';
+  const passes: [string, number][] = [[outCol, 0.19], [fillCol, 0.125]];
+  for (const [col, lw] of passes) {
+    ctx.strokeStyle = col;
+    ctx.fillStyle = col;
+    ctx.lineWidth = size * lw;
+    // torso wedge (shoulders wider than hips)
+    const pel = P(sk.pelvis), nk = P(sk.neck);
+    const ux = nk[0] - pel[0], uy = nk[1] - pel[1];
+    const n = Math.hypot(ux, uy) || 1;
+    const px = -uy / n, py = ux / n;
+    const sw = s * 0.3, hw = s * 0.18;
     ctx.beginPath();
-    const p0 = P(pts[0]); ctx.moveTo(p0[0], p0[1]);
-    for (let i = 1; i < pts.length; i++) { const p = P(pts[i]); ctx.lineTo(p[0], p[1]); }
+    ctx.moveTo(pel[0] - px * hw, pel[1] - py * hw);
+    ctx.lineTo(nk[0] - px * sw, nk[1] - py * sw);
+    ctx.lineTo(nk[0] + px * sw, nk[1] + py * sw);
+    ctx.lineTo(pel[0] + px * hw, pel[1] + py * hw);
+    ctx.closePath();
+    ctx.fill();
     ctx.stroke();
-  };
-  seg(sk.pelvis, sk.neck);
-  seg(sk.shL, sk.elL, sk.wrL);
-  seg(sk.shR, sk.elR, sk.wrR);
-  seg(sk.hipL, sk.kneeL, sk.ankL);
-  seg(sk.hipR, sk.kneeR, sk.ankR);
-  const hd = P(sk.head);
-  ctx.beginPath(); ctx.arc(hd[0], hd[1], s * 0.2, 0, Math.PI * 2); ctx.fill();
-
-  // accent arrows on the moving limb (yellow in the reference)
-  ctx.strokeStyle = gold ? '#fff3b0' : accent;
-  ctx.fillStyle = ctx.strokeStyle;
-  ctx.lineWidth = Math.max(2.5, size * 0.045);
-  const arrow = (from: [number, number], dir: string, side: number) => {
-    const [ax, ay] = P(from);
-    const len = s * 0.5;
-    let vx = 0, vy = 0;
-    if (dir === 'up') { vx = 0; vy = -len; }
-    else if (dir === 'down') { vx = 0; vy = len; }
-    else if (dir === 'out') { vx = side * len; vy = 0; }
-    else if (dir === 'in') { vx = -side * len; vy = 0; }
-    if (dir === 'cw' || dir === 'ccw') {
-      const sw = dir === 'cw' ? 1 : -1;
+    // limbs
+    const seg = (...pts: [number, number][]) => {
       ctx.beginPath();
-      ctx.arc(ax, ay, s * 0.42, sw * 0.4, sw * 0.4 + sw * 4.2);
+      const p0 = P(pts[0]); ctx.moveTo(p0[0], p0[1]);
+      for (let i = 1; i < pts.length; i++) { const p = P(pts[i]); ctx.lineTo(p[0], p[1]); }
       ctx.stroke();
-      return;
+    };
+    seg(sk.shL, sk.elL, sk.wrL);
+    seg(sk.shR, sk.elR, sk.wrR);
+    seg(sk.hipL, sk.kneeL, sk.ankL);
+    seg(sk.hipR, sk.kneeR, sk.ankR);
+    // hands (bigger dots — hand position is what players match)
+    for (const wr of [sk.wrL, sk.wrR]) {
+      const p = P(wr);
+      ctx.beginPath(); ctx.arc(p[0], p[1], size * lw * 0.62, 0, Math.PI * 2); ctx.fill();
     }
-    ctx.beginPath(); ctx.moveTo(ax, ay); ctx.lineTo(ax + vx, ay + vy); ctx.stroke();
-    const hx = ax + vx, hy = ay + vy;
-    const n = Math.hypot(vx, vy) || 1;
-    const ux = vx / n, uy = vy / n;
-    ctx.beginPath();
-    ctx.moveTo(hx + ux * s * 0.16, hy + uy * s * 0.16);
-    ctx.lineTo(hx - uy * s * 0.12, hy + ux * s * 0.12);
-    ctx.lineTo(hx + uy * s * 0.12, hy - ux * s * 0.12);
-    ctx.closePath(); ctx.fill();
-  };
-  if (move?.pose.arrowL) arrow(sk.wrL, move.pose.arrowL, -1);
-  if (move?.pose.arrowR) arrow(sk.wrR, move.pose.arrowR, 1);
+    // head
+    const hd = P(sk.head);
+    ctx.beginPath(); ctx.arc(hd[0], hd[1], s * 0.24, 0, Math.PI * 2); ctx.fill();
+    ctx.stroke();
+  }
+
+  // MOTION arrows: where the hands actually travel during the move (from the
+  // clip's start to its peak) — curved, in the accent color
+  if (withArrows) {
+    ctx.strokeStyle = gold ? '#fff3b0' : accent;
+    ctx.fillStyle = ctx.strokeStyle;
+    ctx.lineWidth = Math.max(2.5, size * 0.05);
+    ctx.shadowBlur = 0;
+    const clip = CLIPS[moveId];
+    if (clip) {
+      const sk0 = forward(clipPose(clip, 0));
+      const skP = forward(clipPeakPose(clip));
+      for (const [w0, wP] of [[sk0.wrL, skP.wrL], [sk0.wrR, skP.wrR]] as const) {
+        const a = P(w0), b = P(wP);
+        const dx = b[0] - a[0], dy = b[1] - a[1];
+        const dist = Math.hypot(dx, dy);
+        if (dist < s * 0.55) continue;       // hand barely moves — no arrow
+        // curve bows outward from the body center
+        const mx = (a[0] + b[0]) / 2 + (a[0] + b[0] > 2 * x ? 1 : -1) * s * 0.22;
+        const my = (a[1] + b[1]) / 2 - s * 0.1;
+        ctx.beginPath();
+        ctx.moveTo(a[0], a[1]);
+        ctx.quadraticCurveTo(mx, my, b[0], b[1]);
+        ctx.stroke();
+        // arrowhead along the end tangent
+        const tx = b[0] - mx, ty = b[1] - my;
+        const tn = Math.hypot(tx, ty) || 1;
+        const uxa = tx / tn, uya = ty / tn;
+        ctx.beginPath();
+        ctx.moveTo(b[0] + uxa * s * 0.22, b[1] + uya * s * 0.22);
+        ctx.lineTo(b[0] - uya * s * 0.14, b[1] + uxa * s * 0.14);
+        ctx.lineTo(b[0] + uya * s * 0.14, b[1] - uxa * s * 0.14);
+        ctx.closePath();
+        ctx.fill();
+      }
+    } else if (move?.pose.arrowL || move?.pose.arrowR) {
+      // static moves keep their authored direction hints
+      const arrow = (from: [number, number], dir: string, side: number) => {
+        const [ax, ay] = P(from);
+        const l2 = s * 0.5;
+        let vx = 0, vy = 0;
+        if (dir === 'up') vy = -l2;
+        else if (dir === 'down') vy = l2;
+        else if (dir === 'out') vx = side * l2;
+        else if (dir === 'in') vx = -side * l2;
+        else return;
+        ctx.beginPath(); ctx.moveTo(ax, ay); ctx.lineTo(ax + vx, ay + vy); ctx.stroke();
+        const n2 = Math.hypot(vx, vy) || 1;
+        const uxa = vx / n2, uya = vy / n2;
+        ctx.beginPath();
+        ctx.moveTo(ax + vx + uxa * s * 0.16, ay + vy + uya * s * 0.16);
+        ctx.lineTo(ax + vx - uya * s * 0.12, ay + vy + uxa * s * 0.12);
+        ctx.lineTo(ax + vx + uya * s * 0.12, ay + vy - uxa * s * 0.12);
+        ctx.closePath(); ctx.fill();
+      };
+      if (move.pose.arrowL) arrow(sk.wrL, move.pose.arrowL, -1);
+      if (move.pose.arrowR) arrow(sk.wrR, move.pose.arrowR, 1);
+    }
+  }
   ctx.restore();
 }
 

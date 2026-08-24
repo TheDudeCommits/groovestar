@@ -10,10 +10,10 @@ import { Scorer, type JudgmentEvent } from './pose/scorer';
 import { choreoPose, addGroove, drawCharacter, coachStyleOf } from './coach';
 import { drawScene } from './scenes';
 import { Hud, drawPictograms } from './ui/hud';
-import { MOVES } from './moves';
+import { MOVES, type Pose } from './moves';
 import { StyleScanner, type StyleProfile } from './appearance';
 import { CAST, applyCharacter } from './characters';
-import { CLIPS } from './motion';
+import { CLIPS, clipPose } from './motion';
 import { PlayerAvatar, type Cosmetics } from './avatar';
 import { generateChoreo, freestyleWindows, carveFreestyle, smoothChoreo, type FreestyleWindow } from './choreograph';
 import { fetchVibe, vibeAt, type VibePalette } from './vibe';
@@ -585,10 +585,10 @@ async function startClassic(entry: RoutineEntry) {
     showMenu();
     return;
   }
-  const [lyr, vibe] = await Promise.all([
-    Promise.race([fetchSyncedLyrics(entry.title, src.duration), wait(6000).then(() => null)]),
-    fetchVibe(entry.v),
-  ]);
+  // no karaoke overlay for classics: LRCLIB timestamps live on the SONG's
+  // timeline, but gameplay videos have menu/intro footage (Blue starts ~84s
+  // in) — and most JD videos display their own lyrics anyway
+  const vibe = await fetchVibe(entry.v);
   loadCard.remove();
 
   const seedNum = [...entry.v].reduce((n, ch) => n + ch.charCodeAt(0), 0);
@@ -606,7 +606,7 @@ async function startClassic(entry: RoutineEntry) {
     root: 57, chords: [[0, 3, 7]],
     sections: routine.sections,
     choreo: routine.choreo,
-    lyrics: lyr ? lyricsToLines(lyr, routine.bpm, 4) : [],
+    lyrics: [],
   };
 
   await readyFlow(song, `<b>${escapeHtml(song.title)}</b><span>the real routine · ${Math.round(routine.bpm)} BPM</span>`);
@@ -615,6 +615,11 @@ async function startClassic(entry: RoutineEntry) {
   const clock = new YouTubeClock(src, routine.bpm, routine.sections, routine.totalBeats, 4);
   const run = () => {
     clock.restart();
+    // long pre-routine footage (menus, loading screens in the capture) is
+    // skipped — jump to 8 beats before the first move
+    if (routine.bodyStart > 24) {
+      src.seek(((routine.bodyStart - 8 + 4) * 60) / routine.bpm);
+    }
     play(song, playerName, { clock, yt: src, vibe, onAgain: run });
   };
   run();
@@ -1605,13 +1610,16 @@ async function endSong(song: Song, scorer: Scorer, hud: Hud, preview: HTMLCanvas
   const nailed = [...new Set(scorer.log.filter((l) => l.judgment === 'PERFECT' || l.judgment === 'YEAH').map((l) => l.move))]
     .filter((m) => !m.startsWith('gold_')).slice(-4);
   const victorySeq = nailed.length >= 2 ? nailed : ['clap_up', 'v_up', 'pump', 'star_jump'];
+  // classics nail clip ids (jd_N) — resolve through CLIPS, never assume MOVES
+  const victoryPose = (id: string, vb: number): Pose =>
+    MOVES[id]?.pose ?? (CLIPS[id] ? clipPose(CLIPS[id], vb % 2) : MOVES['clap_up'].pose);
   const bgLoop = () => {
     if (state !== 'results') return;
     const t = performance.now() / 1000;
     drawScene({ ctx, w: W(), h: H(), beat: t * 1.9, section: 'chorus', song, goldBurst: 0 });
     const vb = t * 1.9;
     const moveId = victorySeq[Math.floor(vb / 2) % victorySeq.length];
-    const pose = addGroove(MOVES[moveId].pose, vb, 1);
+    const pose = addGroove(victoryPose(moveId, vb), vb, 1);
     drawCharacter(ctx, 'victory', pose, playerStyle ?? coachStyleOf(song), W() * 0.18, H() * 0.97, H() * 0.4, { alpha: 0.95, faceState: 'smile', beat: vb });
     raf = requestAnimationFrame(bgLoop);
   };
