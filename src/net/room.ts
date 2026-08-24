@@ -18,7 +18,7 @@ export type NetMsg =
   | { t: 'roster'; players: { id: string; name: string }[] }
   | { t: 'full' }
   | { t: 'style'; style: StyleProfile }
-  | { t: 'start'; videoId: string; bpm: number; intro: number; choreo?: ChoreoMove[] }
+  | { t: 'start'; videoId: string; bpm: number; intro: number; choreo?: ChoreoMove[]; jd?: boolean }
   | { t: 'pose'; d: number[] }          // quantized landmarks (see poseCodec)
   | { t: 'score'; s: number; stars: number }
   | { t: 'end'; s: number };

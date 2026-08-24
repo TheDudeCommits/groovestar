@@ -478,3 +478,15 @@ body {
   border-radius: 10px 10px 0 0;
   display: block;
 }
+
+/* classics inside the multiplayer lobby */
+.lobby-classics-title {
+  margin: 10px 0 0;
+  font-size: 15px;
+}
+.lobby-classics {
+  max-width: 640px;
+  padding: 8px 2px;
+}
+.lobby-classics .classic-tile { flex: 0 0 150px; }
+.lobby-classics .classic-tile img { height: 84px; }

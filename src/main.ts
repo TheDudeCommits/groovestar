@@ -255,8 +255,7 @@ function showMenu() {
   `;
   // --- Just Dance classics: real extracted routines, lazily listed ---
   const classics = div('classics-panel');
-  classics.innerHTML = `<div class="yt-title">🕹 JUST DANCE CLASSICS — REAL ROUTINES</div>
-    <div class="yt-sub">The original choreographies, motion-captured from the most-loved Just Dance gameplay videos.</div>
+  classics.innerHTML = `<div class="yt-title">Classics Catalog</div>
     <div class="classics-row" id="classics-row"></div>`;
   menu.appendChild(classics);
   fetchRoutineIndex().then((idx) => {
@@ -641,6 +640,8 @@ function openLobby(room: Room) {
           <input id="mp-url" placeholder="Search a song\u2026 or paste a YouTube link" spellcheck="false">
         </div>
         <div id="mp-results" class="yt-results"></div>
+        <div class="yt-title lobby-classics-title">Classics Catalog</div>
+        <div class="classics-row lobby-classics" id="mp-classics"></div>
         <div id="mp-picked" class="mp-picked"></div>
         <div class="yt-row">
           <button id="mp-start" class="mp-btn big">START THE DANCE OFF</button>
@@ -664,7 +665,7 @@ function openLobby(room: Room) {
   room.onMessage = (_from, msg) => {
     if (msg.t === 'start' && !room.isHost) {
       lobby.remove();
-      startYouTubeMP(msg.videoId, msg.bpm, msg.intro, room, msg.choreo ?? null);
+      startYouTubeMP(msg.videoId, msg.bpm, msg.intro, room, msg.choreo ?? null, !!msg.jd);
     }
   };
 
@@ -672,6 +673,7 @@ function openLobby(room: Room) {
 
   if (room.isHost) {
     let pickedId: string | null = null;
+    let pickedClassic: RoutineEntry | null = null;
     const picked = document.getElementById('mp-picked')!;
     attachYtSearch(
       document.getElementById('mp-url') as HTMLInputElement,
@@ -680,12 +682,38 @@ function openLobby(room: Room) {
       null,
       (id, title) => {
         pickedId = id;
+        pickedClassic = null;
         picked.innerHTML = `\u2705 Battle track: <b>${escapeHtml(title || id)}</b>`;
         (document.getElementById('mp-results') as HTMLElement).innerHTML = '';
       },
     );
+    // classics catalog: the whole room dances a real extracted routine
+    fetchRoutineIndex().then((idx) => {
+      const crow = document.getElementById('mp-classics');
+      if (!crow) return;
+      if (!idx.length) { crow.remove(); document.querySelector('.lobby-classics-title')?.remove(); return; }
+      for (const e of idx) {
+        const tile = div('song-tile classic-tile');
+        tile.innerHTML = `<img src="https://i.ytimg.com/vi/${e.v}/mqdefault.jpg" alt="" loading="lazy">
+          <div class="song-meta"><div class="song-title">${escapeHtml(e.title)}</div>
+          <div class="song-artist">${escapeHtml(e.artist || 'Just Dance')}</div></div>`;
+        tile.addEventListener('click', () => {
+          pickedClassic = e;
+          pickedId = null;
+          picked.innerHTML = `\u2705 Battle track: <b>${escapeHtml(e.title)}</b> \u00b7 classic routine`;
+        });
+        crow.appendChild(tile);
+      }
+    });
     document.getElementById('mp-start')!.addEventListener('click', async () => {
       const err = document.getElementById('lobby-err')!;
+      if (pickedClassic) {
+        // classic: every client loads the same routine file \u2014 nothing to probe
+        room.send({ t: 'start', videoId: pickedClassic.v, bpm: pickedClassic.bpm, intro: 0, jd: true });
+        lobby.remove();
+        startYouTubeMP(pickedClassic.v, pickedClassic.bpm, 0, room, null, true);
+        return;
+      }
       const id = pickedId ?? parseYouTubeId((document.getElementById('mp-url') as HTMLInputElement).value.trim());
       if (!id) { err.textContent = 'Search and pick a track (or paste a link) first.'; return; }
       err.textContent = 'Preparing the battle track\u2026';
@@ -726,7 +754,7 @@ function alertOverlay(text: string) {
 }
 
 /** multiplayer song start: deterministic choreography so every client matches */
-async function startYouTubeMP(videoId: string, bpm: number, introBeats: number, room: Room, aiChoreo: Song['choreo'] | null = null) {
+async function startYouTubeMP(videoId: string, bpm: number, introBeats: number, room: Room, aiChoreo: Song['choreo'] | null = null, jd = false) {
   state = 'ready';
   cancelAnimationFrame(raf);
   app.querySelectorAll('.overlay, .yt-holder').forEach((e) => e.remove());
@@ -761,6 +789,11 @@ async function startYouTubeMP(videoId: string, bpm: number, introBeats: number, 
     <div class="ready-tip">Loading the battle track…</div></div>`;
   app.appendChild(loadCard);
 
+  // classic routines load from the same static file on every client
+  const routine = jd ? await loadRoutine(videoId) : null;
+  const entry = jd ? (await fetchRoutineIndex()).find((e) => e.v === videoId) : null;
+  if (jd && !routine) { alertOverlay('Could not load that classic routine.'); showMenu(); return; }
+
   const src = new YouTubeSource();
   const ok = await src.load(videoId);
   loadCard.remove();
@@ -769,37 +802,43 @@ async function startYouTubeMP(videoId: string, bpm: number, introBeats: number, 
   const seedNum = [...videoId].reduce((n, ch) => n + ch.charCodeAt(0), 0);
   const accents = YT_ACCENTS[seedNum % YT_ACCENTS.length];
   const scenes = ['city', 'bokeh', 'disco'] as const;
-  const totalBeats = Math.max(48, Math.floor((src.duration * bpm) / 60) - 8);
-  const gen = generateChoreo(videoId, totalBeats, 2, introBeats);
+  const useBpm = routine?.bpm ?? bpm;
+  const totalBeats = routine?.totalBeats ?? Math.max(48, Math.floor((src.duration * bpm) / 60) - 8);
+  const gen = routine ? null : generateChoreo(videoId, totalBeats, 2, introBeats);
   const song: Song = {
-    id: 'yt-' + videoId,
-    title: src.title || 'YouTube Track',
+    id: (jd ? 'jd-' : 'yt-') + videoId,
+    title: entry?.title ?? src.title ?? 'YouTube Track',
     artist: `dance off · room ${room.code}`,
-    bpm, beats: totalBeats,
-    scene: scenes[seedNum % 3], difficulty: 2,
+    bpm: useBpm, beats: totalBeats,
+    scene: scenes[seedNum % 3], difficulty: jd ? 3 : 2,
     accent: accents[0], accent2: accents[1],
     coach: { skin: '#e8b89a', hair: '#20182a', top: accents[0], vest: '#191d2e', pants: '#2c3352', glove: '#ffd23e', boots: '#14121c' },
     root: 57, chords: [[0, 3, 7]],
-    sections: gen.sections, choreo: gen.choreo, lyrics: [],
+    sections: routine?.sections ?? gen!.sections,
+    choreo: routine?.choreo ?? gen!.choreo,
+    lyrics: [],
   };
 
   const lyricsPromise = fetchSyncedLyrics(song.title, src.duration);
   const vibePromise = fetchVibe(videoId);
-  await readyFlow(song, `<b>${escapeHtml(song.title)}</b><span>room ${room.code} · ${room.players.length} dancers</span>`);
+  await readyFlow(song, `<b>${escapeHtml(song.title)}</b><span>room ${room.code} · ${room.players.length} dancers${jd ? ' · the real routine' : ''}</span>`);
   if (playerStyle) room.send({ t: 'style', style: playerStyle });
   const camStream = cam().video.srcObject as MediaStream | null;
   if (camStream) room.shareStream(camStream);
   const lyr = await Promise.race([lyricsPromise, wait(1500).then(() => null)]);
-  if (lyr) song.lyrics = lyricsToLines(lyr, bpm, 4);
+  if (lyr) song.lyrics = lyricsToLines(lyr, useBpm, 4);
   const vibe = await Promise.race([vibePromise, wait(1500).then(() => null)]);
 
-  // host-provided AI routine (identical on every client), else the seeded
-  // generator (also identical); smooth + carve both deterministically
-  if (aiChoreo?.length) song.choreo = aiChoreo;
-  const freestyle = freestyleWindows(totalBeats, introBeats);
-  song.choreo = carveFreestyle(smoothChoreo(song.choreo), freestyle);
+  // classics play untouched; otherwise host AI routine (identical on every
+  // client) or the seeded generator, smoothed + carved deterministically
+  let freestyle: FreestyleWindow[] = [];
+  if (!routine) {
+    if (aiChoreo?.length) song.choreo = aiChoreo;
+    freestyle = freestyleWindows(totalBeats, introBeats);
+    song.choreo = carveFreestyle(smoothChoreo(song.choreo), freestyle);
+  }
 
-  const clock = new YouTubeClock(src, bpm, gen.sections, totalBeats, 4);
+  const clock = new YouTubeClock(src, useBpm, song.sections, totalBeats, 4);
   clock.restart();
   play(song, room.myName, {
     clock, yt: src, room, remotes, streams, vibe, freestyle,
