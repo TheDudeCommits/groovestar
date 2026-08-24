@@ -337,19 +337,8 @@ export class PlayerAvatar {
     const rim = opts.goldGlow
       ? 'rgba(255,222,120,0.95)'
       : `rgba(${this.rimNow.map(Math.round).join(',')},0.94)`;
-    if (skin !== 'wire') {
-      o.save();
-      o.shadowColor = rim;
-      o.shadowBlur = lwT(0.32);
-      o.fillStyle = rim;
-      const pad = lwT(0.05);
-      for (const [a, b, w1, w2] of bodyCapsules) {
-        capsulePath(o, a, b, w1 + pad, w2 + pad); o.fill();
-      }
-      torsoPath(o, pad); o.fill();
-      o.beginPath(); o.arc(head[0], head[1], hr + pad, 0, Math.PI * 2); o.fill();
-      o.restore();
-    }
+    // (non-wire skins get their rim as the judgment-tinted sticker outline —
+    // one element, drawn around the finished silhouette after the cel pass)
 
     if (skin === 'wire') {
       // NEON WIREFRAME skin: glowing strokes only — pure light
@@ -620,7 +609,9 @@ export class PlayerAvatar {
       ctx.restore();
     }
 
-    // white sticker outline around the whole silhouette — the JD coach look
+    // sticker outline around the whole silhouette — the JD coach look. This
+    // IS the judgment rim: one element, tinted by the last score's color
+    // (white until the first move), with a soft matching glow.
     if (skin !== 'wire') {
       if (this.sil.width !== cw || this.sil.height !== ch) { this.sil.width = cw; this.sil.height = ch; }
       const sc = this.silCtx;
@@ -628,13 +619,22 @@ export class PlayerAvatar {
       sc.clearRect(0, 0, cw, ch);
       sc.drawImage(this.off, 0, 0);
       sc.globalCompositeOperation = 'source-in';
-      sc.fillStyle = '#ffffff';
+      sc.fillStyle = rim;
       sc.fillRect(0, 0, cw, ch);
       sc.globalCompositeOperation = 'source-over';
       const m2 = ctx.getTransform();
       const rOut = Math.max(2, torsoPx * 0.045 * m2.a);
       ctx.save();
       ctx.setTransform(1, 0, 0, 1, 0, 0);
+      // glow: one shadow-only stamp (image drawn far off-canvas, shadow lands here)
+      ctx.shadowColor = rim;
+      ctx.shadowBlur = torsoPx * 0.4 * m2.a;
+      ctx.shadowOffsetX = cw + 200;
+      ctx.drawImage(this.sil, -(cw + 200), 0);
+      ctx.shadowColor = 'transparent';
+      ctx.shadowOffsetX = 0;
+      ctx.shadowBlur = 0;
+      // crisp colored outline: offset stamps in a ring
       for (let i = 0; i < 8; i++) {
         const a = (i / 8) * Math.PI * 2;
         ctx.drawImage(this.sil, Math.cos(a) * rOut, Math.sin(a) * rOut);
