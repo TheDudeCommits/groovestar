@@ -7,7 +7,7 @@ import './style.css';
 import { SONGS, type Song, type SectionDef } from './songs';
 import { PoseTracker } from './pose/tracker';
 import { Scorer, type JudgmentEvent } from './pose/scorer';
-import { choreoPose, addGroove, drawCoach } from './coach';
+import { choreoPose, addGroove, drawCharacter, coachStyleOf } from './coach';
 import { drawScene } from './scenes';
 import { Hud, drawPictograms } from './ui/hud';
 import { MOVES } from './moves';
@@ -358,7 +358,8 @@ function showMenu() {
     const t = performance.now() / 1000;
     drawScene({ ctx, w: W(), h: H(), beat: t * 2, section: 'verse', song: SONGS[0], goldBurst: 0 });
     const pose = addGroove(MOVES[['sway_l', 'sway_r', 'clap_up', 'pump'][Math.floor(t) % 4]].pose, t * 2, 0.7);
-    drawCoach(ctx, SONGS[0], pose, W() / 2, H() * 0.99, H() * 0.34, { alpha: 0.45 });
+    const castStyle = { ...CAST[Math.floor(t / 5) % CAST.length].style, body: { headScale: 1, buildScale: 1 } };
+    drawCharacter(ctx, 'menu', pose, castStyle, W() / 2, H() * 0.99, H() * 0.34, { alpha: 0.45, beat: t * 2 });
     raf = requestAnimationFrame(loop);
   };
   loop();
@@ -388,7 +389,7 @@ async function readyFlow(song: Song, bannerHtml: string) {
     </div>`;
   app.appendChild(card);
   drawScene({ ctx, w: W(), h: H(), beat: 0.95, section: 'chorus', song, goldBurst: 0 });
-  drawCoach(ctx, song, MOVES['v_up'].pose, W() / 2, H() * 0.86, H() * 0.55);
+  drawCharacter(ctx, 'ready', MOVES['v_up'].pose, coachStyleOf(song), W() / 2, H() * 0.86, H() * 0.55);
 
   if (phoneCam?.connected) {
     cameraOk = true; // the phone is the camera
@@ -1111,7 +1112,6 @@ function play(song: Song, playerName: string, opts: PlayOpts) {
   avatar.anime = animePref();
   const cosmetics = resolveCosmetics();
   const crew = crewOn() && cameraOk && !opts.room; // no backup dancers in a dance off
-  const crewPalette = playerStyle ? paletteFromStyle(playerStyle) : song.coach;
 
   const preview = opts.room ? null : buildPreview(); // corners carry the cams in MP
   const corners = opts.room ? buildCorners(opts.room, opts.streams!) : null;
@@ -1243,8 +1243,8 @@ function play(song: Song, playerName: string, opts: PlayOpts) {
       if (crew) {
         const crewPose = goldHold ? pose : addGroove(pose, Math.max(0, beat + 0.5), 0.9);
         for (const cxr of [0.22, 0.78]) {
-          drawCoach(ctx, song, crewPose, W() * cxr, H() * 0.8, H() * 0.3, {
-            alpha: 0.8, palette: crewPalette, goldHold: goldHold && fx.goldBurst > 0.2,
+          drawCharacter(ctx, `crew${cxr}`, crewPose, playerStyle, W() * cxr, H() * 0.8, H() * 0.3, {
+            alpha: 0.85, goldHold: goldHold && fx.goldBurst > 0.2, beat: Math.max(0, beat),
           });
         }
       }
@@ -1258,12 +1258,12 @@ function play(song: Song, playerName: string, opts: PlayOpts) {
       } else {
         hintStepIn(ctx);
       }
-      drawCoach(ctx, song, coachPose, W() * 0.885, H() * 0.64, H() * 0.21, {
-        gloveFlash: 0, goldHold: goldHold && fx.goldBurst > 0.2,
+      drawCharacter(ctx, 'mini', coachPose, coachStyleOf(song), W() * 0.885, H() * 0.64, H() * 0.21, {
+        goldHold: goldHold && fx.goldBurst > 0.2, beat: Math.max(0, beat),
       });
     } else {
-      drawCoach(ctx, song, coachPose, W() / 2, H() * 0.84, H() * 0.56, {
-        gloveFlash: fx.gloveFlash, goldHold: goldHold && fx.goldBurst > 0.2,
+      drawCharacter(ctx, 'demo', coachPose, coachStyleOf(song), W() / 2, H() * 0.84, H() * 0.56, {
+        gloveFlash: fx.gloveFlash, goldHold: goldHold && fx.goldBurst > 0.2, beat: Math.max(0, beat),
       });
     }
     if (!inFs) drawPictograms(ctx, song, beat, W(), H());
@@ -1605,7 +1605,6 @@ async function endSong(song: Song, scorer: Scorer, hud: Hud, preview: HTMLCanvas
   const nailed = [...new Set(scorer.log.filter((l) => l.judgment === 'PERFECT' || l.judgment === 'YEAH').map((l) => l.move))]
     .filter((m) => !m.startsWith('gold_')).slice(-4);
   const victorySeq = nailed.length >= 2 ? nailed : ['clap_up', 'v_up', 'pump', 'star_jump'];
-  const victoryPalette = playerStyle ? paletteFromStyle(playerStyle) : song.coach;
   const bgLoop = () => {
     if (state !== 'results') return;
     const t = performance.now() / 1000;
@@ -1613,7 +1612,7 @@ async function endSong(song: Song, scorer: Scorer, hud: Hud, preview: HTMLCanvas
     const vb = t * 1.9;
     const moveId = victorySeq[Math.floor(vb / 2) % victorySeq.length];
     const pose = addGroove(MOVES[moveId].pose, vb, 1);
-    drawCoach(ctx, song, pose, W() * 0.18, H() * 0.97, H() * 0.4, { alpha: 0.95, palette: victoryPalette });
+    drawCharacter(ctx, 'victory', pose, playerStyle ?? coachStyleOf(song), W() * 0.18, H() * 0.97, H() * 0.4, { alpha: 0.95, faceState: 'smile', beat: vb });
     raf = requestAnimationFrame(bgLoop);
   };
   bgLoop();

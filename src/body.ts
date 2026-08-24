@@ -86,7 +86,7 @@ export class BodyArt {
     const lightSide = (opts.lightX ?? J.pelvis[0] - T) < J.pelvis[0] ? -1 : 1;
     const W = {
       shoulder: 0.105 * T * b, elbow: 0.075 * T * b, wrist: 0.054 * T * b,
-      thigh: 0.15 * T * b, knee: 0.095 * T * b, ankle: 0.062 * T * b,
+      thigh: 0.15 * T * (style.body.hipScale ?? b), knee: 0.095 * T * b, ankle: 0.062 * T * b,
     };
     o.lineJoin = 'round';
     o.lineCap = 'round';
@@ -269,8 +269,13 @@ export class BodyArt {
     const per = norm(perp(axis));
     const at = (t: number, w: number): P2 => add(add(J.pelvis, mul(axis, t)), mul(per, w));
     const breathe = Math.sin(opts.now / 850) * 0.008 * T;
-    const shoulderH = 0.365 * T * b, chestH = 0.335 * T * b + breathe;
-    const waistH = 0.25 * T * b, hipH = 0.315 * T * b;
+    const sS = style.body.shoulderScale ?? b;
+    const hS = style.body.hipScale ?? b;
+    const shoulderH = 0.365 * T * sS, chestH = 0.335 * T * sS + breathe;
+    // waist pinches toward the narrower of the two — broad shoulders read
+    // V-shaped, wider hips read hourglass; it's construction, not scaling
+    const waistH = 0.25 * T * (Math.min(sS, hS) * 0.72 + Math.max(sS, hS) * 0.24);
+    const hipH = 0.315 * T * hS;
     const torsoPath = (inflate = 0) => {
       const sL = at(1.0, -(shoulderH + inflate)), sR = at(1.0, shoulderH + inflate);
       const cL = at(0.78, -(chestH + inflate)), cR = at(0.78, chestH + inflate);

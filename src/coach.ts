@@ -237,3 +237,65 @@ function blend(a: string, b: string, t: number): string {
   const ch = (sh: number) => Math.round(((pa >> sh) & 255) + (((pb >> sh) & 255) - ((pa >> sh) & 255)) * t);
   return `rgb(${ch(16)},${ch(8)},${ch(0)})`;
 }
+
+// ---------------------------------------------------------------------------
+// Choreography-driven characters rendered with the full BodyArt anatomy —
+// the same construction the player's avatar uses, so backup crew, the mini
+// guide coach, menu and results dancers all match. Instances are pooled per
+// call-site key (springs and blink clocks need continuity between frames).
+
+import { BodyArt } from './body';
+import type { StyleProfile } from './appearance';
+
+const artPool = new Map<string, { art: BodyArt; lastNow: number }>();
+
+export function drawCharacter(
+  ctx: CanvasRenderingContext2D,
+  key: string,
+  pose: Pose,
+  style: StyleProfile,
+  cx: number, groundY: number, height: number,
+  opts: { alpha?: number; goldHold?: boolean; gloveFlash?: number; beat?: number; faceState?: 'idle' | 'smile' | 'stars' | 'wobble' } = {},
+) {
+  let slot = artPool.get(key);
+  if (!slot) { slot = { art: new BodyArt(), lastNow: performance.now() }; artPool.set(key, slot); }
+  const now = performance.now();
+  const dt = Math.min(0.05, (now - slot.lastNow) / 1000 || 0.016);
+  slot.lastNow = now;
+
+  const sk = forward(pose);
+  const scale = height / 2.7;
+  const P = (p: [number, number]): [number, number] => [cx + p[0] * scale, groundY + (p[1] - 1.06) * scale];
+  const torsoPx = scale;
+  const hr = torsoPx * 0.23 * style.body.headScale;
+
+  ctx.save();
+  ctx.globalAlpha = opts.alpha ?? 1;
+  slot.art.render(ctx, {
+    pelvis: P(sk.pelvis), midSh: P(sk.neck), head: P(sk.head), hr,
+    shA: P(sk.shL), elA: P(sk.elL), wrA: P(sk.wrL),
+    shB: P(sk.shR), elB: P(sk.elR), wrB: P(sk.wrR),
+    hipA: P(sk.hipL), kneeA: P(sk.kneeL), ankA: P(sk.ankL),
+    hipB: P(sk.hipR), kneeB: P(sk.kneeR), ankB: P(sk.ankR),
+    torsoPx, groundY,
+    dz: () => 1, frontA: true, frontB: true,
+  }, style, {
+    beat: opts.beat ?? 0, now, dt,
+    gloveFlash: opts.gloveFlash ?? 0,
+    goldHold: !!opts.goldHold,
+    faceState: opts.faceState ?? (opts.goldHold ? 'stars' : 'idle'),
+  });
+  ctx.restore();
+}
+
+/** StyleProfile for a song's built-in coach palette (menu, guide, demo mode) */
+export function coachStyleOf(song: Song): StyleProfile {
+  return {
+    skin: song.coach.skin, hair: song.coach.hair,
+    top: song.coach.top, topDeep: song.coach.vest,
+    bottom: song.coach.pants, boots: song.coach.boots, glove: song.coach.glove,
+    longSleeves: false, hairIsSkin: false,
+    body: { headScale: 1, buildScale: 1 },
+    look: { hair: 'swoop', shades: false, pattern: 'solid', skirt: false },
+  };
+}

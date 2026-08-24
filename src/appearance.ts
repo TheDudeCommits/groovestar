@@ -10,6 +10,10 @@ import type { NormalizedLandmark } from '@mediapipe/tasks-vision';
 export interface BodyShape {
   headScale: number;   // head radius multiplier vs default
   buildScale: number;  // limb thickness multiplier (from shoulder-width ratio)
+  /** shoulder span vs typical — drives the torso's shoulder/chest construction */
+  shoulderScale?: number;
+  /** hip span vs typical — drives hips, waist pinch and thigh width */
+  hipScale?: number;
 }
 
 /** character styling on top of the captured colors — the Just Dance flavor */
@@ -46,6 +50,7 @@ export class StyleScanner {
   private samples: Record<string, RGB[]> = { hair: [], skin: [], top: [], forearm: [], bottom: [] };
   private headRatios: number[] = [];   // ear distance / torso length
   private buildRatios: number[] = [];  // shoulder width / torso length
+  private hipRatios: number[] = [];    // hip width / torso length
 
   /** feed one video frame + its landmarks; call ~15–30 times during the scan */
   feed(video: HTMLVideoElement, lms: NormalizedLandmark[]) {
@@ -104,6 +109,9 @@ export class StyleScanner {
       if (shL.v > 0.5 && shR.v > 0.5) {
         this.buildRatios.push(Math.hypot((shL.x - shR.x) * A, shL.y - shR.y) / torso);
       }
+      if (hipL.v > 0.5 && hipR.v > 0.5) {
+        this.hipRatios.push(Math.hypot((hipL.x - hipR.x) * A, hipL.y - hipR.y) / torso);
+      }
     }
   }
 
@@ -130,10 +138,12 @@ export class StyleScanner {
     // typical ear-span/torso ≈ 0.34, shoulder-span/torso ≈ 0.72 — normalize around those
     const headScale = Math.min(1.25, Math.max(0.85, med1(this.headRatios, 0.34) / 0.34));
     const buildScale = Math.min(1.35, Math.max(0.8, med1(this.buildRatios, 0.72) / 0.72));
+    // typical hip-span/torso ≈ 0.36 — hips vs shoulders shape the torso itself
+    const hipScale = Math.min(1.35, Math.max(0.8, med1(this.hipRatios, 0.36) / 0.36));
 
     const top = stylize(topRGB, 1.75, [0.38, 0.6]);
     return {
-      body: { headScale, buildScale },
+      body: { headScale, buildScale, shoulderScale: buildScale, hipScale },
       skin: rgbCss(clampL(skinRGB, 0.32, 0.82)),
       hair: rgbCss(stylize(hairRGB, 1.35, [0.12, 0.55])),
       top: rgbCss(top),
