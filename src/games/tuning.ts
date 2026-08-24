@@ -28,6 +28,11 @@ const DEFAULTS = {
     fullStrength: 4.0,      // m/s that maps to strength 1.0
     refractoryMs: 240,
   },
+  fruit: {
+    sliceRel: 3.0,          // shoulder-widths/s for a hand to cut fruit
+    trailMs: 110,           // swept-collision window (kills tunneling)
+    chainMs: 900,           // combo chain window between slices
+  },
   body: {
     laneFullSW: 1.0,        // sidestep of this many shoulder widths = full lane
     centerAdaptPerSec: 0.05,// how fast the neutral standing spot re-centers
