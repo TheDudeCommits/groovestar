@@ -16,6 +16,7 @@ const J = {
   hipA: [185, 400], kneeA: [165, 470], ankA: [160, 540],
   hipB: [215, 400], kneeB: [235, 470], ankB: [240, 540],
   zElA: -0.05, zWrA: -0.1, zElB: 0, zWrB: 0,
+  legsTracked: !location.search.includes('nolegs'),
 };
 d3.pose(J);
 window.__done = true;

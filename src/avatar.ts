@@ -390,10 +390,17 @@ export class PlayerAvatar {
         shA, elA, wrA, shB, elB, wrB, hipA, kneeA, ankA, hipB, kneeB, ankB,
         zElA: (this.zr.elA ?? hz) - hz, zWrA: (this.zr.wrA ?? hz) - hz,
         zElB: (this.zr.elB ?? hz) - hz, zWrB: (this.zr.wrB ?? hz) - hz,
+        legsTracked,
       });
-      const s3 = torsoPx / (d3.torsoWorld * d3.pxPerUnit);
+      // anchor by hip height so the model's feet land exactly on the floor.
+      // The character is drawn 22% larger than the human-proportioned 2D
+      // pelvis would imply, so its anchor rises by the same amount (keeps
+      // feet grounded while jumps/crouches still track through liftY).
+      const t3 = torsoPx * 1.22;
+      const s3 = (1.06 * t3) / (d3.hipsRestY * d3.pxPerUnit);
+      const py3 = pelvis.y + 1.06 * (torsoPx - t3);
       o.drawImage(d3.canvas,
-        pelvis.x - d3.hipsPx[0] * s3, pelvis.y - d3.hipsPx[1] * s3,
+        pelvis.x - d3.hipsPx[0] * s3, py3 - d3.hipsPx[1] * s3,
         d3.canvas.width * s3, d3.canvas.height * s3);
     } else if (skin === 'sprite') {
       // SPRITE RIG skin: baked illustrated parts stamped onto the bones

@@ -20,6 +20,8 @@ export interface Joints3D {
   hipA: P2; kneeA: P2; ankA: P2; hipB: P2; kneeB: P2; ankB: P2;
   /** depth hints, MediaPipe z relative to hips (negative = toward camera) */
   zElA: number; zWrA: number; zElB: number; zWrB: number;
+  /** false when the camera can't see the legs — keep the rest-pose stance */
+  legsTracked: boolean;
 }
 
 /** viewer-left ('A') limbs belong to the character's anatomical RIGHT (.R) */
@@ -50,7 +52,9 @@ export class Dancer3D {
   private root: Object3D | null = null;
   private rig = new Map<string, RigBone>();
   private hips: Bone | null = null;
-  private hipsRestY = 1;
+  /** hips height above the ground in rest pose (world units) */
+  hipsRestY = 1;
+  private feet: { bone: Bone; parent: Object3D; restLocal: Quaternion; restWorld: Quaternion }[] = [];
   /** world-units torso length (hips→chest child) for screen scaling */
   torsoWorld = 0.6;
   /** px per world unit in the render */
@@ -111,6 +115,16 @@ export class Dancer3D {
         this.rig.set(boneName, {
           bone: b, parent: b.parent!, restLocal: b.quaternion.clone(), childDirLocal,
         });
+      }
+      // feet: pinned flat — they must not inherit the shin's rotation delta
+      this.feet = [];
+      for (const fn of ['footl', 'footr']) {
+        const fb = byName.get(fn);
+        if (fb) {
+          const restWorld = new Quaternion();
+          fb.getWorldQuaternion(restWorld);
+          this.feet.push({ bone: fb, parent: fb.parent!, restLocal: fb.quaternion.clone(), restWorld });
+        }
       }
       if (this.hips) {
         const hb = this.hips as Bone;
@@ -188,20 +202,31 @@ export class Dancer3D {
     const torsoPx = Math.max(20, Math.hypot(j.midSh[0] - j.pelvis[0], j.midSh[1] - j.pelvis[1]));
     const zf = (z: number) => Math.max(-0.9, Math.min(0.9, -z * 2.2)) * torsoPx * 0.7;
 
+    // arms: keep relaxed hands from crossing into the body — limit how far
+    // the upper arm may point past the midline (outward for 'R' is -x)
+    const clampIn = (v: Vector3, out: -1 | 1): Vector3 => {
+      if (v.x * out < -0.12) { v.x = -0.12 * out; v.normalize(); }
+      return v;
+    };
+
     const targets = new Map<string, Vector3>();
     targets.set('Chest', dir(j.pelvis, j.midSh, 0));
     targets.set('Neck', dir(j.midSh, j.head, 0));
-    targets.set('UpperArm.R', dir(j.shA, j.elA, zf(j.zElA)));
+    targets.set('UpperArm.R', clampIn(dir(j.shA, j.elA, zf(j.zElA)), -1));
     targets.set('LowerArm.R', dir(j.elA, j.wrA, zf(j.zWrA)));
-    targets.set('UpperArm.L', dir(j.shB, j.elB, zf(j.zElB)));
+    targets.set('UpperArm.L', clampIn(dir(j.shB, j.elB, zf(j.zElB)), 1));
     targets.set('LowerArm.L', dir(j.elB, j.wrB, zf(j.zWrB)));
-    targets.set('UpperLeg.R', dir(j.hipA, j.kneeA, 0));
-    targets.set('LowerLeg.R', dir(j.kneeA, j.ankA, 0));
-    targets.set('UpperLeg.L', dir(j.hipB, j.kneeB, 0));
-    targets.set('LowerLeg.L', dir(j.kneeB, j.ankB, 0));
+    if (j.legsTracked) {
+      targets.set('UpperLeg.R', dir(j.hipA, j.kneeA, 0));
+      targets.set('LowerLeg.R', dir(j.kneeA, j.ankA, 0));
+      targets.set('UpperLeg.L', dir(j.hipB, j.kneeB, 0));
+      targets.set('LowerLeg.L', dir(j.kneeB, j.ankB, 0));
+    }
+    // legs off-camera → natural rest stance (bones reset below)
 
-    // process parents before children (BONE_MAP is ordered torso-last, so
-    // handle Chest/Neck first, then limbs — arms hang off Chest)
+    // reset every mapped bone first, then process parents before children
+    for (const rb of this.rig.values()) rb.bone.quaternion.copy(rb.restLocal);
+    for (const f of this.feet) f.bone.quaternion.copy(f.restLocal);
     const order = ['Chest', 'Neck', 'UpperArm.R', 'LowerArm.R', 'UpperArm.L', 'LowerArm.L',
       'UpperLeg.R', 'LowerLeg.R', 'UpperLeg.L', 'LowerLeg.L'];
     const pw = new Quaternion(), cw = new Quaternion(), delta = new Quaternion();
@@ -210,7 +235,6 @@ export class Dancer3D {
       const rb = this.rig.get(name);
       const target = targets.get(name);
       if (!rb || !target) continue;
-      rb.bone.quaternion.copy(rb.restLocal);
       rb.parent.updateWorldMatrix(true, false);
       rb.parent.getWorldQuaternion(pw);
       cw.copy(pw).multiply(rb.restLocal);
@@ -218,6 +242,15 @@ export class Dancer3D {
       delta.setFromUnitVectors(cur, target);
       // local = parent⁻¹ · delta · parentWorld · restLocal
       rb.bone.quaternion.copy(pw.clone().invert().multiply(delta).multiply(cw));
+    }
+    // pin the feet flat: restore their rest WORLD orientation under the
+    // now-rotated shins so they stay planted instead of rolling with the leg
+    if (j.legsTracked) {
+      for (const f of this.feet) {
+        f.parent.updateWorldMatrix(true, false);
+        f.parent.getWorldQuaternion(pw);
+        f.bone.quaternion.copy(pw.clone().invert().multiply(f.restWorld));
+      }
     }
     this.root.updateWorldMatrix(true, true);
     this.renderer.render(this.scene, this.camera);
