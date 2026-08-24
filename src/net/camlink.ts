@@ -30,7 +30,7 @@ export class TvCamHost {
     host.code = String(1000 + Math.floor(Math.random() * 9000));
     return new Promise((resolve, reject) => {
       host.peer = new Peer(CAM_PREFIX + host.code, { config });
-      const timeout = setTimeout(() => reject(new Error('Could not reach the connection service — a firewall or VPN may be blocking it.')), 12000);
+      const timeout = setTimeout(() => reject(new Error('Could not reach the connection service. A firewall or VPN may be blocking it.')), 12000);
       host.peer.on('open', () => {
         clearTimeout(timeout);
         host.peer.on('disconnected', () => {
@@ -87,13 +87,13 @@ export async function connectPhoneCam(
     const fail = (m: string) => reject(new Error(m));
     // long enough for a TURN-relayed connection to negotiate
     const timeout = setTimeout(() => fail(turn
-      ? 'Found the screen, but the connection could not be established — try again.'
-      : 'Found the screen, but this network blocks a direct connection — try the phone on wifi or hotspot.'), 20000);
+      ? 'Found the screen, but the connection could not be established. Try again.'
+      : 'Found the screen, but this network blocks a direct connection. Try the phone on wifi or a hotspot.'), 20000);
     peer.on('open', () => {
       const conn = peer.connect(CAM_PREFIX + code, { reliable: false });
       conn.on('open', () => {
         clearTimeout(timeout);
-        onStatus('Connected — streaming your camera to the big screen.');
+        onStatus('Connected. Streaming your camera to the big screen.');
         const stream = tracker.video.srcObject as MediaStream | null;
         if (stream) peer.call(CAM_PREFIX + code, stream);
         const timer = window.setInterval(() => {
@@ -110,7 +110,7 @@ export async function connectPhoneCam(
     peer.on('error', (e: any) => {
       clearTimeout(timeout);
       if (String(e?.type) === 'peer-unavailable') fail('No screen is waiting on that code.');
-      else fail('Connection service unreachable — a firewall or VPN may be blocking it.');
+      else fail('Connection service unreachable. A firewall or VPN may be blocking it.');
     });
   });
 }

@@ -490,3 +490,219 @@ body {
 }
 .lobby-classics .classic-tile { flex: 0 0 150px; }
 .lobby-classics .classic-tile img { height: 84px; }
+
+/* ============================================================= UI v2 =====
+   Minimal, aligned, typographic. One accent. No boxes, no emoji, no noise.
+   These overrides come last so they win the cascade. */
+:root {
+  --ink: #f2f2f4;
+  --mut: #86868f;
+  --acc: #e6ff4d;
+  --line: #26262e;
+}
+body {
+  font-family: 'Space Grotesk', system-ui, sans-serif;
+  background: #0b0b10;
+}
+
+/* layout column: everything on the menu aligns to one grid */
+.overlay.menu {
+  display: block;
+  padding: 56px max(4vw, calc((100vw - 1060px) / 2)) 80px;
+  overflow-y: auto;
+  background: linear-gradient(180deg, rgba(11,11,16,0.35), rgba(11,11,16,0.88) 55%);
+}
+.logo {
+  font-family: 'Unbounded', sans-serif;
+  font-weight: 900;
+  font-size: clamp(30px, 4.4vw, 52px);
+  letter-spacing: 0.02em;
+  color: var(--ink);
+  text-shadow: none;
+  text-align: left;
+  margin: 0 0 52px;
+}
+.logo span { color: var(--acc); text-shadow: none; }
+
+/* section labels replace boxed panels */
+.yt-panel, .mp-panel, .classics-panel {
+  background: none;
+  border: none;
+  box-shadow: none;
+  border-radius: 0;
+  padding: 0;
+  margin: 0 0 48px;
+  width: 100%;
+  max-width: none;
+}
+.yt-title, .mp-title {
+  font-family: 'Space Grotesk', sans-serif;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.34em;
+  text-transform: uppercase;
+  color: var(--mut);
+  margin: 0 0 18px;
+  text-shadow: none;
+}
+.yt-sub { display: none; }
+
+/* inputs: underline, no box */
+.yt-row input, #mp-code, .foot-row input {
+  background: none;
+  border: none;
+  border-bottom: 1px solid var(--line);
+  border-radius: 0;
+  color: var(--ink);
+  font-family: 'Space Grotesk', sans-serif;
+  font-size: 15px;
+  padding: 10px 2px;
+  box-shadow: none;
+  transition: border-color 0.2s;
+}
+.yt-row input:focus, #mp-code:focus, .foot-row input:focus {
+  outline: none;
+  border-bottom-color: var(--acc);
+}
+.yt-row input::placeholder { color: #55555e; }
+.yt-row { gap: 26px; align-items: center; }
+.yt-row input { flex: 1; }
+
+/* buttons: type, not chrome */
+#yt-go, .mp-btn, .calib-btn, .lobby-leave, .result-btns button {
+  background: none;
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
+  color: var(--acc);
+  font-family: 'Space Grotesk', sans-serif;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  padding: 10px 0;
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+#yt-go:hover, .mp-btn:hover, .calib-btn:hover, .lobby-leave:hover, .result-btns button:hover {
+  opacity: 0.65;
+  transform: none;
+  background: none;
+}
+.mp-btn.big { font-size: 14px; }
+.yt-label { color: var(--mut); font-size: 12px; text-transform: uppercase; letter-spacing: 0.18em; }
+
+/* classics: bare thumbnails, aligned type */
+.classics-panel .yt-title { margin-bottom: 20px; }
+.classics-row { gap: 22px; padding: 0 0 8px; }
+.song-tile, .classic-tile {
+  background: none;
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
+  overflow: visible;
+}
+.song-tile:hover, .classic-tile:hover { transform: none; box-shadow: none; }
+.classic-tile:hover img { opacity: 0.75; }
+.classic-tile img { border-radius: 4px; transition: opacity 0.15s; }
+.song-meta { padding: 10px 0 0; background: none; }
+.song-title {
+  font-family: 'Space Grotesk', sans-serif;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ink);
+  letter-spacing: 0;
+}
+.song-artist { color: var(--mut); font-size: 12px; margin-top: 2px; }
+.song-diff { color: #55555e; font-size: 11px; letter-spacing: 0.12em; margin-top: 6px; text-transform: uppercase; }
+
+/* footer controls: one aligned row of text buttons */
+.menu-foot { background: none; border: none; padding: 0; margin-top: 8px; }
+.foot-row {
+  display: flex;
+  gap: 34px;
+  align-items: baseline;
+  flex-wrap: wrap;
+}
+.foot-row label {
+  color: var(--mut);
+  font-size: 12px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  display: flex;
+  gap: 12px;
+  align-items: baseline;
+}
+.foot-row input { width: 150px; font-size: 14px; }
+.calib-btn.on { color: var(--ink); }
+.calib-btn.on::after { content: ''; display: inline-block; width: 6px; height: 6px; border-radius: 3px; background: var(--acc); margin-left: 8px; vertical-align: middle; }
+.cam-note { display: none; }
+
+/* multiplayer row alignment */
+.mp-panel .yt-row { gap: 26px; }
+#mp-code { width: 90px; text-align: center; letter-spacing: 0.4em; }
+
+/* lobby: clean sheet, no card */
+.lobby-box {
+  background: rgba(11, 11, 16, 0.92);
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
+  padding: 48px 56px;
+}
+.lobby-title {
+  font-family: 'Unbounded', sans-serif;
+  font-weight: 700;
+  font-size: 18px;
+  letter-spacing: 0.08em;
+  color: var(--ink);
+}
+.lobby-code { color: var(--mut); letter-spacing: 0.3em; font-size: 12px; text-transform: uppercase; }
+.lobby-code b { color: var(--acc); font-size: 22px; letter-spacing: 0.24em; margin-left: 10px; }
+.lobby-player { background: none; border: 1px solid var(--line); border-radius: 3px; color: var(--ink); font-size: 12px; letter-spacing: 0.08em; }
+.lobby-wait { color: var(--mut); font-size: 13px; }
+.lobby-leave { color: var(--mut); }
+
+/* overlays and cards */
+.ready-card, .overlay.ready-card { background: rgba(11, 11, 16, 0.72); }
+.ready-inner { background: none; border: none; box-shadow: none; }
+.get-ready {
+  font-family: 'Unbounded', sans-serif;
+  font-weight: 900;
+  letter-spacing: 0.04em;
+  text-shadow: none;
+}
+.ready-tip { color: var(--mut); font-family: 'Space Grotesk', sans-serif; }
+.song-banner b { font-family: 'Space Grotesk', sans-serif; }
+
+/* results */
+.congrats {
+  font-family: 'Unbounded', sans-serif;
+  font-weight: 900;
+  letter-spacing: 0.02em;
+  text-shadow: none;
+}
+.result-banner { background: rgba(20, 20, 26, 0.85); border: none; box-shadow: none; border-radius: 4px; }
+.result-banner .avatar { display: none; }
+.result-score { font-family: 'Unbounded', sans-serif; font-weight: 700; }
+.result-name { font-family: 'Space Grotesk', sans-serif; letter-spacing: 0.14em; }
+.result-btns button { font-size: 14px; }
+.mp-rank-title { font-family: 'Space Grotesk', sans-serif; letter-spacing: 0.3em; color: var(--mut); }
+
+/* toasts */
+.gs-toast {
+  background: rgba(18, 18, 24, 0.94);
+  border: none;
+  box-shadow: none;
+  border-radius: 3px;
+  font-family: 'Space Grotesk', sans-serif;
+  letter-spacing: 0.02em;
+}
+
+/* footer flush with the column; quiet controls, accent only on hover */
+.menu-foot { display: block; }
+.foot-row { justify-content: flex-start; }
+.menu-foot input { margin-left: 0; background: none; border: none; border-bottom: 1px solid var(--line); border-radius: 0; }
+.calib-btn { color: var(--mut); }
+.calib-btn:hover { color: var(--acc); opacity: 1; }
+.calib-btn.on { color: var(--ink); }

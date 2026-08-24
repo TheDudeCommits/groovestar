@@ -215,13 +215,13 @@ function attachYtSearch(
       const data = await r.json();
       if (mine.signal.aborted) return;
       const results = (data?.results ?? []) as { id: string; title: string; duration: string; channel: string }[];
-      if (!results.length) { resultsBox.innerHTML = ''; err.textContent = 'No results \u2014 try different words or paste a link.'; return; }
+      if (!results.length) { resultsBox.innerHTML = ''; err.textContent = 'No results. Try different words or paste a link.'; return; }
       err.textContent = '';
       render(results);
     } catch (e) {
       if ((e as Error).name === 'AbortError') return;
       resultsBox.innerHTML = '';
-      err.textContent = 'Search is unavailable right now \u2014 paste a YouTube link instead.';
+      err.textContent = 'Search is unavailable. Paste a YouTube link instead.';
     }
   };
 
@@ -258,7 +258,7 @@ function showMenu() {
   `;
   // --- Just Dance classics: real extracted routines, lazily listed ---
   const classics = div('classics-panel');
-  classics.innerHTML = `<div class="yt-title">Classics Catalog</div>
+  classics.innerHTML = `<div class="yt-title">Classics</div>
     <div class="classics-row" id="classics-row"></div>`;
   menu.appendChild(classics);
   fetchRoutineIndex().then((idx) => {
@@ -269,7 +269,7 @@ function showMenu() {
       tile.innerHTML = `<img src="https://i.ytimg.com/vi/${e.v}/mqdefault.jpg" alt="" loading="lazy">
         <div class="song-meta"><div class="song-title">${escapeHtml(e.title)}</div>
         <div class="song-artist">${escapeHtml(e.artist || 'Just Dance')}</div>
-        <div class="song-diff">★ classic · ${Math.round(e.bpm)} BPM</div></div>`;
+        <div class="song-diff">${Math.round(e.bpm)} BPM</div></div>`;
       tile.addEventListener('click', () => startClassic(e));
       crow.appendChild(tile);
     }
@@ -278,11 +278,10 @@ function showMenu() {
   // --- YouTube search / import panel ---
   const yt = div('yt-panel');
   yt.innerHTML = `
-    <div class="yt-title">▶ DANCE TO ANY YOUTUBE SONG</div>
-    <div class="yt-sub">Search YouTube or paste a link — routine, tempo and intro are figured out automatically.</div>
+    <div class="yt-title">Any song</div>
     <div class="yt-row">
-      <input id="yt-url" placeholder="Search a song… or paste a YouTube link" spellcheck="false">
-      <button id="yt-go">GO DANCE</button>
+      <input id="yt-url" placeholder="Search or paste a YouTube link" spellcheck="false">
+      <button id="yt-go">Play</button>
     </div>
     <div id="yt-results" class="yt-results"></div>
     <div id="yt-err" class="yt-err"></div>`;
@@ -299,13 +298,11 @@ function showMenu() {
   // --- dance-off (multiplayer) panel ---
   const mp = div('yt-panel mp-panel');
   mp.innerHTML = `
-    <div class="yt-title mp-title">\u2694 DANCE OFF \u2014 UP TO ${MAX_PLAYERS} PLAYERS</div>
-    <div class="yt-sub">Create a room, drop a YouTube link, share the 4-digit code. Everyone dances the same routine live.</div>
+    <div class="yt-title mp-title">Dance off</div>
     <div class="yt-row">
-      <button id="mp-create" class="mp-btn">CREATE ROOM</button>
-      <span class="yt-label">or</span>
+      <button id="mp-create" class="mp-btn">Create room</button>
       <input id="mp-code" placeholder="CODE" maxlength="4" inputmode="numeric">
-      <button id="mp-join" class="mp-btn">JOIN</button>
+      <button id="mp-join" class="mp-btn">Join</button>
       <span id="mp-err" class="yt-err"></span>
     </div>`;
   menu.appendChild(mp);
@@ -331,12 +328,12 @@ function showMenu() {
   foot.innerHTML = `
     <div class="foot-row">
       <label>Dancer name <input id="pname" maxlength="14" value="${localStorage.getItem('gs-name') ?? 'DANCER'}"></label>
-      <button id="calib" class="calib-btn">\u{1F4D0} CALIBRATE${localStorage.getItem('gs-style') ? ' \u2713' : ''}</button>
-      <button id="fit-toggle" class="calib-btn ${fitnessOn() ? 'on' : ''}">\u{1F525} FITNESS ${fitnessOn() ? 'ON' : 'OFF'}${fitStreak() > 1 ? ` \u00b7 ${fitStreak()}d streak` : ''}</button>
-      <button id="phone-cam" class="calib-btn">\u{1F4FA} PHONE CAM${phoneCam?.connected ? ' \u2713' : ''}</button>
-      <button id="char-cycle" class="calib-btn">\u{1F483} DANCER: ${charPref() === 'auto' ? 'MY LOOK' : (CAST.find((c) => c.id === charPref())?.name ?? 'MY LOOK')}</button>
+      <button id="calib" class="calib-btn ${localStorage.getItem('gs-style') ? 'on' : ''}">Calibrate</button>
+      <button id="fit-toggle" class="calib-btn ${fitnessOn() ? 'on' : ''}">Fitness${fitStreak() > 1 ? ` ${fitStreak()}d` : ''}</button>
+      <button id="phone-cam" class="calib-btn ${phoneCam?.connected ? 'on' : ''}">Phone camera</button>
+      <button id="char-cycle" class="calib-btn">Dancer · ${charPref() === 'auto' ? 'My look' : (CAST.find((c) => c.id === charPref())?.name ?? 'My look')}</button>
     </div>
-    <div class="cam-note" id="cam-note">\u{1F4F7} The webcam scans your look into a neon avatar and scores your moves. No camera? Demo Mode \u2014 full show, simulated scoring.</div>`;
+`;
   menu.appendChild(foot);
   foot.querySelector('#calib')!.addEventListener('click', () => openCalibrate());
   foot.querySelector('#fit-toggle')!.addEventListener('click', () => {
@@ -349,7 +346,7 @@ function showMenu() {
     const next = ids[(ids.indexOf(charPref()) + 1) % ids.length];
     localStorage.setItem('gs-char', next);
     const btn = foot.querySelector('#char-cycle')!;
-    btn.textContent = `\u{1F483} DANCER: ${next === 'auto' ? 'MY LOOK' : CAST.find((c) => c.id === next)!.name}`;
+    btn.textContent = `Dancer · ${next === 'auto' ? 'My look' : CAST.find((c) => c.id === next)!.name}`;
   });
   app.appendChild(menu);
 
@@ -404,7 +401,7 @@ async function readyFlow(song: Song, bannerHtml: string) {
     const stored = loadStoredStyle();
     if (stored) {
       playerStyle = applyCharacter(stored, charPref(), charSeed);
-      if (tip) tip.innerHTML = 'Style loaded from your calibration \u2713 \u2014 you are the dancer!';
+      if (tip) tip.innerHTML = 'Style loaded from your calibration.';
       await wait(1100);
       card.remove();
       return;
@@ -414,12 +411,12 @@ async function readyFlow(song: Song, bannerHtml: string) {
     playerStyle = applyCharacter(scanned ?? defaultStyle(song), charPref(), charSeed);
     if (tip) {
       tip.innerHTML = scanned
-        ? `Style locked — you're the dancer! ${swatches(scanned)} Follow the pictograms & mini coach.`
-        : 'You are the dancer on stage — step into frame! Follow the pictograms & mini coach.';
+        ? `Style locked. ${swatches(scanned)}`
+        : 'Step into frame.';
     }
     await wait(1700);
   } else {
-    if (tip) tip.textContent = `Demo Mode — no camera (${tracker.error ?? 'unavailable'}). The show runs with simulated scoring.`;
+    if (tip) tip.textContent = `Demo mode. No camera (${tracker.error ?? 'unavailable'}), scoring is simulated.`;
     await wait(2200);
   }
   card.remove();
@@ -530,19 +527,19 @@ async function startYouTube(videoId: string) {
 
   await readyFlow(song, `<b>${escapeHtml(song.title)}</b><span>${Math.round(bpm)} BPM${meta === null ? ' (auto-sync)' : ''}${introBeats > 10 ? ' \u00b7 intro detected' : ''}</span>`);
 
-  if (!lyr) toast('\u266a No synced lyrics found for this track \u2014 karaoke is off, dancing the generated routine.');
-  if (meta === null) toast('Tempo unknown \u2014 the mic will lock onto the beat as the song plays.');
+  if (!lyr) toast('No synced lyrics found. Karaoke is off.');
+  if (meta === null) toast('Tempo unknown. The mic will lock onto the beat.');
   if (lyr) {
     const waitCard = div('overlay ready-card');
     waitCard.innerHTML = `<div class="ready-inner"><div class="ready-tip"><span class="scanline">\u266a CHOREOGRAPHING TO THE LYRICS\u2026</span></div>
-      <div class="ready-tip" style="opacity:0.6;font-size:0.85em">First dance on a new song takes ~30 s \u2014 after that it's saved for everyone, forever.</div></div>`;
+      <div class="ready-tip" style="opacity:0.6;font-size:0.85em">The first dance on a new song takes about 30 seconds to choreograph.</div></div>`;
     app.appendChild(waitCard);
     const ai = await Promise.race([aiPromise, wait(45000).then(() => 'timeout' as const)]);
     waitCard.remove();
     if (ai && ai !== 'timeout') {
       song.choreo = ai;
     } else {
-      toast('AI choreographer unavailable right now \u2014 dancing the generated routine.');
+      toast('AI choreographer unavailable. Using the generated routine.');
       song.choreo = applyKeywordChoreo(gen.choreo, song.lyrics).choreo;
     }
   }
@@ -641,23 +638,23 @@ function openLobby(room: Room) {
   const lobby = div('overlay lobby');
   lobby.innerHTML = `
     <div class="lobby-box">
-      <div class="lobby-title">DANCE OFF LOBBY</div>
-      <div class="lobby-code">ROOM CODE <b>${room.code}</b></div>
+      <div class="lobby-title">Lobby</div>
+      <div class="lobby-code">Code <b>${room.code}</b></div>
       <div class="lobby-players" id="lobby-players"></div>
       ${room.isHost ? `
         <div class="yt-row">
           <input id="mp-url" placeholder="Search a song\u2026 or paste a YouTube link" spellcheck="false">
         </div>
         <div id="mp-results" class="yt-results"></div>
-        <div class="yt-title lobby-classics-title">Classics Catalog</div>
+        <div class="yt-title lobby-classics-title">Classics</div>
         <div class="classics-row lobby-classics" id="mp-classics"></div>
         <div id="mp-picked" class="mp-picked"></div>
         <div class="yt-row">
-          <button id="mp-start" class="mp-btn big">START THE DANCE OFF</button>
+          <button id="mp-start" class="mp-btn big">Start</button>
           <span id="lobby-err" class="yt-err"></span>
         </div>` : `
         <div class="lobby-wait">Waiting for the host to pick a song and start…</div>`}
-      <button id="lobby-leave" class="lobby-leave">LEAVE ROOM</button>
+      <button id="lobby-leave" class="lobby-leave">Leave</button>
     </div>`;
   app.appendChild(lobby);
 
@@ -665,7 +662,7 @@ function openLobby(room: Room) {
     const el = document.getElementById('lobby-players');
     if (!el) return;
     el.innerHTML = room.players.map((p, i) =>
-      `<span class="lobby-player">${i + 1}. ${escapeHtml(p.name)}${p.id === room.myId ? ' (you)' : ''}${i === 0 ? ' ★host' : ''}</span>`
+      `<span class="lobby-player">${i + 1}. ${escapeHtml(p.name)}${p.id === room.myId ? ' (you)' : ''}${i === 0 ? ' host' : ''}</span>`
     ).join('');
   };
   renderPlayers();
@@ -740,7 +737,7 @@ function openLobby(room: Room) {
       // every client — guests never need their own (possibly diverging) fetch
       let aiChoreo: Song['choreo'] | null = null;
       if (lyr) {
-        err.textContent = '♪ AI is choreographing to the lyrics… first time on a song takes ~30 s.';
+        err.textContent = 'Choreographing. The first time on a song takes about 30 seconds.';
         const totalBeats = Math.max(48, Math.floor((probe.duration * bpm) / 60) - 8);
         aiChoreo = await Promise.race([
           fetchAiChoreo(id, probe.title, probe.duration, bpm, intro, totalBeats),
@@ -872,15 +869,15 @@ function openPhoneCam() {
   const overlay = div('overlay calib');
   overlay.innerHTML = `
     <div class="calib-box">
-      <div class="lobby-title">\u{1F4FA} PHONE CAMERA</div>
+      <div class="lobby-title">Phone camera</div>
       <div id="pc-body" class="pc-body">
-        <button id="pc-tv" class="mp-btn big">THIS IS THE BIG SCREEN \u2014 GET A CODE</button>
+        <button id="pc-tv" class="mp-btn big">This screen shows the game</button>
         <div class="yt-row" style="justify-content:center">
           <span class="yt-label">or</span>
           <input id="pc-code" placeholder="CODE" maxlength="4" inputmode="numeric" style="width:90px;text-align:center;letter-spacing:0.3em;font-weight:900">
-          <button id="pc-join" class="mp-btn">THIS PHONE IS THE CAMERA</button>
+          <button id="pc-join" class="mp-btn">This phone is the camera</button>
         </div>
-        <div class="yt-sub">Run the game on a TV or laptop, then point a phone at the dance floor \u2014 the phone does the tracking, the big screen does the show.</div>
+        <div class="lobby-wait">Run the game here, use a phone as the camera.</div>
       </div>
       <div id="pc-status" class="calib-status"></div>
       ${phoneCam ? `<button id="pc-disconnect" class="lobby-leave">DISCONNECT PHONE CAMERA</button>` : ''}
@@ -902,11 +899,11 @@ function openPhoneCam() {
       const body = overlay.querySelector('#pc-body') as HTMLElement;
       body.innerHTML = `
         <div class="lobby-code">CAMERA CODE <b>${phoneCam.code}</b></div>
-        <div class="yt-sub">On your phone, open <b>groovestar.vercel.app</b> \u2192 \u{1F4FA} PHONE CAM \u2192 enter this code.</div>`;
+        <div class="lobby-wait">On your phone, open groovestar.vercel.app, tap Phone camera and enter this code.</div>`;
       status.textContent = 'Waiting for the phone\u2026';
       phoneCam.onChange = () => {
         if (phoneCam?.connected) {
-          status.textContent = '\u2705 Phone connected! Close this and pick a song \u2014 the phone is now your camera.';
+          status.textContent = 'Phone connected. Close this and pick a song.';
           status.className = 'calib-status good';
         } else {
           status.textContent = 'Phone disconnected.';
@@ -937,7 +934,7 @@ function openPhoneCam() {
       await connectPhoneCam(code, tracker, (s) => { status.textContent = s; });
       status.className = 'calib-status good';
       (overlay.querySelector('#pc-body') as HTMLElement).innerHTML =
-        `<div class="yt-sub">\u{1F4FA} Keep this phone propped up and pointed at the dance floor. Keep the screen on!</div>`;
+        `<div class="lobby-wait">Keep this phone propped up, pointed at the dance floor, screen on.</div>`;
       try { await (navigator as any).wakeLock?.request('screen'); } catch { /* unsupported */ }
     } catch (e) {
       status.textContent = String((e as Error).message ?? e);
@@ -950,7 +947,7 @@ async function openCalibrate() {
   const overlay = div('overlay calib');
   overlay.innerHTML = `
     <div class="calib-box">
-      <div class="lobby-title">CALIBRATE</div>
+      <div class="lobby-title">Calibrate</div>
       <canvas id="calib-view" width="640" height="480"></canvas>
       <div id="calib-status" class="calib-status">Starting camera\u2026</div>
       <div id="calib-chips" class="ready-tip"></div>
@@ -995,7 +992,7 @@ async function openCalibrate() {
   const scanBtn = overlay.querySelector('#calib-scan') as HTMLButtonElement;
   const chips = overlay.querySelector('#calib-chips') as HTMLElement;
   if (!cameraOk) {
-    status.textContent = `Camera unavailable (${tracker.error ?? 'denied'}) \u2014 calibration needs a webcam.`;
+    status.textContent = `Camera unavailable (${tracker.error ?? 'denied'}). Calibration needs a webcam.`;
     return;
   }
   const cv = overlay.querySelector('#calib-view') as HTMLCanvasElement;
@@ -1082,7 +1079,7 @@ async function openCalibrate() {
     resultShownAt = performance.now();
     chips.innerHTML = `Your style: ${swatches(profile)}`;
     const btn = document.getElementById('calib');
-    if (btn) btn.textContent = '\u{1F4D0} CALIBRATE \u2713';
+    if (btn) btn.textContent = 'Calibrate';
   });
 }
 
@@ -1161,7 +1158,7 @@ function play(song: Song, playerName: string, opts: PlayOpts) {
         fit.kcal += ((3.2 + 9 * en) / 60) * dtF;
         if (en > 0.15) fit.active += dtF;
       }
-      hud.setSync(`\u{1F525} ${Math.round(fit.kcal)} kcal \u00b7 ${Math.floor(fit.active / 60)}:${String(Math.floor(fit.active % 60)).padStart(2, '0')} active`, en > 0.45);
+      hud.setSync(`${Math.round(fit.kcal)} kcal · ${Math.floor(fit.active / 60)}:${String(Math.floor(fit.active % 60)).padStart(2, '0')} active`, en > 0.45);
     } else {
       lastFitT = performance.now();
     }
@@ -1590,7 +1587,7 @@ async function endSong(song: Song, scorer: Scorer, hud: Hud, preview: HTMLCanvas
   res.innerHTML = `
     <div class="congrats">Congratulations!</div>
     <div class="result-banner">
-      <div class="avatar">🎧</div>
+      
       <div class="result-name">${playerName}</div>
       <div class="result-stars">${'<span class="rstar">★</span>'.repeat(5)}</div>
       <div class="result-score" id="rscore">0</div>
@@ -1598,7 +1595,7 @@ async function endSong(song: Song, scorer: Scorer, hud: Hud, preview: HTMLCanvas
     <div class="result-counts">${(['PERFECT', 'SUPER', 'GOOD', 'OK', 'X'] as const)
       .map((k) => `<span class="rc rc-${k}">${k === 'X' ? '✕' : k} <b>${scorer.counts[k] + (k === 'PERFECT' ? scorer.counts.YEAH : 0)}</b></span>`).join('')}
     </div>
-    ${fitnessOn() && opts.fitness ? `<div class="fit-row">\u{1F525} ${Math.round(opts.fitness.kcal)} kcal \u00b7 ${Math.round(opts.fitness.active / 60)} active min \u00b7 ${fitStreak()}-day streak</div>` : ''}
+    ${fitnessOn() && opts.fitness ? `<div class="fit-row">${Math.round(opts.fitness.kcal)} kcal · ${Math.round(opts.fitness.active / 60)} active min · ${fitStreak()} day streak</div>` : ''}
     ${opts.room ? `<div class="mp-ranking">${rankingHtml(opts, Math.round(scorer.score))}</div>` : ''}
     <div class="result-btns">
       <button id="again">${opts.room ? 'BACK TO LOBBY' : 'DANCE AGAIN'}</button>
@@ -1660,7 +1657,7 @@ function rankingHtml(opts: PlayOpts, myScore: number): string {
     me: p.id === room.myId,
     score: p.id === room.myId ? myScore : (opts.remotes?.get(p.id)?.end ?? opts.remotes?.get(p.id)?.score ?? 0),
   })).sort((a, b) => b.score - a.score);
-  const medals = ['🥇', '🥈', '🥉', '4.'];
+  const medals = ['1', '2', '3', '4'];
   return `<div class="mp-rank-title">BATTLE RESULT</div>` + rows.map((r, i) =>
     `<div class="mp-rank-row ${r.me ? 'me' : ''}"><span>${medals[i] ?? ''} ${escapeHtml(r.name)}${r.me ? ' (you)' : ''}</span><b>${r.score.toLocaleString('en-US')}</b></div>`
   ).join('');

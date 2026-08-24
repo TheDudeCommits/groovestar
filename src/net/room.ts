@@ -55,7 +55,7 @@ export class Room {
     return new Promise((resolve, reject) => {
       room.peer = new Peer(PREFIX + room.code, { config });
       const timeout = setTimeout(() =>
-        reject(new Error('Multiplayer service unreachable \u2014 a firewall or VPN may be blocking it.')), 12000);
+        reject(new Error('Multiplayer service unreachable. A firewall or VPN may be blocking it.')), 12000);
       room.peer.on('open', () => {
         clearTimeout(timeout);
         room.players = [{ id: room.peer.id, name }];
@@ -82,7 +82,7 @@ export class Room {
       room.peer = new Peer({ config });
       const fail = (m: string) => reject(new Error(m));
       const brokerTimeout = setTimeout(() =>
-        fail('Multiplayer service unreachable — a firewall or VPN may be blocking it.'), 12000);
+        fail('Multiplayer service unreachable. A firewall or VPN may be blocking it.'), 12000);
       room.peer.on('open', () => {
         clearTimeout(brokerTimeout);
         const conn = room.peer.connect(PREFIX + code, { reliable: true });
@@ -91,7 +91,7 @@ export class Room {
         // networks (mobile carriers, hotels) needs a TURN relay. Say so
         // instead of blaming the code.
         const timeout = setTimeout(() => fail(turn
-          ? 'Found the room, but the connection could not be established. Try again — or switch one player to a phone hotspot.'
+          ? 'Found the room, but the connection could not be established. Try again, or switch one player to a phone hotspot.'
           : 'Found the room, but your networks block a direct connection. Try a phone hotspot on one side.'), 20000);
         conn.on('open', () => {
           clearTimeout(timeout);
@@ -108,7 +108,7 @@ export class Room {
       room.peer.on('error', (e: any) => {
         clearTimeout(brokerTimeout);
         if (String(e?.type) === 'peer-unavailable') {
-          fail('Room not found — double-check the code and make sure the host is still on the lobby screen.');
+          fail('Room not found. Check the code and make sure the host is still in the lobby.');
         } else fail(String(e?.message ?? e));
       });
     });
