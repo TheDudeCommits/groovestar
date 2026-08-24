@@ -14,7 +14,7 @@
 import type { NormalizedLandmark } from '@mediapipe/tasks-vision';
 import type { StyleProfile } from './appearance';
 import type { Judgment } from './pose/scorer';
-import { SpriteRig } from './rig';
+import { BodyArt } from './body';
 
 export type SkinId = 'toon' | 'sprite' | 'wire';
 
@@ -91,7 +91,7 @@ export class PlayerAvatar {
 
   // depth (MediaPipe z, smoothed), sprite rig, particles, anime-mode gating
   private zr: Partial<Record<Named, number>> = {};
-  private rig = new SpriteRig();
+  private body = new BodyArt();
   private particles: { x: number; y: number; vx: number; vy: number; r: number; life: number; max: number; kind: 'dust' | 'spark' | 'flame'; color: string }[] = [];
   private prevJoint: Partial<Record<string, [number, number]>> = {};
   /** screen-space ankle positions + speeds from the last draw (floor tiles read these) */
@@ -362,194 +362,18 @@ export class PlayerAvatar {
         o.beginPath(); o.arc(head[0] + s * hr * 0.32, head[1] - hr * 0.05, lwT(0.028), 0, Math.PI * 2); o.fill();
       }
       o.restore();
-    } else if (skin === 'sprite') {
-      // SPRITE RIG skin: baked illustrated parts stamped onto the bones
-      this.rig.render(o, {
-        T: torsoPx, pelvis: [pelvis.x, pelvis.y], midSh: midShPx, head, hr,
+    } else {
+      // CLASSIC skin: the rebuilt anatomical body (see body.ts)
+      this.body.render(o, {
+        pelvis: [pelvis.x, pelvis.y], midSh: midShPx, head, hr,
         shA, elA, wrA, shB, elB, wrB, hipA, kneeA, ankA, hipB, kneeB, ankB,
-        dz, frontA, frontB,
-      }, style);
-      const flashS = opts.gloveFlash ?? 0;
-      this.drawHand(o, 'A', wrA, elA, style.skin, lw(0.1) * dz('wrA'), 0, P);
-      this.drawHand(o, 'B', wrB, elB, flashS > 0.05 ? '#ffe9a0' : style.glove, lw(0.115) * dz('wrB'), flashS, P);
-      this.drawFace(o, head, hr, now);
+        torsoPx, groundY, dz, frontA, frontB,
+      }, style, {
+        beat: opts.beat, now, dt, gloveFlash: opts.gloveFlash ?? 0,
+        goldHold: !!opts.goldGlow, faceState: this.faceState,
+        lightX: opts.light?.x,
+      });
     }
-
-    if (skin === 'toon') {
-    // dark outline pass — makes the body read as one cohesive figure
-    for (const [a, b, w1, w2] of bodyCapsules) {
-      capsulePath(o, a, b, w1 + ol, w2 + ol); o.fillStyle = OUTLINE; o.fill();
-    }
-    torsoPath(o, ol); o.fillStyle = OUTLINE; o.fill();
-
-    // legs: tapered capsules + shoes
-    const bootColor = cos.kicks === 'gold' ? '#ffd23e' : cos.kicks === 'neon' ? opts.accent : style.boots;
-    const legSeg = (hip: [number, number], knee: [number, number], ank: [number, number], side: number) => {
-      capsulePath(o, hip, knee, W_THIGH, W_KNEE); o.fillStyle = style.bottom; o.fill();
-      capsulePath(o, knee, ank, W_KNEE, W_ANK); o.fill();
-      o.beginPath(); o.arc(knee[0], knee[1], W_KNEE, 0, Math.PI * 2); o.fill();
-      // shoe: points away from the body's midline, hugging the ground
-      const fx = Math.sign(ank[0] - pelvis.x) || side;
-      const heel: [number, number] = [ank[0] - fx * lwT(0.04), ank[1] + lwT(0.02)];
-      const toe: [number, number] = [ank[0] + fx * lwT(0.24), ank[1] + lwT(0.055)];
-      o.save();
-      if (cos.kicks !== 'default') { o.shadowColor = bootColor; o.shadowBlur = lwT(0.22); }
-      capsulePath(o, heel, toe, lw(0.085), lw(0.07)); o.fillStyle = bootColor; o.fill();
-      o.restore();
-      // sole highlight
-      capsulePath(o, [heel[0], heel[1] + lwT(0.05)], [toe[0], toe[1] + lwT(0.03)], lw(0.03), lw(0.028));
-      o.fillStyle = 'rgba(255,255,255,0.35)'; o.fill();
-    };
-    legSeg(hipA, kneeA, ankA, -1);
-    legSeg(hipB, kneeB, ankB, 1);
-
-    // neck (drawn early so torso/hood cover its base)
-    capsulePath(o, [midShPx[0], midShPx[1] + lwT(0.02)], [head[0], head[1] + hr * 0.55], lw(0.07), lw(0.06));
-    o.fillStyle = style.skin; o.fill();
-
-    // hood (spring-drooped) behind the head
-    const headUpright = head[1] < midShPx[1] - hr * 0.5;
-    if (style.longSleeves && headUpright) {
-      this.hoodSpring.follow({ x: head[0], y: head[1] + hr * 0.35 }, dt, 60, 9);
-      const hx = this.hoodSpring.p.x, hy = Math.max(head[1] + hr * 0.1, this.hoodSpring.p.y);
-      o.fillStyle = style.topDeep;
-      o.beginPath();
-      o.arc(hx, hy, hr * 1.18, Math.PI * 0.9, Math.PI * 2.1);
-      o.quadraticCurveTo(hx + hr * 0.95, hy + hr * 1.15, midShPx[0] + hr * 0.5, midShPx[1]);
-      o.lineTo(midShPx[0] - hr * 0.5, midShPx[1]);
-      o.quadraticCurveTo(hx - hr * 0.95, hy + hr * 1.15, hx - hr * 1.18, hy);
-      o.closePath(); o.fill();
-    }
-
-    // torso fill + jacket hem springs
-    const tg = o.createLinearGradient(midShPx[0], midShPx[1], pelvis.x, pelvis.y + lwT(0.1));
-    tg.addColorStop(0, style.top);
-    tg.addColorStop(1, style.topDeep);
-    o.save();
-    o.shadowColor = style.top; o.shadowBlur = lwT(0.14);
-    o.fillStyle = tg;
-    torsoPath(o); o.fill();
-    o.restore();
-    // hem flaps lag behind hip corners (subtle cloth follow-through)
-    for (let i = 0; i < 2; i++) {
-      const corner = i === 0 ? q3 : q2;
-      this.hemSprings[i].follow({ x: corner[0], y: corner[1] + lwT(0.1) }, dt, 110, 11);
-      const hp = this.hemSprings[i].p;
-      o.fillStyle = style.topDeep;
-      o.beginPath();
-      o.moveTo(corner[0] + (i === 0 ? 1 : -1) * lwT(0.02), corner[1] - lwT(0.02));
-      o.lineTo(hp.x, hp.y + lwT(0.05));
-      o.lineTo(corner[0] + (i === 0 ? 1 : -1) * lwT(0.13), corner[1] + lwT(0.02));
-      o.closePath(); o.fill();
-    }
-    // jacket trim piping (cosmetic)
-    if (cos.trim) {
-      o.save();
-      o.strokeStyle = cos.trim;
-      o.shadowColor = cos.trim; o.shadowBlur = lwT(0.12);
-      o.lineWidth = lwT(0.035);
-      o.beginPath(); o.moveTo(q3[0], q3[1]); o.lineTo(q0[0], q0[1]); o.stroke();
-      o.beginPath(); o.moveTo(q2[0], q2[1]); o.lineTo(q1[0], q1[1]); o.stroke();
-      o.restore();
-    }
-    if (style.longSleeves) {
-      const bx = (q2[0] + q3[0]) / 2, by = (q2[1] + q3[1]) / 2;
-      const tx = (q0[0] + q1[0]) / 2, ty = (q0[1] + q1[1]) / 2;
-      const px1 = bx + (tx - bx) * 0.22, py1 = by + (ty - by) * 0.22;
-      o.strokeStyle = 'rgba(0,0,0,0.28)';
-      o.lineWidth = lwT(0.045);
-      o.beginPath();
-      o.moveTo(px1 - lwT(0.2), py1 - lwT(0.08));
-      o.quadraticCurveTo(px1, py1 + lwT(0.08), px1 + lwT(0.2), py1 - lwT(0.08));
-      o.stroke();
-      if (headUpright) {
-        o.strokeStyle = 'rgba(255,255,255,0.45)';
-        o.lineWidth = lwT(0.03);
-        for (const s of [-1, 1]) {
-          o.beginPath();
-          o.moveTo(head[0] + s * hr * 0.35, head[1] + hr * 0.95);
-          o.lineTo(head[0] + s * hr * 0.5, head[1] + hr * 0.95 + lwT(0.3));
-          o.stroke();
-        }
-      }
-    }
-
-    // arms (+ tattoos) — tapered capsules with elbow joints
-    const armSeg = (sh: [number, number], el: [number, number], wr: [number, number]) => {
-      if (style.longSleeves) {
-        capsulePath(o, sh, el, W_UARM, W_FARM); o.fillStyle = style.top; o.fill();
-        capsulePath(o, el, wr, W_FARM, W_WR); o.fill();
-        o.beginPath(); o.arc(el[0], el[1], W_FARM, 0, Math.PI * 2); o.fill();
-      } else {
-        // short sleeve cap + skin arm
-        const cap: [number, number] = [sh[0] + (el[0] - sh[0]) * 0.38, sh[1] + (el[1] - sh[1]) * 0.38];
-        capsulePath(o, cap, el, lw(0.07), W_FARM); o.fillStyle = style.skin; o.fill();
-        capsulePath(o, el, wr, W_FARM, W_WR); o.fill();
-        o.beginPath(); o.arc(el[0], el[1], W_FARM, 0, Math.PI * 2); o.fill();
-        capsulePath(o, sh, cap, W_UARM, lw(0.075)); o.fillStyle = style.top; o.fill();
-      }
-      if (cos.tattoo !== 'none') {
-        o.save();
-        o.strokeStyle = auraColor;
-        o.shadowColor = auraColor; o.shadowBlur = lwT(0.14);
-        o.lineWidth = lwT(0.035);
-        if (cos.tattoo === 'circuit') {
-          o.setLineDash([lwT(0.08), lwT(0.06)]);
-          o.beginPath(); o.moveTo(el[0], el[1]); o.lineTo(wr[0], wr[1]); o.stroke();
-          o.setLineDash([]);
-        } else {
-          // royal: rings on the upper arm
-          for (const f of [0.45, 0.6]) {
-            const rx = sh[0] + (el[0] - sh[0]) * f, ry = sh[1] + (el[1] - sh[1]) * f;
-            o.beginPath(); o.arc(rx, ry, lw(0.1), 0, Math.PI * 2); o.stroke();
-          }
-        }
-        o.restore();
-      }
-    };
-    armSeg(shA, elA, wrA);
-    armSeg(shB, elB, wrB);
-
-    // hands: tracked landmarks → open / fist / point cartoon hands
-    const flash = opts.gloveFlash ?? 0;
-    this.drawHand(o, 'A', wrA, elA, style.skin, lw(0.1), 0, P);
-    this.drawHand(o, 'B', wrB, elB, flash > 0.05 ? '#ffe9a0' : style.glove, lw(0.115), flash, P);
-
-    // head + face
-    o.fillStyle = style.skin;
-    o.beginPath(); o.arc(head[0], head[1], hr, 0, Math.PI * 2); o.fill();
-    const fg = o.createRadialGradient(head[0], head[1] + hr * 0.1, hr * 0.1, head[0], head[1] + hr * 0.1, hr * 0.85);
-    fg.addColorStop(0, 'rgba(255,255,255,0.95)');
-    fg.addColorStop(1, 'rgba(255,255,255,0)');
-    o.fillStyle = fg;
-    o.beginPath(); o.arc(head[0], head[1] + hr * 0.1, hr * 0.85, 0, Math.PI * 2); o.fill();
-    this.drawFace(o, head, hr, now);
-
-    // hair: cap + springy strands
-    if (!style.hairIsSkin) {
-      o.fillStyle = style.hair;
-      o.beginPath();
-      o.arc(head[0], head[1] - hr * 0.12, hr * 1.03, Math.PI * 0.93, Math.PI * 2.07);
-      o.quadraticCurveTo(head[0] + hr * 0.95, head[1] - hr * 0.85, head[0] - hr * 0.15, head[1] - hr * 0.72);
-      o.closePath(); o.fill();
-      const angles = [-2.35, -1.85, -1.2];
-      o.strokeStyle = style.hair;
-      // no loose strands when the hood is up — they'd poke through it
-      for (let i = 0; i < (style.longSleeves && headUpright ? 0 : 3); i++) {
-        const a = angles[i];
-        const anchor = { x: head[0] + Math.cos(a) * hr * 0.95, y: head[1] + Math.sin(a) * hr * 0.95 };
-        const rest = { x: head[0] + Math.cos(a) * hr * 1.5, y: head[1] + Math.sin(a) * hr * 1.5 - hr * 0.1 };
-        this.hairSprings[i].follow(rest, dt, 130, 9);
-        const sp = this.hairSprings[i].p;
-        o.lineWidth = hr * (0.24 - i * 0.045);
-        o.beginPath();
-        o.moveTo(anchor.x, anchor.y);
-        o.quadraticCurveTo((anchor.x + sp.x) / 2, (anchor.y + sp.y) / 2 - hr * 0.12, sp.x, sp.y);
-        o.stroke();
-      }
-    }
-
-    } // end toon skin
 
     o.restore(); // squash & stretch transform
 
