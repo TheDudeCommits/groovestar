@@ -519,7 +519,7 @@ async function arcadeCamera(title: string, tip: string): Promise<boolean> {
 
 async function startArcade(def: ArcadeDef, make: (o: GameOpts) => Game) {
   await arcadeCamera(def.title, def.tip);
-  const preview = cameraOk ? buildPreview() : null;
+  const preview = cameraOk ? buildArcadePreview() : null;
   arcadeGame = make({
     canvas, ctx, tracker: cam(), cameraOk, rig: new HandRig(),
     onExit: (score, label) => {
@@ -586,7 +586,7 @@ async function startBowling() {
   pick.remove();
   if (choice === 0) return;
   await arcadeCamera('Bowling', choice === 2 ? 'Pass and play: player 1 bowls first, swap each frame.' : def.tip);
-  const preview = cameraOk ? buildPreview() : null;
+  const preview = cameraOk ? buildArcadePreview() : null;
   arcadeGame = new BowlGame({
     canvas, ctx, tracker: cam(), cameraOk, rig: new HandRig(),
     onExit: (score, label) => { preview?.remove(); debugCtl.exit(); endArcade(def, score, label); },
@@ -651,7 +651,7 @@ async function startBeatBlade() {
   clock.restart();
   // dim the video into a backdrop
   src.setBounds(0, 0, W(), Math.round(H() * 0.56));
-  const preview = cameraOk ? buildPreview() : null;
+  const preview = cameraOk ? buildArcadePreview() : null;
   arcadeGame = new BeatBladeGame({
     canvas, ctx, tracker: cam(), cameraOk, clock, totalBeats, seed: chosen, rig: new HandRig(),
     onExit: (score, label) => {
@@ -1834,6 +1834,20 @@ function buildPreview(): HTMLCanvasElement | null {
   cv.className = 'cam-preview';
   cv.width = 176; cv.height = 132;
   app.appendChild(cv);
+  return cv;
+}
+
+/** arcade preview paints itself — game loops never call drawPreview, which
+ *  used to leave a blank rectangle where the player expected to see themself */
+function buildArcadePreview(): HTMLCanvasElement | null {
+  const cv = buildPreview();
+  if (!cv) return null;
+  const loop = () => {
+    if (!cv.isConnected) return;
+    drawPreview(cv);
+    requestAnimationFrame(loop);
+  };
+  loop();
   return cv;
 }
 
