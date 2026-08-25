@@ -150,7 +150,7 @@ export class DebugOverlay {
 
     // wrist markers: raw landmark (dim) vs rig predicted (bright)
     if (lms) {
-      for (const [i, color] of [[16, '#6ee7ff'], [15, '#ffd23e']] as const) {
+      for (const [i, color] of [[15, '#6ee7ff'], [16, '#ffd23e']] as const) {
         ctx.fillStyle = color;
         ctx.globalAlpha = 0.35;
         ctx.beginPath();

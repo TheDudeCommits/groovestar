@@ -243,6 +243,53 @@ class Sfx {
   popup() {
     this.play('popup', 0.6);
   }
+
+  // ---- persistent saber hum -------------------------------------------------
+
+  private hums: Partial<Record<'L' | 'R', { osc1: OscillatorNode; osc2: OscillatorNode; gain: GainNode }>> = {};
+
+  /** continuous lightsaber hum; level 0..1 follows swing speed */
+  saberHum(h: 'L' | 'R', level: number) {
+    const ctx = this.ensure();
+    if (!ctx || !this.master) return;
+    let hum = this.hums[h];
+    if (!hum) {
+      const osc1 = ctx.createOscillator();
+      const osc2 = ctx.createOscillator();
+      osc1.type = 'sawtooth';
+      osc2.type = 'sawtooth';
+      osc1.frequency.value = 62;
+      osc2.frequency.value = 62 * 1.008;
+      const filter = ctx.createBiquadFilter();
+      filter.type = 'lowpass';
+      filter.frequency.value = 340;
+      const gain = ctx.createGain();
+      gain.gain.value = 0;
+      osc1.connect(filter);
+      osc2.connect(filter);
+      filter.connect(gain).connect(this.master);
+      osc1.start();
+      osc2.start();
+      hum = { osc1, osc2, gain };
+      this.hums[h] = hum;
+    }
+    const t = ctx.currentTime;
+    hum.gain.gain.setTargetAtTime(0.028 + level * 0.075, t, 0.06);
+    hum.osc1.frequency.setTargetAtTime(62 + level * 46, t, 0.05);
+    hum.osc2.frequency.setTargetAtTime((62 + level * 46) * 1.008, t, 0.05);
+  }
+
+  saberHumStop() {
+    const ctx = this.ctx;
+    for (const h of ['L', 'R'] as const) {
+      const hum = this.hums[h];
+      if (!hum || !ctx) continue;
+      hum.gain.gain.setTargetAtTime(0, ctx.currentTime, 0.08);
+      const { osc1, osc2 } = hum;
+      setTimeout(() => { try { osc1.stop(); osc2.stop(); } catch { /* stopped */ } }, 400);
+      this.hums[h] = undefined;
+    }
+  }
 }
 
 export const sfx = new Sfx();

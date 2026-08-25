@@ -23,7 +23,7 @@ import { RushGame } from './games/rush';
 import { BowlGame } from './games/bowl';
 import { TennisGame } from './games/tennis';
 import { BoxGame } from './games/box';
-import { BeatBladeGame } from './games/beatblade';
+import { BeatBladeGame, VIDEO_WIN, type BeatClockLike } from './games/beatblade';
 import type { Game, GameOpts } from './games/shared';
 import { coverFruit, coverBlade, coverRush, coverBowl, coverTennis, coverBox } from './games/covers';
 import { HandRig } from './pose/rig';
@@ -945,13 +945,15 @@ async function startBeatBlade() {
   await countdown(card.querySelector('.ready-inner') as HTMLElement);
   card.remove();
 
+  const vibe = await fetchVibe(chosen).catch(() => null);
+  const accent = vibe?.find((p2) => p2)?.[0];
   const clock = new YouTubeClock(src, bpm, [{ beat: 0, kind: 'intro' }], totalBeats, 4);
   clock.restart();
   // dim the video into a backdrop
-  src.setBounds(0, 0, W(), Math.round(H() * 0.56));
+  src.setBounds(Math.round(W() * VIDEO_WIN.x), Math.round(H() * VIDEO_WIN.y), Math.round(W() * VIDEO_WIN.w), Math.round(H() * VIDEO_WIN.h));
   const preview = cameraOk ? buildArcadePreview() : null;
   arcadeGame = new BeatBladeGame({
-    canvas, ctx, tracker: cam(), cameraOk, clock, totalBeats, seed: chosen, rig: new HandRig(),
+    canvas, ctx, tracker: cam(), cameraOk, clock, totalBeats, seed: chosen, rig: new HandRig(), accent,
     onExit: (score, label) => {
       preview?.remove();
       src.destroy();
@@ -2293,3 +2295,23 @@ function div(cls: string): HTMLDivElement {
 const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 showMenu();
+
+// visual-iteration harness: ?bladetest runs Beat Blade on a synthetic clock
+// (no YouTube, demo autopilot) so the environment can be screenshotted fast
+if (new URLSearchParams(location.search).has('bladetest')) {
+  setTimeout(() => {
+    state = 'play';
+    cancelAnimationFrame(raf);
+    app.querySelectorAll('.overlay, .yt-holder').forEach((e) => e.remove());
+    const t0 = performance.now();
+    const clock: BeatClockLike = {
+      beat: () => ((performance.now() - t0) / 1000) * (128 / 60) - 4,
+      get finished() { return false; },
+    };
+    arcadeGame = new BeatBladeGame({
+      canvas, ctx, tracker: cam(), cameraOk: false, clock, totalBeats: 96, seed: 'gauntlet',
+      onExit: () => showMenu(),
+    });
+    arcadeGame.start();
+  }, 400);
+}

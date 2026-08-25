@@ -42,13 +42,16 @@ export class OneEuro {
   reset() { this.xf = null; this.dxf = 0; }
 }
 
-// subject-space MediaPipe indices for each viewer-space joint (mirrored)
+// MediaPipe indices per viewer-space joint. In MIRRORED view the player's
+// anatomical left hand appears on the screen's left (like a mirror), so
+// viewer-L maps to the subject's LEFT-side landmarks — a hand raised on
+// your left is the 'L' hand. (An earlier swap here had the hands crossed.)
 const JOINTS = {
   nose: 0,
-  shL: 12, shR: 11,
-  elL: 14, elR: 13,
-  wrL: 16, wrR: 15,
-  hipL: 24, hipR: 23,
+  shL: 11, shR: 12,
+  elL: 13, elR: 14,
+  wrL: 15, wrR: 16,
+  hipL: 23, hipR: 24,
 } as const;
 export type RigJoint = keyof typeof JOINTS;
 

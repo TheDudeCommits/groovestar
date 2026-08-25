@@ -92,9 +92,9 @@ export class SwingDetector {
     const s = this.sig;
     s.feed(
       lms,
-      this.hand === 'L' ? LM.wrR : LM.wrL,   // viewer-left = subject right
-      this.hand === 'L' ? LM.elR : LM.elL,
-      this.hand === 'L' ? LM.shR : LM.shL,
+      this.hand === 'L' ? LM.wrL : LM.wrR,   // mirror view: viewer-left = subject left
+      this.hand === 'L' ? LM.elL : LM.elR,
+      this.hand === 'L' ? LM.shL : LM.shR,
       t,
     );
     const { minSpeed, peakHoldMs, refractoryMs } = TUNING.swing;
@@ -126,9 +126,9 @@ export class PunchDetector {
 
   update(lms: NormalizedLandmark[] | null, world: NormalizedLandmark[] | null, t: number): PunchEvent | null {
     if (!lms) return null;
-    const wrI = this.hand === 'L' ? LM.wrR : LM.wrL;
-    const shI = this.hand === 'L' ? LM.shR : LM.shL;
-    this.sig.feed(lms, wrI, this.hand === 'L' ? LM.elR : LM.elL, shI, t);
+    const wrI = this.hand === 'L' ? LM.wrL : LM.wrR;
+    const shI = this.hand === 'L' ? LM.shL : LM.shR;
+    this.sig.feed(lms, wrI, this.hand === 'L' ? LM.elL : LM.elR, shI, t);
     const P = TUNING.punch;
     if (t - this.lastFire < P.refractoryMs) return null;
 

@@ -13,7 +13,8 @@ import { Arena } from './arena';
 import { BLADE_RUNNING } from './music';
 import { AudioEngine } from '../audio/engine';
 import { flashText, type Game, type GameOpts, type Ctx } from './shared';
-import { saberStyle, addFruitRun, type SaberStyle } from './progress';
+import { addFruitRun } from './progress';
+import { Sabers } from './saber';
 
 type Special = 'none' | 'bomb' | 'gold' | 'ice' | 'boss';
 
@@ -62,15 +63,6 @@ interface Fruit {
 
 interface SliceFlash { x1: number; y1: number; x2: number; y2: number; life: number }
 
-interface Saber {
-  hand: { x: number; y: number } | null;
-  angle: number;
-  rel: number;
-  visible: boolean;
-  tip: { x: number; y: number };
-  tipPts: { x: number; y: number; t: number }[];
-}
-
 /** live link to the online score race (wired by main.ts over the room) */
 export interface RaceLink {
   send(score: number): void;
@@ -94,11 +86,8 @@ type Finale = 'goldrush' | 'frenzy' | 'twinboss';
 export class FruitGame implements Game {
   private fruits: Fruit[] = [];
   private flashes: SliceFlash[] = [];
-  private sabers: Record<'L' | 'R', Saber> = {
-    L: { hand: null, angle: -Math.PI / 2 - 0.35, rel: 0, visible: false, tip: { x: 0, y: 0 }, tipPts: [] },
-    R: { hand: null, angle: -Math.PI / 2 + 0.35, rel: 0, visible: false, tip: { x: 0, y: 0 }, tipPts: [] },
-  };
   private juice = new Juice();
+  private saberRig = new Sabers(this.juice);
   private arena = new Arena();
   private music: AudioEngine | null = null;
   private rnd: () => number;
@@ -118,7 +107,6 @@ export class FruitGame implements Game {
   private frenzyDone = false;
   private goldRush = false;              // finale active (any kind)
   private finale: Finale = 'goldrush';
-  private style: SaberStyle = saberStyle();
   private bossKills = 0;
   private kcal = 0;
   private introT = INTRO_SECS;
@@ -161,6 +149,7 @@ export class FruitGame implements Game {
 
   stop() {
     cancelAnimationFrame(this.raf);
+    this.saberRig.dispose();
     if (this.music) {
       this.music.stop();
       try { void this.music.ctx.close(); } catch { /* already closed */ }
@@ -205,7 +194,7 @@ export class FruitGame implements Game {
         + (this.feverLeft > 0 ? 0.4 : 0)
         + (this.goldRush ? 0.45 : 0);
       this.music.energy = this.iceT > 0 ? 0.15 : Math.min(1, e);
-      const rel = Math.max(this.sabers.L.rel, this.sabers.R.rel);
+      const rel = Math.max(this.saberRig.data.L.rel, this.saberRig.data.R.rel);
       this.moveEma += (Math.min(1, rel / 9) - this.moveEma) * Math.min(1, rawDt * 3);
       this.music.setBrightness(this.iceT > 0 ? 0.1 : 0.45 + this.moveEma * 0.55);
     }
@@ -248,37 +237,30 @@ export class FruitGame implements Game {
   private readHands(now: number, dt: number) {
     const { tracker, rig, cameraOk } = this.o;
     tracker.update();
+    const scale = this.bladeLen();
     if (cameraOk && rig) {
       rig.update(tracker.latestLandmarks, tracker.latestWorld ?? null, now, 4 / 3);
       for (const h of ['L', 'R'] as const) {
         const s = rig.hand(h);
-        const saber = this.sabers[h];
         if (s && s.vis > 0.35) {
-          saber.visible = true;
-          saber.rel = s.rel;
-          // extra lookahead on top of the rig's: sabers must feel glued
           const boost = TUNING.fruit.predictBoostMs / 1000;
-          const px = s.px + (s.vx / (4 / 3)) * boost;
-          const py = s.py + s.vy * boost;
-          this.moveSaber(h, px * this.W, py * this.H, s.vx, s.vy, now, dt);
+          const px = (s.px + (s.vx / (4 / 3)) * boost) * this.W;
+          const py = (s.py + s.vy * boost) * this.H;
+          this.saberRig.move(h, px, py, s.vx, s.vy, s.rel, now, dt, this.H, scale);
         } else {
-          saber.visible = false;
-          saber.rel = 0;
+          this.saberRig.hide(h);
         }
       }
     } else {
       for (const h of ['L', 'R'] as const) {
-        const saber = this.sabers[h];
-        saber.visible = true;
-        saber.rel = TUNING.fruit.sliceRel + 2;
         this.demo[h] += dt * 5.2;
         const targets = this.fruits.filter((f) => !f.sliced && !f.dead && f.special !== 'bomb' && f.y < this.H * 0.95);
         const mine = targets.filter((f) => (h === 'L' ? f.x < this.W * 0.55 : f.x >= this.W * 0.45));
         const tgt = mine.sort((a, c) => a.y - c.y)[0];
-        const bx = tgt ? tgt.x + Math.cos(this.demo[h]) * this.H * 0.09 : this.W * (h === 'L' ? 0.3 : 0.7) + Math.cos(this.demo[h]) * this.W * 0.12;
+        const bx = tgt ? tgt.x + Math.cos(this.demo[h]) * this.H * 0.06 : this.W * (h === 'L' ? 0.3 : 0.7) + Math.cos(this.demo[h]) * this.W * 0.12;
         const by = tgt ? tgt.y + Math.sin(this.demo[h]) * this.H * 0.09 : this.H * 0.5 + Math.sin(this.demo[h] * 1.6) * this.H * 0.2;
-        const prev = saber.hand ?? { x: bx, y: by };
-        this.moveSaber(h, bx, by, (bx - prev.x) / Math.max(dt, 1e-3) / this.H, (by - prev.y) / Math.max(dt, 1e-3) / this.H, now, dt);
+        const prev = this.saberRig.data[h].hand ?? { x: bx, y: by };
+        this.saberRig.move(h, bx, by, (bx - prev.x) / Math.max(dt, 1e-3) / this.H, (by - prev.y) / Math.max(dt, 1e-3) / this.H, TUNING.fruit.sliceRel + 2, now, dt, this.H, scale);
       }
     }
   }
@@ -292,43 +274,6 @@ export class FruitGame implements Game {
   }
 
   private moveEma = 0;
-  private lastWhoosh = { L: 0, R: 0 };
-
-  /** place the saber at the hand, orient along motion (rest pose when idle) */
-  private moveSaber(h: 'L' | 'R', x: number, y: number, vx: number, vy: number, now: number, dt: number) {
-    const saber = this.sabers[h];
-    saber.hand = { x, y };
-    const speed = Math.hypot(vx, vy);
-    const rest = -Math.PI / 2 + (h === 'L' ? -0.35 : 0.35) + Math.sin(now / 900 + (h === 'L' ? 0 : 2)) * 0.06;
-    const want = speed > 0.8 ? Math.atan2(vy, vx) : rest;
-    // shortest-arc smoothing, quicker when swinging
-    let d = want - saber.angle;
-    while (d > Math.PI) d -= Math.PI * 2;
-    while (d < -Math.PI) d += Math.PI * 2;
-    saber.angle += d * Math.min(1, dt * (speed > 0.8 ? 16 : 6));
-    const len = this.H * 0.17 * this.bladeLen();
-    saber.tip = { x: x + Math.cos(saber.angle) * len, y: y + Math.sin(saber.angle) * len };
-    saber.tipPts.push({ ...saber.tip, t: now });
-    while (saber.tipPts.length && now - saber.tipPts[0].t > TRAIL_MS) saber.tipPts.shift();
-    // audible air on a real swing, throttled so it never machine-guns
-    if (saber.rel > TUNING.fruit.sliceRel * 1.15 && now - this.lastWhoosh[h] > 380) {
-      this.lastWhoosh[h] = now;
-      sfx.whoosh();
-    }
-    // embers stream off a fast blade, shaped by the equipped style
-    if (saber.rel > TUNING.fruit.sliceRel * 0.8) {
-      const st = this.style;
-      this.juice.burst({
-        x: saber.tip.x, y: saber.tip.y, count: 1,
-        kind: st.trail === 'star' ? 'shard' : st.trail === 'petal' ? 'dust' : 'spark',
-        color: [h === 'L' ? st.colL : st.colR, ...st.ember],
-        speed: this.H * (st.trail === 'star' ? 0.09 : 0.05),
-        gravity: this.H * (st.trail === 'petal' ? 0.12 : 0.3),
-        size: this.H * (st.trail === 'petal' ? 0.006 : 0.0045),
-        life: st.trail === 'petal' ? 0.8 : 0.5,
-      });
-    }
-  }
 
   // ---- wave director --------------------------------------------------------
 
@@ -505,7 +450,7 @@ export class FruitGame implements Game {
     let slicedThisFrame = 0;
     let cx = 0, cy = 0;
     for (const key of ['L', 'R'] as const) {
-      const saber = this.sabers[key];
+      const saber = this.saberRig.data[key];
       if (!saber.visible || !saber.hand || saber.rel < TUNING.fruit.sliceRel) continue;
       for (const f of this.fruits) {
         if (f.sliced || f.dead) continue;
@@ -767,7 +712,7 @@ export class FruitGame implements Game {
       ctx.globalAlpha = 1;
     }
     this.juice.draw(ctx, h);
-    this.drawSabers(ctx, now);
+    this.saberRig.draw(ctx, h, now, this.bladeLen());
     ctx.restore();
 
     if (this.iceT > 0) {
@@ -1033,98 +978,6 @@ export class FruitGame implements Game {
         ctx.lineTo(r * 0.7, 0.05 * r);
         ctx.stroke();
       }
-    }
-  }
-
-  private drawSabers(ctx: Ctx, now: number) {
-    const h = this.H;
-    for (const key of ['L', 'R'] as const) {
-      const saber = this.sabers[key];
-      if (!saber.visible || !saber.hand) continue;
-      const col = key === 'L' ? this.style.colL : this.style.colR;
-      const deep = key === 'L' ? this.style.deepL : this.style.deepR;
-      const { x, y } = saber.hand;
-      const a = saber.angle;
-      const dx = Math.cos(a), dy = Math.sin(a);
-      const len = h * 0.17 * this.bladeLen();
-      const hot = Math.min(1, saber.rel / (TUNING.fruit.sliceRel * 1.6));
-
-      // comet trail from the tip: additive, tapered. Each pass is drawn as
-      // three polyline chunks (old, mid, new) rather than per-segment strokes,
-      // so round caps never stack up into bright beads at the joints.
-      if (saber.tipPts.length >= 2) {
-        ctx.save();
-        ctx.globalCompositeOperation = 'lighter';
-        ctx.lineCap = 'round';
-        ctx.lineJoin = 'round';
-        const pts = saber.tipPts;
-        for (const [width, alpha, color] of [
-          [0.022, 0.14, col],
-          [0.011, 0.34, col],
-          [0.0045, 0.7, '#ffffff'],
-        ] as const) {
-          for (let c = 0; c < 3; c++) {
-            const i0 = Math.floor((c / 3) * (pts.length - 1));
-            const i1 = Math.floor(((c + 1) / 3) * (pts.length - 1));
-            if (i1 <= i0) continue;
-            const k = (c + 1) / 3;                       // newest chunk = 1
-            ctx.strokeStyle = color;
-            ctx.globalAlpha = alpha * (0.25 + 0.75 * k) * (0.35 + hot * 0.65);
-            ctx.lineWidth = Math.max(1, h * width * (0.4 + 0.6 * k));
-            ctx.beginPath();
-            ctx.moveTo(pts[i0].x, pts[i0].y);
-            for (let i = i0 + 1; i <= i1; i++) ctx.lineTo(pts[i].x, pts[i].y);
-            ctx.stroke();
-          }
-        }
-        ctx.restore();
-      }
-
-      ctx.save();
-      ctx.lineCap = 'round';
-      // hilt behind the hand
-      ctx.strokeStyle = '#231b3d';
-      ctx.lineWidth = h * 0.013;
-      ctx.beginPath();
-      ctx.moveTo(x - dx * h * 0.035, y - dy * h * 0.035);
-      ctx.lineTo(x + dx * h * 0.012, y + dy * h * 0.012);
-      ctx.stroke();
-      // gold guard, perpendicular
-      ctx.strokeStyle = '#ffd23e';
-      ctx.lineWidth = h * 0.007;
-      ctx.beginPath();
-      ctx.moveTo(x + dx * h * 0.014 - dy * h * 0.016, y + dy * h * 0.014 + dx * h * 0.016);
-      ctx.lineTo(x + dx * h * 0.014 + dy * h * 0.016, y + dy * h * 0.014 - dx * h * 0.016);
-      ctx.stroke();
-      // pommel
-      ctx.fillStyle = '#ffd23e';
-      ctx.beginPath();
-      ctx.arc(x - dx * h * 0.038, y - dy * h * 0.038, h * 0.005, 0, Math.PI * 2);
-      ctx.fill();
-
-      // blade: aura, body, white core — tapered by drawing thirds
-      const bx = x + dx * h * 0.02, by = y + dy * h * 0.02;
-      for (const [frac, width, alpha, color] of [
-        [1, 0.03, 0.16 + hot * 0.1, col],
-        [1, 0.014, 0.55, col],
-        [0.55, 0.011, 0.7, deep],
-        [1, 0.005, 0.95, '#ffffff'],
-      ] as const) {
-        for (let s = 0; s < 3; s++) {
-          const f0 = (s / 3) * frac, f1 = ((s + 1) / 3) * frac;
-          ctx.strokeStyle = color;
-          ctx.globalAlpha = alpha;
-          ctx.lineWidth = Math.max(1, h * width * (1 - s * 0.24));
-          ctx.beginPath();
-          ctx.moveTo(bx + dx * (len - h * 0.02) * f0, by + dy * (len - h * 0.02) * f0);
-          ctx.lineTo(bx + dx * (len - h * 0.02) * f1, by + dy * (len - h * 0.02) * f1);
-          ctx.stroke();
-        }
-      }
-      ctx.globalAlpha = 1;
-      ctx.restore();
-      drawGlow(ctx, saber.tip.x, saber.tip.y, h * (0.02 + hot * 0.015), col, 0.6 + hot * 0.4);
-      drawGlow(ctx, x + dx * len * 0.55, y + dy * len * 0.55, h * 0.028, col, 0.18 + hot * 0.15);
     }
   }
 

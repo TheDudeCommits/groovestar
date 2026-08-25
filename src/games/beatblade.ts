@@ -1,10 +1,11 @@
-// Beat Blade — rebuilt on the saber stack. Notes fly down a neon runway on
-// the beat of any YouTube song; you cut them with the MATCHING saber in the
-// MARKED direction as they cross the hit line. Continuous detection: the
-// blade's swept path must cross the note while the hand moves the right way
-// at speed — no gesture events, no refractory. Pattern-grammar charts
-// (streams, doubles, crossovers, rests) generated from the song's seed with
-// an intensity ramp, an energy meter, milestone slow-mo, and a letter grade.
+// Beat Blade — the VR-benchmark pass. A near-black arena tinted by the
+// song's own palette: laser rods radiating from the vanishing point, a neon
+// highway with beat-grid lines rolling at you, the music video floating as a
+// jumbotron above the horizon, glossy 3D note cubes with glowing arrows that
+// split along your actual cut, lightsaber blades with hum and swept light
+// planes, a floating multiplier ring, and strobes that go harder the longer
+// your streak. Notes and cuts are matched to the mirrored hands: left saber
+// cuts left-lane notes.
 
 import { TUNING } from './tuning';
 import { Juice, drawGlow } from './juice';
@@ -21,12 +22,13 @@ const DIR_VEC: [number, number][] = [[0, 1], [0, -1], [-1, 0], [1, 0]];
 interface Note {
   beat: number;
   hand: 'L' | 'R';
-  side: -1 | 1;                        // runway lane; opposite of hand = crossover
+  side: -1 | 1;
   high: boolean;
   dir: Dir;
   state: 'live' | 'hit' | 'miss';
   hitAt: number;
   perfect: boolean;
+  cutAngle: number;
 }
 
 export interface BeatBladeOpts {
@@ -38,17 +40,22 @@ export interface BeatBladeOpts {
   totalBeats: number;
   seed: string;
   rig?: HandRig;
+  /** environment tint from the video's palette; deep red fallback */
+  accent?: string;
   onExit: (score: number, label?: string) => void;
 }
 
-const APPROACH = 4;                    // beats of visibility
-const WINDOW = 0.45;                   // hit window in beats
+const APPROACH = 4;
+const WINDOW = 0.45;
 const PERFECT = 0.18;
+/** the floating video screen (fractions of view) — main.ts bounds must match */
+export const VIDEO_WIN = { x: 0.30, y: 0.08, w: 0.40, h: 0.24 };
 
 export class BeatBladeGame implements Game {
   private notes: Note[] = [];
   private juice = new Juice();
-  private sabers = new Sabers(this.juiceRef());
+  private sabers: Sabers;
+  private accent: string;
   private score = 0;
   private combo = 0;
   private bestCombo = 0;
@@ -57,22 +64,18 @@ export class BeatBladeGame implements Game {
   private misses = 0;
   private hp = 0.7;
   private judg = { text: '', color: '#fff', t: 0 };
-  private milestone = 0;
   private raf = 0;
   private over = false;
   private outroT = 0;
   private lastT = performance.now();
   private demo = { L: 0, R: Math.PI };
 
-  private juiceRef(): Juice { return (this.juice ??= new Juice()); }
-
   constructor(private o: BeatBladeOpts) {
+    this.sabers = new Sabers(this.juice);
+    this.accent = o.accent ?? '#ff3b57';
     this.buildChart();
   }
 
-  /** pattern grammar: density ramps through the song, direction runs per
-   *  hand, doubles on bar starts, crossovers after the first third, one
-   *  breathing rest each 16 beats */
   private buildChart() {
     let a = 2166136261 >>> 0;
     for (const ch of this.o.seed) { a ^= ch.charCodeAt(0); a = Math.imul(a, 16777619); }
@@ -87,24 +90,22 @@ export class BeatBladeGame implements Game {
     const total = this.o.totalBeats;
     let lastHand: 'L' | 'R' = rnd() < 0.5 ? 'L' : 'R';
     for (let b = 8; b < total - 4; b++) {
-      if (b % 16 === 15) continue;                       // breathing room
+      if (b % 16 === 15) continue;
       const prog = b / total;
       const density = 0.5 + prog * 0.34;
       if (rnd() > density) continue;
       lastHand = rnd() < 0.72 ? (lastHand === 'L' ? 'R' : 'L') : lastHand;
       const hand = lastHand;
-      // direction runs: mostly keep the current run, down-weighted new picks
       if (rnd() < 0.35) {
         const roll = rnd();
         dirRun[hand] = roll < 0.45 ? 0 : roll < 0.6 ? 1 : roll < 0.8 ? 2 : 3;
       }
       const cross = prog > 0.33 && rnd() < 0.12;
       const side: -1 | 1 = cross ? (hand === 'L' ? 1 : -1) : hand === 'L' ? -1 : 1;
-      this.notes.push({ beat: b, hand, side, high: rnd() < 0.4, dir: dirRun[hand], state: 'live', hitAt: 0, perfect: false });
-      // doubles on bar starts, both hands, mirrored directions
+      this.notes.push({ beat: b, hand, side, high: rnd() < 0.4, dir: dirRun[hand], state: 'live', hitAt: 0, perfect: false, cutAngle: 0 });
       if (b % 8 === 0 && prog > 0.15 && rnd() < 0.4) {
         const other = hand === 'L' ? 'R' : 'L';
-        this.notes.push({ beat: b, hand: other, side: other === 'L' ? -1 : 1, high: rnd() < 0.4, dir: dirRun[hand], state: 'live', hitAt: 0, perfect: false });
+        this.notes.push({ beat: b, hand: other, side: other === 'L' ? -1 : 1, high: rnd() < 0.4, dir: dirRun[hand], state: 'live', hitAt: 0, perfect: false, cutAngle: 0 });
       }
     }
   }
@@ -113,10 +114,16 @@ export class BeatBladeGame implements Game {
     const loop = () => { this.raf = requestAnimationFrame(loop); this.frame(); };
     loop();
   }
-  stop() { cancelAnimationFrame(this.raf); }
+
+  stop() {
+    cancelAnimationFrame(this.raf);
+    this.sabers.dispose();
+  }
 
   private get W() { return window.innerWidth; }
   private get H() { return window.innerHeight; }
+
+  private mult(): number { return 1 + Math.min(3, Math.floor(this.combo / 10)); }
 
   private frame() {
     const { ctx, tracker, clock } = this.o;
@@ -128,7 +135,6 @@ export class BeatBladeGame implements Game {
     tracker.update();
     this.readHands(now, dt, beat);
 
-    // judge notes
     if (this.outroT <= 0) {
       for (const n of this.notes) {
         if (n.state !== 'live') continue;
@@ -148,7 +154,7 @@ export class BeatBladeGame implements Game {
       if (this.outroT === 0) {
         this.outroT = 1.6;
         this.juice.slowmo(0.35, 1000);
-        sfx.bell();
+        sfx.resultsSting();
       }
       this.outroT = Math.max(0.0001, this.outroT - rawDt);
       if (this.outroT <= 0.001) {
@@ -181,20 +187,18 @@ export class BeatBladeGame implements Game {
         }
       }
     } else {
-      // demo: sabers sweep through upcoming notes
       for (const h of ['L', 'R'] as const) {
         this.demo[h] += dt * 6;
         const next = this.notes.find((n) => n.state === 'live' && n.hand === h && n.beat - beat < 1.2 && n.beat - beat > -WINDOW);
-        const [nx, ny] = next ? this.notePos(next, beat) : [this.W * (h === 'L' ? 0.32 : 0.68), this.H * 0.55];
-        const bx = nx + Math.cos(this.demo[h]) * this.H * 0.06;
-        const by = ny + Math.sin(this.demo[h]) * this.H * 0.06;
+        const [nx, ny] = next ? this.notePos(next, beat) : [this.W * (h === 'L' ? 0.32 : 0.68), this.H * 0.6];
+        const bx = nx + Math.cos(this.demo[h]) * this.H * 0.025;
+        const by = ny + Math.sin(this.demo[h]) * this.H * 0.045;
         const prev = this.sabers.data[h].hand ?? { x: bx, y: by };
         this.sabers.move(h, bx, by, (bx - prev.x) / Math.max(dt, 1e-3) / this.H, (by - prev.y) / Math.max(dt, 1e-3) / this.H, TUNING.fruit.sliceRel + 2, now, dt, this.H, scale);
       }
     }
   }
 
-  /** blades ignite over the count-in and retract during the outro */
   private bladeScale(beat: number): number {
     const ease = (k: number) => k * k * (3 - 2 * k);
     const inK = beat < 0 ? Math.max(0.05, 1 + beat / 4) : 1;
@@ -203,12 +207,9 @@ export class BeatBladeGame implements Game {
   }
 
   private tryHit(n: Note, d: number, now: number) {
+    if (!this.o.cameraOk) { if (d >= -0.03) this.hitNote(n, d, now, true, Math.PI / 4); return; }
     const saber = this.sabers.data[n.hand];
-    if (!saber.visible || !saber.hand) {
-      if (!this.o.cameraOk && d >= -0.03) this.hitNote(n, d, now, true);
-      return;
-    }
-    if (!this.o.cameraOk) { if (d >= -0.03) this.hitNote(n, d, now, true); return; }
+    if (!saber.visible || !saber.hand) return;
     if (saber.rel < TUNING.fruit.sliceRel) return;
     const [x, y] = this.notePos(n, this.o.clock.beat());
     const r = this.H * 0.055;
@@ -223,35 +224,35 @@ export class BeatBladeGame implements Game {
     if (!crossed) return;
     const want = DIR_VEC[n.dir];
     const dot = saber.dir[0] * want[0] + saber.dir[1] * want[1];
-    if (dot < 0.2) return;                          // cut the marked way
-    this.hitNote(n, d, now, Math.abs(d) < PERFECT && dot > 0.7);
+    if (dot < 0.2) return;
+    this.hitNote(n, d, now, Math.abs(d) < PERFECT && dot > 0.7, Math.atan2(saber.dir[1], saber.dir[0]));
   }
 
-  private hitNote(n: Note, d: number, now: number, perfect: boolean) {
+  private hitNote(n: Note, d: number, now: number, perfect: boolean, cutAngle: number) {
     n.state = 'hit';
     n.hitAt = now;
     n.perfect = perfect;
+    n.cutAngle = cutAngle;
     this.hits++;
     this.combo++;
     this.bestCombo = Math.max(this.bestCombo, this.combo);
     if (perfect) this.perfects++;
     this.hp = Math.min(1, this.hp + 0.02);
-    this.score += (perfect ? 15 : 8) + Math.min(15, this.combo);
+    const pts = (perfect ? 15 : 8) * this.mult();
+    this.score += pts;
     const [x, y] = this.notePos(n, this.o.clock.beat());
     const col = n.hand === 'L' ? this.sabers.style.colL : this.sabers.style.colR;
-    const want = DIR_VEC[n.dir];
     this.juice.burst({
-      x, y, count: perfect ? 14 : 9, kind: 'shard', color: [col, '#fff7ee'],
-      angle: Math.atan2(want[1], want[0]), spread: 1.1,
-      speed: this.H * 0.45, gravity: this.H * 0.35, size: this.H * 0.009, life: 0.5,
+      x, y, count: perfect ? 16 : 10, kind: 'shard', color: [col, '#fff7ee'],
+      angle: cutAngle, spread: 0.9,
+      speed: this.H * 0.5, gravity: this.H * 0.35, size: this.H * 0.009, life: 0.5,
     });
-    this.juice.ring(x, y, col, this.H * (perfect ? 0.12 : 0.08), 0.3);
+    this.juice.ring(x, y, col, this.H * (perfect ? 0.13 : 0.09), 0.3);
+    this.juice.pop(x, y - this.H * 0.05, String(pts), perfect ? '#ffd23e' : 'rgba(255,247,238,0.85)', perfect ? 0.85 : 0.65);
     if (perfect) this.juice.hitStop(25);
     sfx.slice(this.combo);
     this.judge(perfect ? 'PERFECT' : 'GOOD', perfect ? '#ffd23e' : '#7cf95c');
-    // milestone celebrations
     if (this.combo === 25 || this.combo === 50 || this.combo === 100) {
-      this.milestone = this.combo;
       this.juice.slowmo(0.45, 400);
       sfx.fanfare(this.combo >= 50);
       this.judge(`${this.combo} COMBO`, '#ff6ac1');
@@ -271,62 +272,159 @@ export class BeatBladeGame implements Game {
 
   // ---- rendering ------------------------------------------------------------
 
-  /** runway position: side lane, high/low row, perspective approach */
+  private vp(): [number, number] { return [this.W / 2, this.H * 0.37]; }
+
   private notePos(n: Note, beat: number): [number, number, number] {
     const w = this.W, h = this.H;
     const d = n.beat - beat;
     const z = Math.max(0, Math.min(1, d / APPROACH));
     const persp = 1 - 0.88 * z;
     const x = w / 2 + n.side * w * 0.17 * (0.3 + persp * 0.7) * 1.6;
-    const rowY = n.high ? 0.46 : 0.64;
-    const y = h * (0.32 + (rowY - 0.32) * persp);
+    const rowY = n.high ? 0.5 : 0.68;
+    const y = h * (0.37 + (rowY - 0.37) * persp);
     return [x, y, persp];
   }
 
   private draw(ctx: Ctx, beat: number, now: number) {
     const w = this.W, h = this.H;
+    const [vpx, vpy] = this.vp();
+    const heat = Math.min(1, this.combo / 40);
+    const pulse = beat >= 0 ? Math.max(0, 1 - (beat % 1)) : 0;
+    const bar = beat >= 0 && Math.floor(beat) % 4 === 0;
+
     ctx.clearRect(0, 0, w, h);
     ctx.save();
     this.juice.applyShake(ctx);
 
-    // vignette over the video backdrop, heavier at the bottom playfield
-    const veil = ctx.createLinearGradient(0, 0, 0, h);
-    veil.addColorStop(0, 'rgba(20,12,44,0.35)');
-    veil.addColorStop(0.55, 'rgba(20,12,44,0.62)');
-    veil.addColorStop(1, 'rgba(16,10,38,0.9)');
-    ctx.fillStyle = veil;
-    ctx.fillRect(0, 0, w, h);
+    // near-black world with the video window kept translucent (jumbotron)
+    const vx = w * VIDEO_WIN.x, vy = h * VIDEO_WIN.y, vw = w * VIDEO_WIN.w, vh = h * VIDEO_WIN.h;
+    ctx.fillStyle = '#060410';
+    ctx.beginPath();
+    ctx.rect(0, 0, w, h);
+    ctx.rect(vx, vy, vw, vh);
+    ctx.fill('evenodd');
+    ctx.fillStyle = 'rgba(6,4,16,0.22)';
+    ctx.fillRect(vx, vy, vw, vh);
 
-    // combo heat: the runway glows warmer the longer the streak
-    const heat = Math.min(1, this.combo / 40);
+    // vanishing-point back glow, breathing with the beat
+    drawGlow(ctx, vpx, vpy, h * (0.5 + pulse * 0.06 + heat * 0.12), this.accent, 0.3 + pulse * 0.14 + heat * 0.1);
 
-    // runway rails
-    ctx.lineWidth = Math.max(1.5, h * 0.003);
-    for (const side of [-1, 1] as const) {
-      for (const edge of [0.09, 0.28] as const) {
-        ctx.strokeStyle = `rgba(255,255,255,${0.08 + heat * 0.1})`;
+    // laser rods radiating from the vanishing point
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.lineCap = 'round';
+    for (let i = 0; i < 12; i++) {
+      const side = i % 2 === 0 ? -1 : 1;
+      const k = Math.floor(i / 2) / 5;
+      const angBase = Math.PI / 2 + side * (0.5 + k * 1.75);
+      const sway = Math.sin(now / 2600 + i) * 0.05 * (1 + heat);
+      const ang = angBase + sway;
+      const groupPulse = (Math.floor(beat) + i) % 2 === 0 ? pulse : 1 - pulse;
+      const alpha = 0.06 + groupPulse * (0.14 + heat * 0.14);
+      const x2 = vpx + Math.cos(ang) * h * 1.4;
+      const y2 = vpy - Math.abs(Math.sin(ang)) * h * 1.1 + (i % 3) * h * 0.14;
+      const sx = vpx + Math.cos(ang) * h * 0.03;
+      const sy = vpy - Math.abs(Math.sin(ang)) * h * 0.03;
+      for (const [lw, la] of [[0.012, alpha * 0.5], [0.004, alpha]] as const) {
+        ctx.strokeStyle = this.accent;
+        ctx.globalAlpha = la;
+        ctx.lineWidth = h * lw;
         ctx.beginPath();
-        ctx.moveTo(w / 2 + side * w * edge * 0.32, h * 0.32);
-        ctx.lineTo(w / 2 + side * w * edge * 1.55, h * 0.98);
+        ctx.moveTo(sx, sy);
+        ctx.lineTo(x2, y2);
         ctx.stroke();
       }
     }
-    // beat pulse on the hit line rings
-    const pulse = Math.max(0, 1 - (beat % 1));
+    ctx.restore();
+
+    // the highway: converging rails + rolling beat grid
+    const spread = w * 0.30;
+    const railTop = 0.06;
+    ctx.save();
+    // floor shade
+    const floor = ctx.createLinearGradient(0, vpy, 0, h);
+    floor.addColorStop(0, 'rgba(10,7,26,0)');
+    floor.addColorStop(1, 'rgba(14,9,34,0.9)');
+    ctx.fillStyle = floor;
+    ctx.beginPath();
+    ctx.moveTo(vpx - spread * railTop, vpy);
+    ctx.lineTo(vpx - spread, h);
+    ctx.lineTo(vpx + spread, h);
+    ctx.lineTo(vpx + spread * railTop, vpy);
+    ctx.closePath();
+    ctx.fill();
+    // beat grid lines rolling at the player, brighter as they arrive
+    for (let k = 0; k < APPROACH + 1; k++) {
+      const bz = beat >= 0 ? k + 1 - (beat % 1) : k;
+      const z = bz / APPROACH;
+      if (z > 1 || z < 0) continue;
+      const persp = 1 - 0.88 * z;
+      const y = vpy + (h - vpy) * persp * 0.92;
+      const half = spread * (railTop + (1 - railTop) * persp);
+      ctx.strokeStyle = this.accent;
+      ctx.globalAlpha = (1 - z) * (0.42 + heat * 0.25);
+      ctx.lineWidth = Math.max(1, h * 0.0028 * (0.3 + persp));
+      ctx.beginPath();
+      ctx.moveTo(vpx - half, y);
+      ctx.lineTo(vpx + half, y);
+      ctx.stroke();
+    }
+    ctx.globalAlpha = 1;
+    // rails: white core over accent glow
     for (const side of [-1, 1] as const) {
-      const x = w / 2 + side * w * 0.17 * 1.6;
-      const col = side < 0 ? this.sabers.style.colL : this.sabers.style.colR;
-      for (const row of [0.46, 0.64] as const) {
-        const y = h * row;
-        ctx.strokeStyle = col;
-        ctx.globalAlpha = 0.35 + heat * 0.25;
-        ctx.lineWidth = 2.5;
-        ctx.beginPath(); ctx.arc(x, y, h * 0.055, 0, Math.PI * 2); ctx.stroke();
-        ctx.globalAlpha = pulse * 0.3;
-        ctx.beginPath(); ctx.arc(x, y, h * 0.055 + pulse * h * 0.018, 0, Math.PI * 2); ctx.stroke();
-        ctx.globalAlpha = 1;
+      for (const [lw, color, alpha] of [
+        [0.014, this.accent, 0.35],
+        [0.007, this.accent, 0.7],
+        [0.0028, '#ffffff', 0.95],
+      ] as const) {
+        ctx.strokeStyle = color;
+        ctx.globalAlpha = alpha;
+        ctx.lineWidth = h * lw;
+        ctx.beginPath();
+        ctx.moveTo(vpx + side * spread * railTop, vpy);
+        ctx.lineTo(vpx + side * spread, h);
+        ctx.stroke();
       }
-      if (heat > 0.4) drawGlow(ctx, x, h * 0.55, h * 0.2 * heat, col, 0.12 * heat);
+    }
+    ctx.restore();
+    ctx.globalAlpha = 1;
+
+    // vertical light towers marching along the edges
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    for (const [fx, group] of [[0.045, 0], [0.1, 1], [0.9, 1], [0.955, 0]] as const) {
+      const tp = (Math.floor(beat) + group) % 2 === 0 ? pulse : 1 - pulse;
+      const tx = w * fx;
+      ctx.strokeStyle = this.accent;
+      ctx.globalAlpha = 0.12 + tp * (0.2 + heat * 0.2);
+      ctx.lineWidth = h * 0.008;
+      ctx.beginPath();
+      ctx.moveTo(tx, h * (0.12 + 0.06 * group));
+      ctx.lineTo(tx, h * (0.75 - 0.08 * group));
+      ctx.stroke();
+      ctx.globalAlpha = 0.5 + tp * 0.4;
+      ctx.lineWidth = h * 0.0025;
+      ctx.stroke();
+    }
+    ctx.restore();
+
+    // jumbotron neon frame
+    ctx.save();
+    ctx.strokeStyle = this.accent;
+    ctx.globalAlpha = 0.6 + pulse * 0.3;
+    ctx.lineWidth = Math.max(1.5, h * 0.0035);
+    ctx.strokeRect(vx, vy, vw, vh);
+    ctx.restore();
+    drawGlow(ctx, vpx, vy + vh, vw * 0.35, this.accent, 0.1 + pulse * 0.08);
+
+    // high-combo strobe on bar starts
+    if (heat > 0.5 && bar && pulse > 0.85) {
+      ctx.save();
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.fillStyle = this.accent;
+      ctx.globalAlpha = 0.06;
+      ctx.fillRect(0, 0, w, h);
+      ctx.restore();
     }
 
     // notes far to near
@@ -339,11 +437,8 @@ export class BeatBladeGame implements Game {
     this.sabers.draw(ctx, h, now, this.bladeScale(beat));
     ctx.restore();
 
-    // count-in
-    if (beat < 0) {
-      flashText(ctx, w, h, String(Math.max(1, Math.ceil(-beat))), '#ffd23e', 0.9, 0.9);
-    }
-    if (this.judg.t > 0) flashText(ctx, w, h, this.judg.text, this.judg.color, Math.min(1, this.judg.t * 2.2), 0.65);
+    if (beat < 0) flashText(ctx, w, h, String(Math.max(1, Math.ceil(-beat))), '#ffd23e', 0.9, 0.9);
+    if (this.judg.t > 0) flashText(ctx, w, h, this.judg.text, this.judg.color, Math.min(1, this.judg.t * 2.2), 0.6);
     if (this.o.cameraOk && this.o.rig && !this.o.rig.hasPose) {
       ctx.save();
       ctx.textAlign = 'center';
@@ -352,61 +447,160 @@ export class BeatBladeGame implements Game {
       ctx.fillText('Step back so the camera can see you', w / 2, h * 0.5);
       ctx.restore();
     }
-    this.drawHud(ctx, w, h);
-    void this.milestone;
+    this.drawHud(ctx, w, h, beat);
   }
 
+  /** glossy pseudo-3D cube with a glowing arrow; splits along the cut */
   private drawNote(ctx: Ctx, n: Note, beat: number, now: number) {
     const [x, y, p] = this.notePos(n, beat);
     const h = this.H;
-    const s = h * 0.052 * (0.35 + p * 0.65);
-    ctx.save();
-    if (n.state === 'hit') {
-      const k = Math.min(1, (now - n.hitAt) / 240);
-      ctx.globalAlpha = 1 - k;
-      ctx.translate(x, y);
-      ctx.scale(1 + k * 0.8, 1 + k * 0.8);
-      ctx.translate(-x, -y);
-    } else if (n.state === 'miss') {
-      ctx.globalAlpha = 0.22;
-    }
+    const s = h * 0.066 * (0.3 + p * 0.7);
     const col = n.hand === 'L' ? this.sabers.style.colL : this.sabers.style.colR;
     const deep = n.hand === 'L' ? this.sabers.style.deepL : this.sabers.style.deepR;
-    if (n.state === 'live' && p > 0.85) drawGlow(ctx, x, y, s * 2, col, 0.3);
-    const grad = ctx.createLinearGradient(x, y - s, x, y + s);
-    grad.addColorStop(0, col);
-    grad.addColorStop(1, deep);
-    ctx.fillStyle = grad;
-    ctx.beginPath();
-    ctx.roundRect(x - s, y - s, s * 2, s * 2, s * 0.32);
-    ctx.fill();
-    // crossover notes get a warning rim
+    const [vpx, vpy] = this.vp();
+
+    if (n.state === 'miss') {
+      ctx.save();
+      ctx.globalAlpha = 0.18;
+      this.cubeBody(ctx, x, y, s, col, deep, vpx, vpy, p);
+      ctx.restore();
+      return;
+    }
+
+    if (n.state === 'hit') {
+      // two halves fly apart along the cut normal
+      const k = Math.min(1, (now - n.hitAt) / 300);
+      const nx = Math.cos(n.cutAngle + Math.PI / 2), ny = Math.sin(n.cutAngle + Math.PI / 2);
+      for (const half of [-1, 1] as const) {
+        ctx.save();
+        ctx.globalAlpha = (1 - k) * 0.95;
+        ctx.translate(nx * half * k * s * 1.6, ny * half * k * s * 1.6 + k * k * s * 0.9);
+        ctx.translate(x, y);
+        ctx.rotate(half * k * 0.35);
+        ctx.translate(-x, -y);
+        // clip to the half-plane on this side of the cut line
+        ctx.beginPath();
+        const big = s * 4;
+        ctx.moveTo(x - Math.cos(n.cutAngle) * big + nx * half * 0.5, y - Math.sin(n.cutAngle) * big + ny * half * 0.5);
+        ctx.lineTo(x + Math.cos(n.cutAngle) * big, y + Math.sin(n.cutAngle) * big);
+        ctx.lineTo(x + Math.cos(n.cutAngle) * big + nx * half * big, y + Math.sin(n.cutAngle) * big + ny * half * big);
+        ctx.lineTo(x - Math.cos(n.cutAngle) * big + nx * half * big, y - Math.sin(n.cutAngle) * big + ny * half * big);
+        ctx.closePath();
+        ctx.clip();
+        this.cubeBody(ctx, x, y, s, col, deep, vpx, vpy, p);
+        this.cubeArrow(ctx, x, y, s, n.dir);
+        ctx.restore();
+      }
+      // white cut flash
+      const fa = Math.max(0, 1 - k * 2.2);
+      if (fa > 0) {
+        ctx.save();
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.strokeStyle = '#ffffff';
+        ctx.globalAlpha = fa;
+        ctx.lineCap = 'round';
+        ctx.lineWidth = h * 0.006;
+        ctx.beginPath();
+        ctx.moveTo(x - Math.cos(n.cutAngle) * s * 1.8, y - Math.sin(n.cutAngle) * s * 1.8);
+        ctx.lineTo(x + Math.cos(n.cutAngle) * s * 1.8, y + Math.sin(n.cutAngle) * s * 1.8);
+        ctx.stroke();
+        ctx.restore();
+        drawGlow(ctx, x, y, s * 2.4 * fa, col, fa * 0.5);
+      }
+      return;
+    }
+
+    // live note: materializes at the horizon, bloom grows as it arrives
+    const born = Math.min(1, (p - 0.12) * 7);
+    ctx.save();
+    ctx.globalAlpha = Math.max(0, born);
+    drawGlow(ctx, x, y, s * (1.6 + p * 1.2), col, (0.18 + p * 0.25) * born);
+    this.cubeBody(ctx, x, y, s, col, deep, vpx, vpy, p);
+    this.cubeArrow(ctx, x, y, s, n.dir);
+    ctx.restore();
+    // crossover warning rim
     if (n.side === (n.hand === 'L' ? 1 : -1)) {
       ctx.strokeStyle = '#fff7ee';
-      ctx.lineWidth = Math.max(1.5, s * 0.09);
-      ctx.setLineDash([s * 0.3, s * 0.2]);
-      ctx.beginPath();
-      ctx.roundRect(x - s * 1.14, y - s * 1.14, s * 2.28, s * 2.28, s * 0.4);
-      ctx.stroke();
+      ctx.globalAlpha = 0.8;
+      ctx.lineWidth = Math.max(1.5, s * 0.08);
+      ctx.setLineDash([s * 0.3, s * 0.22]);
+      ctx.strokeRect(x - s * 1.22, y - s * 1.22, s * 2.44, s * 2.44);
       ctx.setLineDash([]);
+      ctx.globalAlpha = 1;
     }
-    // direction chevron
-    const want = DIR_VEC[n.dir];
-    const aa = Math.atan2(want[1], want[0]);
-    ctx.translate(x, y);
-    ctx.rotate(aa + Math.PI / 2);
-    ctx.fillStyle = 'rgba(20,14,40,0.8)';
+  }
+
+  private cubeBody(ctx: Ctx, x: number, y: number, s: number, col: string, deep: string, vpx: number, vpy: number, p: number) {
+    // extrusion runs away from the viewer toward the vanishing point
+    const ex = (vpx - x) * 0.085 * (1 - p * 0.45);
+    const ey = (vpy - y) * 0.085 * (1 - p * 0.45);
+    const r = s * 0.24;
+    // back face extrusion (top/side)
+    ctx.fillStyle = shade(deep, 0.55);
     ctx.beginPath();
-    ctx.moveTo(0, s * 0.5);
-    ctx.lineTo(-s * 0.44, -s * 0.28);
-    ctx.lineTo(0, -s * 0.06);
-    ctx.lineTo(s * 0.44, -s * 0.28);
+    ctx.roundRect(x - s + ex, y - s + ey, s * 2, s * 2, r);
+    ctx.fill();
+    // connect edges
+    ctx.fillStyle = shade(deep, 0.75);
+    ctx.beginPath();
+    if (ey < 0) {
+      ctx.moveTo(x - s, y - s); ctx.lineTo(x - s + ex, y - s + ey);
+      ctx.lineTo(x + s + ex, y - s + ey); ctx.lineTo(x + s, y - s);
+    } else {
+      ctx.moveTo(x - s, y + s); ctx.lineTo(x - s + ex, y + s + ey);
+      ctx.lineTo(x + s + ex, y + s + ey); ctx.lineTo(x + s, y + s);
+    }
+    ctx.closePath();
+    ctx.fill();
+    // front face: glossy gradient
+    const g = ctx.createLinearGradient(x - s, y - s, x + s, y + s);
+    g.addColorStop(0, lightenHex(col, 1.25));
+    g.addColorStop(0.5, col);
+    g.addColorStop(1, deep);
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.roundRect(x - s, y - s, s * 2, s * 2, r);
+    ctx.fill();
+    // specular streak
+    ctx.save();
+    ctx.beginPath();
+    ctx.roundRect(x - s, y - s, s * 2, s * 2, r);
+    ctx.clip();
+    ctx.fillStyle = 'rgba(255,255,255,0.22)';
+    ctx.beginPath();
+    ctx.moveTo(x - s, y - s * 0.2);
+    ctx.lineTo(x - s * 0.2, y - s);
+    ctx.lineTo(x + s * 0.35, y - s);
+    ctx.lineTo(x - s * 0.55, y + s * 0.15);
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+    return;
+  }
+
+  /** the glowing white direction arrow, drawn over the cube face */
+  private cubeArrow(ctx: Ctx, x: number, y: number, s: number, dir: Dir) {
+    const want = DIR_VEC[dir];
+    const aa = Math.atan2(want[1], want[0]);
+    drawGlow(ctx, x, y, s * 0.9, '#ffffff', 0.35);
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.rotate(aa - Math.PI / 2);
+    ctx.fillStyle = '#ffffff';
+    ctx.beginPath();
+    ctx.moveTo(0, s * 0.52);
+    ctx.lineTo(-s * 0.46, -s * 0.18);
+    ctx.lineTo(-s * 0.16, -s * 0.18);
+    ctx.lineTo(-s * 0.16, -s * 0.52);
+    ctx.lineTo(s * 0.16, -s * 0.52);
+    ctx.lineTo(s * 0.16, -s * 0.18);
+    ctx.lineTo(s * 0.46, -s * 0.18);
     ctx.closePath();
     ctx.fill();
     ctx.restore();
   }
 
-  private drawHud(ctx: Ctx, w: number, h: number) {
+  private drawHud(ctx: Ctx, w: number, h: number, beat: number) {
     ctx.save();
     ctx.textAlign = 'left';
     ctx.fillStyle = '#fff7ee';
@@ -415,20 +609,39 @@ export class BeatBladeGame implements Game {
     ctx.font = `700 ${h * 0.017}px 'Baloo 2', sans-serif`;
     ctx.fillStyle = 'rgba(255,247,238,0.55)';
     ctx.fillText(`BEST ${Math.max(Number(localStorage.getItem('gs-blade-best') ?? 0), this.score)}`, w * 0.046, h * 0.135);
-    // energy meter
     const bw = w * 0.1;
     ctx.fillStyle = 'rgba(255,255,255,0.14)';
     ctx.fillRect(w * 0.046, h * 0.155, bw, h * 0.007);
     ctx.fillStyle = this.hp > 0.35 ? '#7cf95c' : '#ff5d5d';
     ctx.fillRect(w * 0.046, h * 0.155, bw * this.hp, h * 0.007);
+
+    // floating multiplier ring, like the reference
+    const mx = w * 0.86, my = h * 0.3, mr = h * 0.045;
+    const mult = this.mult();
+    const toNext = mult >= 4 ? 1 : (this.combo % 10) / 10;
+    ctx.strokeStyle = 'rgba(255,255,255,0.2)';
+    ctx.lineWidth = h * 0.005;
+    ctx.beginPath(); ctx.arc(mx, my, mr, 0, Math.PI * 2); ctx.stroke();
+    ctx.strokeStyle = mult >= 4 ? '#ffd23e' : '#fff7ee';
+    ctx.beginPath(); ctx.arc(mx, my, mr, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * toNext); ctx.stroke();
+    ctx.textAlign = 'center';
+    ctx.fillStyle = '#fff7ee';
+    ctx.font = `400 ${h * 0.03}px 'Lilita One', sans-serif`;
+    ctx.fillText(`x${mult}`, mx, my + h * 0.011);
+    // song progress under the ring
+    const prog = Math.max(0, Math.min(1, beat / this.o.totalBeats));
+    ctx.fillStyle = 'rgba(255,255,255,0.18)';
+    ctx.fillRect(mx - mr, my + mr + h * 0.02, mr * 2, h * 0.005);
+    ctx.fillStyle = '#fff7ee';
+    ctx.fillRect(mx - mr, my + mr + h * 0.02, mr * 2 * prog, h * 0.005);
+
     if (this.combo >= 5) {
-      ctx.textAlign = 'right';
       ctx.fillStyle = this.combo >= 25 ? '#ffd23e' : '#fff7ee';
-      ctx.font = `400 ${h * 0.042}px 'Lilita One', sans-serif`;
-      ctx.fillText(`x${this.combo}`, w * 0.96, h * 0.11);
-      ctx.font = `700 ${h * 0.014}px 'Baloo 2', sans-serif`;
+      ctx.font = `400 ${h * 0.036}px 'Lilita One', sans-serif`;
+      ctx.fillText(String(this.combo), mx, my - mr - h * 0.028);
+      ctx.font = `700 ${h * 0.013}px 'Baloo 2', sans-serif`;
       ctx.fillStyle = 'rgba(255,247,238,0.55)';
-      ctx.fillText('COMBO', w * 0.958, h * 0.135);
+      ctx.fillText('COMBO', mx, my - mr - h * 0.008);
     }
     ctx.restore();
   }
@@ -441,4 +654,14 @@ function segCircle(x1: number, y1: number, x2: number, y2: number, cx: number, c
   let t = ((cx - x1) * dx + (cy - y1) * dy) / l2;
   t = Math.max(0, Math.min(1, t));
   return Math.hypot(cx - (x1 + t * dx), cy - (y1 + t * dy)) <= r;
+}
+
+function lightenHex(hex: string, f: number): string {
+  const v = parseInt(hex.slice(1), 16);
+  const ch = (sh: number) => Math.round(Math.min(255, ((v >> sh) & 255) * f));
+  return `rgb(${ch(16)},${ch(8)},${ch(0)})`;
+}
+
+function shade(hex: string, f: number): string {
+  return lightenHex(hex, f);
 }
