@@ -32,6 +32,7 @@ const DEFAULTS = {
     sliceRel: 3.0,          // shoulder-widths/s for a hand to cut fruit
     trailMs: 110,           // swept-collision window (kills tunneling)
     chainMs: 900,           // combo chain window between slices
+    predictBoostMs: 30,     // extra saber lookahead on top of the rig's
   },
   body: {
     laneFullSW: 1.0,        // sidestep of this many shoulder widths = full lane

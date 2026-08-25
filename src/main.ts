@@ -30,6 +30,8 @@ import { HandRig } from './pose/rig';
 import { installDebugHotkey } from './games/debug';
 import { calibrateBody, countdown, countUp } from './games/flow';
 import { sfx } from './games/sfx';
+import { coverDance } from './games/covers';
+import { fruitStats, totalMedals, saberStyle, setSaberStyle, SABER_STYLES } from './games/progress';
 import './games/tuning';
 import { parseYouTubeId, YouTubeSource, YouTubeClock } from './youtube';
 import { BeatListener } from './audio/beatsync';
@@ -264,17 +266,66 @@ function attachYtSearch(
   input.addEventListener('keydown', (e) => { if (e.key === 'Enter') go(); });
 }
 
-function showMenu() {
+/** shared prelude for every full-screen menu state */
+function menuScreen(): HTMLElement {
   state = 'menu';
   cancelAnimationFrame(raf);
   activeRoom?.destroy();
   activeRoom = null;
-  app.querySelectorAll('.overlay, .hud, .yt-holder, .cam-preview, .mp-corners').forEach((e) => e.remove());
-
+  app.querySelectorAll('.overlay, .hud, .yt-holder, .cam-preview, .mp-corners, .race-cams').forEach((e) => e.remove());
   const menu = div('overlay menu');
+  app.appendChild(menu);
+  return menu;
+}
+
+/** the front door: a catalog of every game, dance included */
+function showMenu() {
+  const menu = menuScreen();
+  menu.innerHTML = `
+    <div class="logo">GROOVE<span>STAR</span></div>
+    <div class="classics-panel games-panel"><div class="yt-title">Pick your game</div>
+    <div class="classics-row" id="home-row"></div></div>`;
+  const row = menu.querySelector('#home-row')!;
+  const tile = (cover: (cv: HTMLCanvasElement) => void, title: string, sub: string, extra: string, open: () => void) => {
+    const t = div('song-tile classic-tile game-tile');
+    const cv2 = document.createElement('canvas');
+    cv2.width = 400; cv2.height = 224;
+    cover(cv2);
+    t.appendChild(cv2);
+    const meta = div('song-meta');
+    meta.innerHTML = `<div class="song-title">${title}</div>
+      <div class="song-artist">${sub}</div><div class="song-diff">${extra}</div>`;
+    t.appendChild(meta);
+    t.addEventListener('click', open);
+    row.appendChild(t);
+  };
+  tile(coverDance, 'Dance', 'Classics, any song, dance off', 'The floor is yours', () => showDanceHome());
+  for (const gdef of ARCADE) tile(gdef.cover, gdef.title, gdef.sub, gdef.extra, () => showGameHome(gdef));
+
+  const foot = div('menu-foot');
+  foot.innerHTML = `
+    <div class="foot-row">
+      <label>Player name <input id="pname" maxlength="14" value="${localStorage.getItem('gs-name') ?? 'DANCER'}"></label>
+      <button id="fit-toggle" class="calib-btn ${fitnessOn() ? 'on' : ''}">Fitness${fitStreak() > 1 ? ` ${fitStreak()}d` : ''}</button>
+      <button id="phone-cam" class="calib-btn ${phoneCam?.connected ? 'on' : ''}">Phone camera</button>
+    </div>`;
+  menu.appendChild(foot);
+  foot.querySelector('#fit-toggle')!.addEventListener('click', () => {
+    localStorage.setItem('gs-fitness', fitnessOn() ? '0' : '1');
+    showMenu();
+  });
+  foot.querySelector('#phone-cam')!.addEventListener('click', () => openPhoneCam());
+}
+
+function showDanceHome() {
+  const menu = menuScreen();
   menu.innerHTML = `
     <div class="logo">GROOVE<span>STAR</span></div>
   `;
+  const back = div('menu-foot');
+  back.innerHTML = `<div class="foot-row"><button id="home-back" class="calib-btn">All games</button></div>`;
+  menu.appendChild(back);
+  back.querySelector('#home-back')!.addEventListener('click', () => showMenu());
   // --- Just Dance classics: real extracted routines, lazily listed ---
   const classics = div('classics-panel');
   classics.innerHTML = `<div class="yt-title">Classics</div>
@@ -293,26 +344,6 @@ function showMenu() {
       crow.appendChild(tile);
     }
   });
-
-  // --- movement games ---
-  const games = div('classics-panel games-panel');
-  games.innerHTML = `<div class="yt-title">Games</div>
-    <div class="classics-row" id="games-row"></div>`;
-  menu.appendChild(games);
-  for (const gdef of ARCADE) {
-    const tile = div('song-tile classic-tile game-tile');
-    const cv2 = document.createElement('canvas');
-    cv2.width = 400; cv2.height = 224;
-    gdef.cover(cv2);
-    tile.appendChild(cv2);
-    const meta = div('song-meta');
-    meta.innerHTML = `<div class="song-title">${gdef.title}</div>
-      <div class="song-artist">${gdef.sub}</div>
-      <div class="song-diff">${gdef.extra}</div>`;
-    tile.appendChild(meta);
-    tile.addEventListener('click', () => gdef.launch());
-    games.querySelector('#games-row')!.appendChild(tile);
-  }
 
   // --- YouTube search / import panel ---
   const yt = div('yt-panel');
@@ -377,7 +408,7 @@ function showMenu() {
   foot.querySelector('#calib')!.addEventListener('click', () => openCalibrate());
   foot.querySelector('#fit-toggle')!.addEventListener('click', () => {
     localStorage.setItem('gs-fitness', fitnessOn() ? '0' : '1');
-    showMenu();
+    showDanceHome();
   });
   foot.querySelector('#phone-cam')!.addEventListener('click', () => openPhoneCam());
   foot.querySelector('#char-cycle')!.addEventListener('click', () => {
@@ -465,8 +496,8 @@ const ARCADE: ArcadeDef[] = [
     id: 'fruit', title: 'Fruit Slice', sub: 'Sabers in your hands', extra: 'Solo or race',
     tip: 'Your hands hold energy sabers. Swing fast to slice, avoid the bombs.',
     cover: coverFruit,
-    launch: () => startFruit(),
-    medals: [150, 300, 500],
+    launch: () => launchFruitSolo(),
+    medals: [180, 400, 750],
   },
   {
     id: 'blade', title: 'Beat Blade', sub: 'Slice notes on the beat', extra: 'Any song',
@@ -612,31 +643,85 @@ function endArcade(def: ArcadeDef, score: number, label?: string, raceS?: RaceSe
   document.getElementById('tolist')!.addEventListener('click', () => {
     raceS?.room.destroy();
     res.remove();
-    showMenu();
+    showGameHome(def);
   });
 }
 
-async function startFruit() {
+function launchFruitSolo() {
   const def = ARCADE[0];
-  const pick = div('overlay lobby');
-  pick.innerHTML = `<div class="lobby-box">
-    <div class="lobby-title">Fruit Slice</div>
+  startArcade(def, (o) => new FruitGame({ ...o, medals: def.medals }));
+}
+
+/** every arcade game gets a dedicated home screen; fruit has the full one */
+function showGameHome(def: ArcadeDef) {
+  if (def.id === 'fruit') return showFruitHome();
+  const menu = menuScreen();
+  const best = Number(localStorage.getItem(`gs-${def.id}-best`) ?? 0);
+  menu.innerHTML = `
+    <div class="logo">${def.title.toUpperCase().split(' ')[0]}<span>${def.title.toUpperCase().split(' ').slice(1).join(' ') || ''}</span></div>
+    <div class="classics-panel games-panel"><div class="classics-row" id="gh-cover"></div></div>
+    <div class="yt-title">${def.sub}</div>
+    <div class="fit-row">${def.tip}</div>
+    ${best ? `<div class="fit-row">Best score ${best}</div>` : ''}
     <div class="yt-row" style="justify-content:center">
-      <button id="fs-solo" class="mp-btn">Solo</button>
-      <button id="fs-race" class="mp-btn">Race a friend</button>
+      <button id="gh-play" class="mp-btn">Play</button>
     </div>
-    <button id="fs-back" class="lobby-leave">Back</button>
-  </div>`;
-  app.appendChild(pick);
-  const choice = await new Promise<number>((resolve) => {
-    pick.querySelector('#fs-solo')!.addEventListener('click', () => resolve(1));
-    pick.querySelector('#fs-race')!.addEventListener('click', () => resolve(2));
-    pick.querySelector('#fs-back')!.addEventListener('click', () => resolve(0));
-  });
-  pick.remove();
-  if (choice === 0) return;
-  if (choice === 1) return startArcade(def, (o) => new FruitGame(o));
-  fruitRaceLobby(def);
+    <div class="menu-foot"><div class="foot-row"><button id="home-back" class="calib-btn">All games</button></div></div>`;
+  const cv = document.createElement('canvas');
+  cv.width = 400; cv.height = 224;
+  def.cover(cv);
+  const holder = div('song-tile classic-tile game-tile');
+  holder.appendChild(cv);
+  menu.querySelector('#gh-cover')!.appendChild(holder);
+  menu.querySelector('#gh-play')!.addEventListener('click', () => def.launch());
+  menu.querySelector('#home-back')!.addEventListener('click', () => showMenu());
+}
+
+function showFruitHome() {
+  const def = ARCADE[0];
+  const menu = menuScreen();
+  const st = fruitStats();
+  const best = Number(localStorage.getItem('gs-fruit-best') ?? 0);
+  const medals = st.medals;
+  const owned = totalMedals();
+  const styleNow = saberStyle();
+  menu.innerHTML = `
+    <div class="logo">FRUIT<span>SLICE</span></div>
+    <div class="classics-panel games-panel"><div class="classics-row" id="fh-cover"></div></div>
+    <div class="yt-row" style="justify-content:center">
+      <button id="fh-solo" class="mp-btn">Play solo</button>
+      <button id="fh-race" class="mp-btn">Race a friend</button>
+    </div>
+    <div class="yt-title">Sabers</div>
+    <div class="yt-row" id="fh-styles" style="justify-content:center;flex-wrap:wrap"></div>
+    <div class="yt-title">Your record</div>
+    <div class="fit-row">Best score ${best} · Longest combo ${st.bestCombo} · Fruit sliced ${st.sliced} · Bosses smashed ${st.bossKills}${st.kcal >= 1 ? ` · ${Math.round(st.kcal)} kcal burned` : ''}</div>
+    <div class="fit-row">Medals · gold ${medals.gold} · silver ${medals.silver} · bronze ${medals.bronze}${def.medals ? ` · Next targets ${def.medals.join(' / ')}` : ''}</div>
+    <div class="menu-foot"><div class="foot-row"><button id="home-back" class="calib-btn">All games</button></div></div>`;
+  const cv = document.createElement('canvas');
+  cv.width = 400; cv.height = 224;
+  def.cover(cv);
+  const holder = div('song-tile classic-tile game-tile');
+  holder.appendChild(cv);
+  menu.querySelector('#fh-cover')!.appendChild(holder);
+  // saber style picker: chips, locked ones show their medal requirement
+  const stylesRow = menu.querySelector('#fh-styles')!;
+  for (const s of SABER_STYLES) {
+    const unlocked = owned >= s.need;
+    const b = document.createElement('button');
+    b.className = `calib-btn ${styleNow.id === s.id ? 'on' : ''}`;
+    b.textContent = unlocked ? s.name : `${s.name}, ${s.need} medals`;
+    if (!unlocked) b.style.opacity = '0.45';
+    b.addEventListener('click', () => {
+      if (!unlocked) { toast(`Earn ${s.need} medals to unlock ${s.name}.`); return; }
+      setSaberStyle(s.id);
+      showFruitHome();
+    });
+    stylesRow.appendChild(b);
+  }
+  menu.querySelector('#fh-solo')!.addEventListener('click', () => launchFruitSolo());
+  menu.querySelector('#fh-race')!.addEventListener('click', () => fruitRaceLobby(def));
+  menu.querySelector('#home-back')!.addEventListener('click', () => showMenu());
 }
 
 async function fruitRaceLobby(def: ArcadeDef) {
@@ -742,8 +827,31 @@ async function launchFruitRace(def: ArcadeDef, room: Room, seed: string) {
 
   await arcadeCamera(def.title, 'Same fruit, same waves. Highest score wins.');
   const preview = cameraOk ? buildArcadePreview() : null;
+
+  // spectator corners: share our webcam into the mesh, show every rival's
+  const camsRoot = div('race-cams');
+  camsRoot.style.cssText = 'position:fixed;right:22px;bottom:86px;display:flex;flex-direction:column;gap:10px;z-index:6';
+  app.appendChild(camsRoot);
+  const camStream = cam().video.srcObject as MediaStream | null;
+  if (camStream) room.shareStream(camStream);
+  room.onStream = (id, stream) => {
+    const name = session.rivals.get(id)?.name ?? 'RIVAL';
+    const cell = div('race-cam');
+    cell.style.cssText = 'width:176px;border-radius:10px;overflow:hidden;border:1px solid rgba(255,255,255,0.25);box-shadow:0 6px 24px rgba(0,0,0,0.5);position:relative';
+    const v = document.createElement('video');
+    v.muted = true; v.autoplay = true; v.playsInline = true;
+    v.srcObject = stream;
+    v.style.cssText = 'width:100%;height:132px;object-fit:cover;transform:scaleX(-1);display:block';
+    const tag = div('race-cam-tag');
+    tag.textContent = name;
+    tag.style.cssText = `position:absolute;left:8px;bottom:6px;font:700 12px 'Baloo 2',sans-serif;letter-spacing:0.08em;color:#fff7ee;text-shadow:0 1px 4px rgba(0,0,0,0.8)`;
+    cell.appendChild(v);
+    cell.appendChild(tag);
+    camsRoot.appendChild(cell);
+  };
+
   arcadeGame = new FruitGame({
-    canvas, ctx, tracker: cam(), cameraOk, rig: new HandRig(), seed, race,
+    canvas, ctx, tracker: cam(), cameraOk, rig: new HandRig(), seed, race, medals: def.medals,
     onExit: (score, label) => {
       preview?.remove();
       debugCtl.exit();
@@ -961,7 +1069,7 @@ async function startYouTube(videoId: string) {
   if (!ok) {
     loadCard.remove();
     src.destroy();
-    showMenu();
+    showDanceHome();
     setTimeout(() => {
       const err = document.getElementById('yt-err');
       if (err) err.textContent = src.error ?? 'Could not load that video.';
@@ -1072,7 +1180,7 @@ async function startClassic(entry: RoutineEntry) {
     loadCard.remove();
     src.destroy();
     toast(src.error ?? 'Could not load that routine.');
-    showMenu();
+    showDanceHome();
     return;
   }
   // no karaoke overlay for classics: LRCLIB timestamps live on the SONG's
@@ -1160,7 +1268,7 @@ function openLobby(room: Room) {
   };
   renderPlayers();
   room.onUpdate = renderPlayers;
-  room.onClosed = (reason) => { alertOverlay(reason); showMenu(); };
+  room.onClosed = (reason) => { alertOverlay(reason); showDanceHome(); };
   room.onMessage = (_from, msg) => {
     if (msg.t === 'start' && !room.isHost) {
       lobby.remove();
@@ -1168,7 +1276,7 @@ function openLobby(room: Room) {
     }
   };
 
-  document.getElementById('lobby-leave')!.addEventListener('click', () => showMenu());
+  document.getElementById('lobby-leave')!.addEventListener('click', () => showDanceHome());
 
   if (room.isHost) {
     let pickedId: string | null = null;
@@ -1281,7 +1389,7 @@ async function startYouTubeMP(videoId: string, bpm: number, introBeats: number, 
     const v = document.querySelector<HTMLVideoElement>(`video[data-peer="${id}"]`);
     if (v) { v.srcObject = stream; v.play().catch(() => { /* autoplay */ }); }
   };
-  room.onClosed = (reason) => { alertOverlay(reason); showMenu(); };
+  room.onClosed = (reason) => { alertOverlay(reason); showDanceHome(); };
 
   const loadCard = div('overlay ready-card');
   loadCard.innerHTML = `<div class="ready-inner"><div class="get-ready">DANCE OFF!</div>
@@ -1291,12 +1399,12 @@ async function startYouTubeMP(videoId: string, bpm: number, introBeats: number, 
   // classic routines load from the same static file on every client
   const routine = jd ? await loadRoutine(videoId) : null;
   const entry = jd ? (await fetchRoutineIndex()).find((e) => e.v === videoId) : null;
-  if (jd && !routine) { alertOverlay('Could not load that classic routine.'); showMenu(); return; }
+  if (jd && !routine) { alertOverlay('Could not load that classic routine.'); showDanceHome(); return; }
 
   const src = new YouTubeSource();
   const ok = await src.load(videoId);
   loadCard.remove();
-  if (!ok) { src.destroy(); alertOverlay(src.error ?? 'Could not load that video.'); showMenu(); return; }
+  if (!ok) { src.destroy(); alertOverlay(src.error ?? 'Could not load that video.'); showDanceHome(); return; }
 
   const seedNum = [...videoId].reduce((n, ch) => n + ch.charCodeAt(0), 0);
   const accents = YT_ACCENTS[seedNum % YT_ACCENTS.length];
@@ -2158,7 +2266,7 @@ async function endSong(song: Song, scorer: Scorer, hud: Hud, preview: HTMLCanvas
     opts.onAgain();
   });
   document.getElementById('tolist')!.addEventListener('click', () => {
-    res.remove(); opts.yt?.destroy(); opts.mic?.stop(); showMenu();
+    res.remove(); opts.yt?.destroy(); opts.mic?.stop(); showDanceHome();
   });
 }
 

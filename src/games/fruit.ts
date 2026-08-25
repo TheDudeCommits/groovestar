@@ -13,6 +13,7 @@ import { Arena } from './arena';
 import { BLADE_RUNNING } from './music';
 import { AudioEngine } from '../audio/engine';
 import { flashText, type Game, type GameOpts, type Ctx } from './shared';
+import { saberStyle, addFruitRun, type SaberStyle } from './progress';
 
 type Special = 'none' | 'bomb' | 'gold' | 'ice' | 'boss';
 
@@ -23,19 +24,26 @@ interface FruitKind {
   rind: string;
   seeds?: string;
   points: number;
+  weight: number;
+  hits?: number;           // multi-hit shells (coconut cracks before it splits)
 }
 
 const KINDS: FruitKind[] = [
-  { name: 'melon', r: 0.062, body: '#ff5d73', rind: '#39b356', seeds: '#28203a', points: 3 },
-  { name: 'orange', r: 0.046, body: '#ffa63e', rind: '#e8842a', points: 2 },
-  { name: 'apple', r: 0.044, body: '#f8f4d8', rind: '#e8342e', seeds: '#3a2c20', points: 2 },
-  { name: 'lime', r: 0.04, body: '#d6f78e', rind: '#57d95a', points: 2 },
-  { name: 'berry', r: 0.034, body: '#b39dff', rind: '#7a3df0', points: 4 },
+  { name: 'melon', r: 0.062, body: '#ff5d73', rind: '#39b356', seeds: '#28203a', points: 3, weight: 3 },
+  { name: 'orange', r: 0.046, body: '#ffa63e', rind: '#e8842a', points: 2, weight: 3 },
+  { name: 'apple', r: 0.044, body: '#f8f4d8', rind: '#e8342e', seeds: '#3a2c20', points: 2, weight: 3 },
+  { name: 'lime', r: 0.04, body: '#d6f78e', rind: '#57d95a', points: 2, weight: 3 },
+  { name: 'berry', r: 0.034, body: '#b39dff', rind: '#7a3df0', points: 4, weight: 2 },
+  { name: 'pineapple', r: 0.056, body: '#ffe9a3', rind: '#e8a52a', seeds: '#8a6a1a', points: 3, weight: 2 },
+  { name: 'dragon', r: 0.05, body: '#f8f4ff', rind: '#ff6ac1', seeds: '#28203a', points: 5, weight: 1.2 },
+  { name: 'star', r: 0.044, body: '#ffe9a3', rind: '#ffd23e', points: 6, weight: 0.7 },
+  { name: 'coconut', r: 0.048, body: '#f8f4d8', rind: '#6b4e35', points: 6, weight: 1.4, hits: 2 },
 ];
-const GOLD: FruitKind = { name: 'gold', r: 0.048, body: '#ffe9a3', rind: '#ffd23e', points: 15 };
-const ICE: FruitKind = { name: 'ice', r: 0.046, body: '#dff4ff', rind: '#6ee7ff', points: 5 };
-const BOMB: FruitKind = { name: 'bomb', r: 0.048, body: '#2c2837', rind: '#43404d', points: 0 };
-const BOSS: FruitKind = { name: 'boss', r: 0.088, body: '#ff5d73', rind: '#8a2444', seeds: '#ffd23e', points: 25 };
+const KIND_WEIGHT = KINDS.reduce((a, k) => a + k.weight, 0);
+const GOLD: FruitKind = { name: 'gold', r: 0.048, body: '#ffe9a3', rind: '#ffd23e', points: 15, weight: 0 };
+const ICE: FruitKind = { name: 'ice', r: 0.046, body: '#dff4ff', rind: '#6ee7ff', points: 5, weight: 0 };
+const BOMB: FruitKind = { name: 'bomb', r: 0.048, body: '#2c2837', rind: '#43404d', points: 0, weight: 0 };
+const BOSS: FruitKind = { name: 'boss', r: 0.088, body: '#ff5d73', rind: '#8a2444', seeds: '#ffd23e', points: 25, weight: 0 };
 const BOSS_HP = 8;
 
 interface Fruit {
@@ -69,11 +77,19 @@ export interface RaceLink {
   rival(): { name: string; score: number } | null;
 }
 
-export type FruitOpts = GameOpts & { seed?: string; race?: RaceLink };
+export type FruitOpts = GameOpts & {
+  seed?: string;
+  race?: RaceLink;
+  /** bronze, silver, gold thresholds — drives the next-medal HUD target */
+  medals?: [number, number, number];
+};
 
 const ROUND_SECS = 60;
 const FEVER_SECS = 8;
 const TRAIL_MS = 200;
+const INTRO_SECS = 1.1;
+const OUTRO_SECS = 1.7;
+type Finale = 'goldrush' | 'frenzy' | 'twinboss';
 
 export class FruitGame implements Game {
   private fruits: Fruit[] = [];
@@ -100,7 +116,14 @@ export class FruitGame implements Game {
   private bossDone1 = false;
   private bossDone2 = false;
   private frenzyDone = false;
-  private goldRush = false;
+  private goldRush = false;              // finale active (any kind)
+  private finale: Finale = 'goldrush';
+  private style: SaberStyle = saberStyle();
+  private bossKills = 0;
+  private kcal = 0;
+  private introT = INTRO_SECS;
+  private outroT = 0;
+  private bodyGrads = new Map<string, CanvasGradient>();
   private iceT = 0;
   private bombFlash = 0;
   private centerMsg = { text: '', color: '#fff', t: 0 };
@@ -120,12 +143,16 @@ export class FruitGame implements Game {
 
   constructor(private o: FruitOpts) {
     this.rnd = o.seed ? mulberry32(strHash(o.seed)) : Math.random;
+    const roll = this.rnd();
+    this.finale = roll < 0.45 ? 'goldrush' : roll < 0.75 ? 'frenzy' : 'twinboss';
   }
 
   start() {
     this.t0 = this.lastT = performance.now();
     try {
       this.music = new AudioEngine();
+      this.music.setVolume(0.62);
+      this.music.energy = 0.3;
       void this.music.play(BLADE_RUNNING, 0);
     } catch { this.music = null; }
     const loop = () => { this.raf = requestAnimationFrame(loop); this.frame(); };
@@ -155,11 +182,29 @@ export class FruitGame implements Game {
     const dt = this.juice.step(rawDt);
     this.gameTime += dt;
 
+    const prevIntro = this.introT;
+    this.introT = Math.max(0, this.introT - rawDt);
+    if (prevIntro > 0.7 && this.introT <= 0.7) sfx.whoosh();       // sabers igniting
+    if (prevIntro > 0 && this.introT === 0) { this.say('SLICE', '#ffd23e'); sfx.slice(4); }
     this.readHands(now, dt);
-    this.director(left);
+    if (this.introT <= 0 && this.outroT <= 0) {
+      this.director(left);
+      this.slicing(now);
+    }
     this.physics(dt);
-    this.slicing(now);
     this.timers(dt, rawDt, left);
+
+    // fitness: integrate movement effort into calories (same rate as dance)
+    const energy = this.o.tracker.latest.energy;
+    if (this.o.cameraOk) this.kcal += ((3.2 + 9 * energy) / 60) * rawDt;
+
+    // dynamic music: combo, fever and the finale push layers in
+    if (this.music) {
+      const e = 0.3 + Math.min(0.35, this.combo * 0.035)
+        + (this.feverLeft > 0 ? 0.4 : 0)
+        + (this.goldRush ? 0.45 : 0);
+      this.music.energy = this.iceT > 0 ? 0.15 : Math.min(1, e);
+    }
 
     if (this.o.race && now - this.lastRaceSend > 400) {
       this.lastRaceSend = now;
@@ -169,10 +214,28 @@ export class FruitGame implements Game {
     this.draw(ctx, now, rawDt, left);
 
     if (left <= 0 && !this.over) {
-      this.over = true;
-      this.stop();
-      if (this.score > this.best) localStorage.setItem('gs-fruit-best', String(this.score));
-      this.o.onExit(this.score, `${this.fruitCount} fruit sliced, best combo ${this.bestCombo}`);
+      if (this.outroT === 0) {
+        // signature outro: time freezes to a crawl, sabers power down
+        this.outroT = OUTRO_SECS;
+        this.say('TIME', '#fff7ee');
+        this.juice.slowmo(0.3, 1200);
+        sfx.bell();
+        if (this.music) this.music.energy = 0.2;
+      }
+      this.outroT = Math.max(0.0001, this.outroT - rawDt);
+      if (this.outroT <= 0.001) {
+        this.over = true;
+        this.stop();
+        // demo autopilot runs (no camera) must not earn records or medals
+        if (this.o.cameraOk) {
+          if (this.score > this.best) localStorage.setItem('gs-fruit-best', String(this.score));
+          const m = this.o.medals;
+          const medal = !m ? 0 : this.score >= m[2] ? 3 : this.score >= m[1] ? 2 : this.score >= m[0] ? 1 : 0;
+          addFruitRun({ sliced: this.fruitCount, bossKills: this.bossKills, combo: this.bestCombo, kcal: this.kcal, medal: medal as 0 | 1 | 2 | 3 });
+        }
+        const kcalNote = this.kcal >= 1 ? `, ${Math.round(this.kcal)} kcal` : '';
+        this.o.onExit(this.score, `${this.fruitCount} fruit sliced, best combo ${this.bestCombo}${kcalNote}`);
+      }
     }
   }
 
@@ -189,7 +252,11 @@ export class FruitGame implements Game {
         if (s && s.vis > 0.35) {
           saber.visible = true;
           saber.rel = s.rel;
-          this.moveSaber(h, s.px * this.W, s.py * this.H, s.vx, s.vy, now, dt);
+          // extra lookahead on top of the rig's: sabers must feel glued
+          const boost = TUNING.fruit.predictBoostMs / 1000;
+          const px = s.px + (s.vx / (4 / 3)) * boost;
+          const py = s.py + s.vy * boost;
+          this.moveSaber(h, px * this.W, py * this.H, s.vx, s.vy, now, dt);
         } else {
           saber.visible = false;
           saber.rel = 0;
@@ -212,6 +279,14 @@ export class FruitGame implements Game {
     }
   }
 
+  /** blade extension 0..1: ignites over the intro, retracts over the outro */
+  private bladeLen(): number {
+    const ease = (k: number) => k * k * (3 - 2 * k);
+    const inK = this.introT > 0 ? 1 - this.introT / INTRO_SECS : 1;
+    const outK = this.outroT > 0 ? Math.max(0, this.outroT / OUTRO_SECS) : 1;
+    return Math.max(0.02, ease(inK) * ease(outK));
+  }
+
   /** place the saber at the hand, orient along motion (rest pose when idle) */
   private moveSaber(h: 'L' | 'R', x: number, y: number, vx: number, vy: number, now: number, dt: number) {
     const saber = this.sabers[h];
@@ -224,16 +299,21 @@ export class FruitGame implements Game {
     while (d > Math.PI) d -= Math.PI * 2;
     while (d < -Math.PI) d += Math.PI * 2;
     saber.angle += d * Math.min(1, dt * (speed > 0.8 ? 16 : 6));
-    const len = this.H * 0.17;
+    const len = this.H * 0.17 * this.bladeLen();
     saber.tip = { x: x + Math.cos(saber.angle) * len, y: y + Math.sin(saber.angle) * len };
     saber.tipPts.push({ ...saber.tip, t: now });
     while (saber.tipPts.length && now - saber.tipPts[0].t > TRAIL_MS) saber.tipPts.shift();
-    // comet embers stream off a fast blade
+    // embers stream off a fast blade, shaped by the equipped style
     if (saber.rel > TUNING.fruit.sliceRel * 0.8) {
+      const st = this.style;
       this.juice.burst({
         x: saber.tip.x, y: saber.tip.y, count: 1,
-        color: [h === 'L' ? '#6ee7ff' : '#ffd23e', '#fff7ee'],
-        speed: this.H * 0.05, gravity: this.H * 0.3, size: this.H * 0.0045, life: 0.5,
+        kind: st.trail === 'star' ? 'shard' : st.trail === 'petal' ? 'dust' : 'spark',
+        color: [h === 'L' ? st.colL : st.colR, ...st.ember],
+        speed: this.H * (st.trail === 'star' ? 0.09 : 0.05),
+        gravity: this.H * (st.trail === 'petal' ? 0.12 : 0.3),
+        size: this.H * (st.trail === 'petal' ? 0.006 : 0.0045),
+        life: st.trail === 'petal' ? 0.8 : 0.5,
       });
     }
   }
@@ -252,16 +332,31 @@ export class FruitGame implements Game {
     const feverOn = this.feverLeft > 0;
 
     if (!this.goldRush && left <= 8.5) {
+      // every round ends differently: the finale kind is seeded per game
       this.goldRush = true;
-      this.say('GOLD RUSH', '#ffd23e');
-      sfx.fanfare(true);
+      if (this.finale === 'goldrush') { this.say('GOLD RUSH', '#ffd23e'); sfx.fanfare(true); }
+      else if (this.finale === 'frenzy') { this.say('FRENZY FINALE', '#ff6ac1'); sfx.fanfare(true); }
+      else {
+        this.say('FINAL BOSSES', '#ff6ac1');
+        sfx.bell();
+        this.launchBoss();
+        this.pend(0.5, () => this.launchBoss());
+      }
     }
 
     if (this.goldRush) {
-      // finale: rapid fruit, no bombs, everything double
-      if (this.rnd() < 0.3) this.patternFan(3);
-      else this.launch(0.15 + this.rnd() * 0.7);
-      this.nextPatternAt = this.gameTime + 0.42;
+      if (this.finale === 'goldrush') {
+        if (this.rnd() < 0.3) this.patternFan(3);
+        else this.launch(0.15 + this.rnd() * 0.7);
+        this.nextPatternAt = this.gameTime + 0.42;
+      } else if (this.finale === 'frenzy') {
+        if (this.rnd() < 0.45) this.patternFan(4);
+        else { this.launch(0.15 + this.rnd() * 0.7); this.launch(0.15 + this.rnd() * 0.7); }
+        this.nextPatternAt = this.gameTime + 0.3;
+      } else {
+        this.launch(0.2 + this.rnd() * 0.6);
+        this.nextPatternAt = this.gameTime + 0.85;
+      }
       return;
     }
 
@@ -332,7 +427,7 @@ export class FruitGame implements Game {
 
   private launch(xFrac: number, special: Special = 'none', vxBias = 0) {
     const h = this.H, w = this.W;
-    const kind = special === 'bomb' ? BOMB : special === 'gold' ? GOLD : special === 'ice' ? ICE : KINDS[Math.floor(this.rnd() * KINDS.length)];
+    const kind = special === 'bomb' ? BOMB : special === 'gold' ? GOLD : special === 'ice' ? ICE : this.pickKind();
     const g = h * 1.1;
     const peak = h * (0.55 + this.rnd() * 0.25);
     const x = w * Math.max(0.08, Math.min(0.92, xFrac));
@@ -344,8 +439,17 @@ export class FruitGame implements Game {
       rot: this.rnd() * Math.PI * 2,
       vr: (this.rnd() - 0.5) * 4.5,
       sliced: false, sliceAngle: 0, sliceAge: 0, halfSep: 0, dead: false,
-      hp: 1, lastHit: 0,
+      hp: kind.hits ?? 1, lastHit: 0,
     });
+  }
+
+  private pickKind(): FruitKind {
+    let roll = this.rnd() * KIND_WEIGHT;
+    for (const k of KINDS) {
+      roll -= k.weight;
+      if (roll <= 0) return k;
+    }
+    return KINDS[0];
   }
 
   private launchBoss() {
@@ -411,6 +515,7 @@ export class FruitGame implements Game {
         }
         if (!hit) continue;
         if (f.special === 'boss') { this.hitBoss(f, now, angle); continue; }
+        if (f.hp > 1) { this.crackShell(f, now); continue; }
         this.slice(f, angle);
         if (f.special === 'none' || f.special === 'gold') {
           slicedThisFrame++;
@@ -432,7 +537,20 @@ export class FruitGame implements Game {
 
   private mult(): number {
     const m = this.combo >= 12 ? 4 : this.combo >= 8 ? 3 : this.combo >= 4 ? 2 : 1;
-    return m * (this.feverLeft > 0 ? 2 : 1) * (this.goldRush ? 2 : 1);
+    const finaleBonus = this.goldRush && this.finale !== 'frenzy' ? 2 : 1;
+    return m * (this.feverLeft > 0 ? 2 : 1) * finaleBonus;
+  }
+
+  /** hard-shelled fruit (coconut) takes a crack before it splits */
+  private crackShell(f: Fruit, now: number) {
+    if (now - f.lastHit < 140) return;
+    f.lastHit = now;
+    f.hp--;
+    f.vr += (this.rnd() - 0.5) * 6;
+    f.vy -= this.H * 0.08;
+    this.juice.burst({ x: f.x, y: f.y, count: 7, kind: 'shard', color: [f.kind.rind, '#8a6a4a'], speed: this.H * 0.3, gravity: this.H * 0.6, size: this.H * 0.008, life: 0.5 });
+    this.juice.pop(f.x, f.y - f.kind.r * this.H * 1.3, 'CRACK', '#fff7ee', 0.8);
+    sfx.hit(0.4);
   }
 
   private hitBoss(f: Fruit, now: number, angle: number) {
@@ -451,6 +569,7 @@ export class FruitGame implements Game {
     const pts = BOSS.points * this.mult();
     this.score += pts;
     this.fruitCount++;
+    this.bossKills++;
     this.fever = Math.min(1, this.fever + 0.35);
     this.slicedVisuals(f, angle);
     this.juice.hitStop(85);
@@ -521,9 +640,23 @@ export class FruitGame implements Game {
       life: 0.15,
     });
     this.stampSplat(f, angle);
+    // juice sprays out of the cut faces, along the slice normal both ways;
+    // bigger fruit throw bigger splashes
+    const scale = f.kind.r / 0.046;
+    for (const side of [1, -1]) {
+      this.juice.burst({
+        x: f.x, y: f.y, count: Math.round(7 * scale),
+        color: [f.kind.body, f.kind.body, f.kind.rind],
+        angle: angle + (Math.PI / 2) * side, spread: 0.9,
+        speed: this.H * 0.4 * scale, gravity: this.H * 0.7,
+        size: this.H * 0.007 * scale, life: 0.6,
+      });
+    }
+    // fine mist that hangs a moment
     this.juice.burst({
-      x: f.x, y: f.y, count: 12, color: [f.kind.body, f.kind.rind],
-      speed: this.H * 0.35, gravity: this.H * 0.6, size: this.H * 0.007, life: 0.55,
+      x: f.x, y: f.y, count: Math.round(6 * scale), kind: 'dust',
+      color: [f.kind.body], speed: this.H * 0.12, gravity: this.H * 0.15,
+      size: this.H * 0.005 * scale, life: 0.7,
     });
   }
 
@@ -710,10 +843,31 @@ export class FruitGame implements Game {
   }
 
   private drawWhole(ctx: Ctx, f: Fruit, r: number, now: number) {
-    const g = ctx.createRadialGradient(-r * 0.35, -r * 0.35, r * 0.2, 0, 0, r * 1.05);
-    g.addColorStop(0, lighten(f.kind.rind, 1.3));
-    g.addColorStop(1, f.kind.rind);
+    // per-kind radial gradient, cached per radius bucket (allocation-free frames)
+    const key = `${f.kind.name}:${Math.round(r / 4)}`;
+    let g = this.bodyGrads.get(key);
+    if (!g) {
+      g = ctx.createRadialGradient(-r * 0.35, -r * 0.35, r * 0.2, 0, 0, r * 1.05);
+      g.addColorStop(0, lighten(f.kind.rind, 1.3));
+      g.addColorStop(1, f.kind.rind);
+      this.bodyGrads.set(key, g);
+    }
     ctx.fillStyle = g;
+    if (f.kind.name === 'star') {
+      // starfruit: a fat five-point star
+      ctx.beginPath();
+      for (let i = 0; i < 10; i++) {
+        const a = (i / 10) * Math.PI * 2 - Math.PI / 2;
+        const rr = i % 2 === 0 ? r * 1.05 : r * 0.55;
+        ctx.lineTo(Math.cos(a) * rr, Math.sin(a) * rr);
+      }
+      ctx.closePath();
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(255,247,238,0.5)';
+      ctx.lineWidth = r * 0.08;
+      ctx.stroke();
+      return;
+    }
     ctx.beginPath(); ctx.arc(0, 0, r, 0, Math.PI * 2); ctx.fill();
     ctx.strokeStyle = 'rgba(255,247,238,0.5)';
     ctx.lineWidth = r * 0.09;
@@ -803,6 +957,69 @@ export class FruitGame implements Game {
         ctx.fill();
       }
     }
+    if (f.kind.name === 'pineapple') {
+      // crosshatch skin + crown
+      ctx.strokeStyle = 'rgba(138,106,26,0.5)';
+      ctx.lineWidth = r * 0.06;
+      for (const s of [-0.5, 0, 0.5]) {
+        for (const dir of [1, -1]) {
+          ctx.beginPath();
+          ctx.moveTo(-r * 0.8, s * r + dir * -r * 0.5);
+          ctx.lineTo(r * 0.8, s * r + dir * r * 0.5);
+          ctx.stroke();
+        }
+      }
+      ctx.fillStyle = '#39b356';
+      for (const [lx, la] of [[-0.22, -0.5], [0, 0], [0.22, 0.5]] as const) {
+        ctx.save();
+        ctx.translate(lx * r, -r * 0.95);
+        ctx.rotate(la);
+        ctx.beginPath();
+        ctx.ellipse(0, -r * 0.25, r * 0.12, r * 0.34, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+      }
+    }
+    if (f.kind.name === 'dragon') {
+      // dragonfruit: magenta skin with curling green-tipped scales
+      ctx.fillStyle = '#57d95a';
+      for (let i = 0; i < 6; i++) {
+        const a = (i / 6) * Math.PI * 2 + 0.5;
+        ctx.save();
+        ctx.translate(Math.cos(a) * r * 0.82, Math.sin(a) * r * 0.82);
+        ctx.rotate(a + Math.PI / 2);
+        ctx.beginPath();
+        ctx.ellipse(0, 0, r * 0.09, r * 0.22, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+      }
+    }
+    if (f.kind.name === 'coconut') {
+      // fuzzy husk + the three pores; crack appears after the first hit
+      ctx.strokeStyle = 'rgba(74,52,32,0.7)';
+      ctx.lineWidth = r * 0.05;
+      for (const a of [0.3, 1.5, 2.8, 4.2, 5.4]) {
+        ctx.beginPath();
+        ctx.arc(0, 0, r * 0.92, a, a + 0.5);
+        ctx.stroke();
+      }
+      ctx.fillStyle = '#4a3420';
+      for (const [px2, py2] of [[-0.2, -0.25], [0.2, -0.25], [0, 0.1]] as const) {
+        ctx.beginPath();
+        ctx.arc(px2 * r, py2 * r, r * 0.09, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      if ((f.kind.hits ?? 1) > f.hp) {
+        ctx.strokeStyle = '#f8f4d8';
+        ctx.lineWidth = r * 0.07;
+        ctx.beginPath();
+        ctx.moveTo(-r * 0.7, -r * 0.2);
+        ctx.lineTo(-r * 0.2, 0);
+        ctx.lineTo(r * 0.15, -r * 0.25);
+        ctx.lineTo(r * 0.7, 0.05 * r);
+        ctx.stroke();
+      }
+    }
   }
 
   private drawSabers(ctx: Ctx, now: number) {
@@ -810,12 +1027,12 @@ export class FruitGame implements Game {
     for (const key of ['L', 'R'] as const) {
       const saber = this.sabers[key];
       if (!saber.visible || !saber.hand) continue;
-      const col = key === 'L' ? '#6ee7ff' : '#ffd23e';
-      const deep = key === 'L' ? '#2a8ab8' : '#d9861f';
+      const col = key === 'L' ? this.style.colL : this.style.colR;
+      const deep = key === 'L' ? this.style.deepL : this.style.deepR;
       const { x, y } = saber.hand;
       const a = saber.angle;
       const dx = Math.cos(a), dy = Math.sin(a);
-      const len = h * 0.17;
+      const len = h * 0.17 * this.bladeLen();
       const hot = Math.min(1, saber.rel / (TUNING.fruit.sliceRel * 1.6));
 
       // comet trail from the tip: additive, tapered. Each pass is drawn as
@@ -907,13 +1124,26 @@ export class FruitGame implements Game {
     ctx.font = `700 ${h * 0.017}px 'Baloo 2', sans-serif`;
     ctx.fillStyle = 'rgba(255,247,238,0.55)';
     ctx.fillText(`BEST ${Math.max(this.best, this.score)}`, w * 0.046, h * 0.135);
+    // next medal target keeps a goal on screen the whole round
+    if (this.o.medals) {
+      const [b, s, g] = this.o.medals;
+      const next = this.score < b ? ['BRONZE', b] as const : this.score < s ? ['SILVER', s] as const : this.score < g ? ['GOLD', g] as const : null;
+      ctx.font = `700 ${h * 0.015}px 'Baloo 2', sans-serif`;
+      if (next) {
+        ctx.fillStyle = next[0] === 'GOLD' ? '#ffd23e' : next[0] === 'SILVER' ? '#cfd6e4' : '#d9915b';
+        ctx.fillText(`${next[0]} AT ${next[1]}`, w * 0.046, h * 0.162);
+      } else {
+        ctx.fillStyle = '#ffd23e';
+        ctx.fillText('GOLD MEDAL SECURED', w * 0.046, h * 0.162);
+      }
+    }
     // live rival score in a race
     const rival = this.o.race?.rival();
     if (rival) {
       const ahead = this.score >= rival.score;
       ctx.fillStyle = ahead ? '#7cf95c' : '#ff5d5d';
       ctx.font = `700 ${h * 0.019}px 'Baloo 2', sans-serif`;
-      ctx.fillText(`${rival.name} ${rival.score}`, w * 0.046, h * 0.168);
+      ctx.fillText(`${rival.name} ${rival.score}`, w * 0.046, h * 0.192);
     }
     const cx = w / 2, cy = h * 0.085, r = h * 0.038;
     const urgent = left < 10;
@@ -940,9 +1170,10 @@ export class FruitGame implements Game {
       ctx.font = `700 ${h * 0.015}px 'Baloo 2', sans-serif`;
       ctx.fillText('FEVER, DOUBLE POINTS', cx, cy + r + h * 0.045);
     } else if (this.goldRush) {
-      ctx.fillStyle = '#ffd23e';
+      ctx.fillStyle = this.finale === 'frenzy' ? '#ff6ac1' : '#ffd23e';
       ctx.font = `700 ${h * 0.015}px 'Baloo 2', sans-serif`;
-      ctx.fillText('GOLD RUSH, DOUBLE POINTS', cx, cy + r + h * 0.045);
+      const label = this.finale === 'goldrush' ? 'GOLD RUSH, DOUBLE POINTS' : this.finale === 'frenzy' ? 'FRENZY FINALE' : 'FINAL BOSSES, DOUBLE POINTS';
+      ctx.fillText(label, cx, cy + r + h * 0.045);
     }
     if (this.combo >= 2) {
       ctx.textAlign = 'right';

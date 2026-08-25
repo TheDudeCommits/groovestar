@@ -175,3 +175,40 @@ export function coverBox(cv: HTMLCanvasElement) {
   c.fillStyle = 'rgba(255,255,255,0.35)';
   c.beginPath(); c.arc(w * 0.27, h * 0.53, h * 0.05, 0, Math.PI * 2); c.fill();
 }
+
+export function coverDance(cv: HTMLCanvasElement) {
+  const c = cv.getContext('2d')!;
+  const w = cv.width, h = cv.height;
+  sky(c, w, h);
+  // spotlight cone
+  const g = c.createRadialGradient(w * 0.5, h * 0.2, 0, w * 0.5, h * 0.2, h);
+  g.addColorStop(0, 'rgba(255,106,193,0.35)');
+  g.addColorStop(1, 'rgba(0,0,0,0)');
+  c.fillStyle = g;
+  c.fillRect(0, 0, w, h);
+  // dancer silhouette: one arm skyward, hip out
+  c.save();
+  c.translate(w * 0.48, h * 0.58);
+  c.fillStyle = '#fff7ee';
+  c.beginPath(); c.arc(0, -h * 0.3, h * 0.085, 0, Math.PI * 2); c.fill();   // head
+  c.lineCap = 'round';
+  c.strokeStyle = '#fff7ee';
+  c.lineWidth = h * 0.055;
+  c.beginPath(); c.moveTo(0, -h * 0.2); c.lineTo(-h * 0.04, h * 0.05); c.stroke();  // torso
+  c.beginPath(); c.moveTo(0, -h * 0.17); c.lineTo(h * 0.16, -h * 0.42); c.stroke(); // arm up
+  c.beginPath(); c.moveTo(0, -h * 0.14); c.lineTo(-h * 0.18, -h * 0.05); c.stroke();// arm out
+  c.beginPath(); c.moveTo(-h * 0.04, h * 0.05); c.lineTo(-h * 0.16, h * 0.3); c.stroke();
+  c.beginPath(); c.moveTo(-h * 0.04, h * 0.05); c.lineTo(h * 0.1, h * 0.3); c.stroke();
+  c.restore();
+  // gold sweep + sparkles
+  c.strokeStyle = '#ffd23e';
+  c.lineWidth = h * 0.02;
+  c.shadowColor = '#ffd23e';
+  c.shadowBlur = 12;
+  c.beginPath(); c.moveTo(w * 0.62, h * 0.2); c.quadraticCurveTo(w * 0.78, h * 0.36, w * 0.68, h * 0.6); c.stroke();
+  c.shadowBlur = 0;
+  c.fillStyle = '#ffd23e';
+  for (const [sx, sy, sr] of [[0.7, 0.18, 0.02], [0.78, 0.3, 0.014], [0.72, 0.52, 0.016], [0.3, 0.22, 0.015]] as const) {
+    c.beginPath(); c.arc(w * sx, h * sy, h * sr, 0, Math.PI * 2); c.fill();
+  }
+}

@@ -37,6 +37,10 @@ export class Juice {
   private shakeDur = 1;
   private pool: Particle[] = [];
   private pops: Pop[] = [];
+  private dtEma = 1 / 60;
+  /** adaptive quality 0.4..1 — burst counts scale with it so heavy frames
+   *  shed particles before they shed frames */
+  q = 1;
 
   /** freeze the world briefly on impact — 40-80ms reads as weight */
   hitStop(ms: number) { this.freezeLeft = Math.max(this.freezeLeft, ms / 1000); }
@@ -51,6 +55,9 @@ export class Juice {
 
   /** convert raw frame dt into gameplay dt (consumes freeze, applies slow-mo) */
   step(rawDt: number): number {
+    this.dtEma = this.dtEma * 0.95 + rawDt * 0.05;
+    if (this.dtEma > 0.0185 && this.q > 0.4) this.q = Math.max(0.4, this.q - 0.02);
+    else if (this.dtEma < 0.0155 && this.q < 1) this.q = Math.min(1, this.q + 0.004);
     if (this.shakeLeft > 0) this.shakeLeft = Math.max(0, this.shakeLeft - rawDt);
     if (this.freezeLeft > 0) {
       this.freezeLeft = Math.max(0, this.freezeLeft - rawDt);
@@ -80,7 +87,8 @@ export class Juice {
     color: string | string[]; speed: number; spread?: number; angle?: number;
     size?: number; life?: number; gravity?: number;
   }) {
-    const { x, y, count } = opts;
+    const { x, y } = opts;
+    const count = Math.max(1, Math.round(opts.count * this.q));
     const kind = opts.kind ?? 'spark';
     const colors = Array.isArray(opts.color) ? opts.color : [opts.color];
     for (let i = 0; i < count; i++) {

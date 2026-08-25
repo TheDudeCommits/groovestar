@@ -21,6 +21,35 @@ export class Arena {
   private petals: Petal[] = [];
   private lanterns: Lantern[] = [];
   private t = 0;
+  // gradients are cached per canvas size — allocating them per frame is one
+  // of the quiet canvas costs; fever blending is done by alpha-compositing
+  // the cached fever variant over the cached base
+  private gradH = 0;
+  private skyBase: CanvasGradient | null = null;
+  private skyFever: CanvasGradient | null = null;
+  private sunGrad: CanvasGradient | null = null;
+  private hazeGrad: CanvasGradient | null = null;
+
+  private ensureGradients(ctx: Ctx, w: number, h: number) {
+    if (this.gradH === h && this.skyBase) return;
+    this.gradH = h;
+    const mk = (stops: [number, string][]) => {
+      const g = ctx.createLinearGradient(0, 0, 0, h);
+      for (const [o, c] of stops) g.addColorStop(o, c);
+      return g;
+    };
+    this.skyBase = mk([[0, '#241454'], [0.5, '#3c1e63'], [0.82, '#552458'], [1, '#1b1140']]);
+    this.skyFever = mk([[0, '#331a54'], [0.5, '#542060'], [0.82, '#743247'], [1, '#1b1140']]);
+    const sunY = h * 0.62, sunR = h * 0.21;
+    this.sunGrad = ctx.createLinearGradient(0, sunY - sunR, 0, sunY + sunR);
+    this.sunGrad.addColorStop(0, '#ffd23e');
+    this.sunGrad.addColorStop(0.55, '#ff8a2e');
+    this.sunGrad.addColorStop(1, '#ff6ac1');
+    this.hazeGrad = ctx.createLinearGradient(0, h * 0.6, 0, h);
+    this.hazeGrad.addColorStop(0, 'rgba(255,138,46,0)');
+    this.hazeGrad.addColorStop(1, 'rgba(255,138,46,0.55)');
+    void w;
+  }
 
   update(dt: number, w: number, h: number) {
     this.t += dt;
@@ -58,14 +87,15 @@ export class Arena {
   /** beat is fractional song beats; fever 0..1 warms the palette */
   draw(ctx: Ctx, w: number, h: number, beat: number, fever: number) {
     const pulse = Math.max(0, 1 - (beat % 1));            // 1 at each beat, decays
-    // sky
-    const sky = ctx.createLinearGradient(0, 0, 0, h);
-    sky.addColorStop(0, blend('#241454', '#3a1a54', fever * 0.7));
-    sky.addColorStop(0.5, blend('#3c1e63', '#5e2560', fever * 0.7));
-    sky.addColorStop(0.82, blend('#552458', '#84393f', fever * 0.7));
-    sky.addColorStop(1, '#1b1140');
-    ctx.fillStyle = sky;
+    this.ensureGradients(ctx, w, h);
+    ctx.fillStyle = this.skyBase!;
     ctx.fillRect(0, 0, w, h);
+    if (fever > 0.02) {
+      ctx.globalAlpha = Math.min(1, fever);
+      ctx.fillStyle = this.skyFever!;
+      ctx.fillRect(0, 0, w, h);
+      ctx.globalAlpha = 1;
+    }
 
     // stars, twinkling on a hash
     ctx.fillStyle = '#fff7ee';
@@ -86,11 +116,7 @@ export class Arena {
     ctx.beginPath();
     ctx.arc(sunX, sunY, sunR, 0, Math.PI * 2);
     ctx.clip();
-    const sun = ctx.createLinearGradient(0, sunY - sunR, 0, sunY + sunR);
-    sun.addColorStop(0, blend('#ffd23e', '#ffe9a3', fever));
-    sun.addColorStop(0.55, '#ff8a2e');
-    sun.addColorStop(1, '#ff6ac1');
-    ctx.fillStyle = sun;
+    ctx.fillStyle = this.sunGrad!;
     ctx.fillRect(sunX - sunR, sunY - sunR, sunR * 2, sunR * 2);
     // slats widen toward the bottom
     ctx.fillStyle = 'rgba(27,17,64,0.9)';
@@ -121,11 +147,10 @@ export class Arena {
     }
 
     // horizon haze pulsing gently with the beat
-    const haze = ctx.createLinearGradient(0, h * 0.6, 0, h);
-    haze.addColorStop(0, 'rgba(255,138,46,0)');
-    haze.addColorStop(1, `rgba(255,138,46,${0.1 + pulse * 0.05 + fever * 0.12})`);
-    ctx.fillStyle = haze;
+    ctx.globalAlpha = (0.1 + pulse * 0.05 + fever * 0.12) / 0.55;
+    ctx.fillStyle = this.hazeGrad!;
     ctx.fillRect(0, h * 0.6, w, h * 0.4);
+    ctx.globalAlpha = 1;
 
     // lanterns rising
     for (const l of this.lanterns) {

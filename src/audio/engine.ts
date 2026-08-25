@@ -12,6 +12,8 @@ export class AudioEngine {
   private master: GainNode;
   private comp: DynamicsCompressorNode;
   private song: Song | null = null;
+  /** 0..1 live intensity override for arcade games; null = section-driven */
+  energy: number | null = null;
   private startTime = 0;
   private nextSixteenth = 0;         // index of next 16th note to schedule
   private timer: number | null = null;
@@ -33,6 +35,8 @@ export class AudioEngine {
   }
 
   get spb() { return this.song ? 60 / this.song.bpm : 0.5; }
+
+  setVolume(v: number) { this.master.gain.value = v; }
 
   /** current position in beats (fractional); negative during count-in */
   beat(): number {
@@ -92,33 +96,42 @@ export class AudioEngine {
     const chord = song.chords[bar % song.chords.length];
     const root = song.root + chord[0];
 
-    const drums = kind !== 'bridge';
-    const full = kind === 'chorus' || kind === 'outro';
+    // Dynamic layering: when `energy` is set (arcade games drive it from
+    // combo/fever every frame), it overrides the section-based arrangement.
+    // Dance mode leaves it null and hears exactly what it always heard.
+    const e = this.energy;
+    const drums = e === null ? kind !== 'bridge' : e > 0.18;
+    const full = e === null ? kind === 'chorus' || kind === 'outro' : e > 0.62;
+    const gainMul = e === null ? 1 : 0.7 + e * 0.5;
 
     // kick: four on the floor
     if (drums && sixteenth % 4 === 0) this.kick(t);
     // clap/snare on 2 & 4
-    if (drums && (sixteenth === 4 || sixteenth === 12)) this.clap(t, full ? 0.5 : 0.35);
+    if (drums && (sixteenth === 4 || sixteenth === 12)) this.clap(t, (full ? 0.5 : 0.35) * gainMul);
     // hats: offbeat 8ths in verse, 16ths in chorus
-    if (kind !== 'intro' && (full ? step % 1 === 0 : step % 2 === 1)) {
-      this.hat(t, sixteenth % 4 === 2 ? 0.16 : 0.08);
+    if ((e === null ? kind !== 'intro' : e > 0.32) && (full ? step % 1 === 0 : step % 2 === 1)) {
+      this.hat(t, (sixteenth % 4 === 2 ? 0.16 : 0.08) * gainMul);
     }
     // bass: root 8ths with octave pop
-    if (kind !== 'intro' && step % 2 === 0) {
+    if ((e === null ? kind !== 'intro' : e > 0.12) && step % 2 === 0) {
       const oct = sixteenth === 14 ? 12 : 0;
-      this.bass(t, mtof(song.root - 12 + chord[0] + oct), this.spb * 0.45, full ? 0.34 : 0.26);
+      this.bass(t, mtof(song.root - 12 + chord[0] + oct), this.spb * 0.45, (full ? 0.34 : 0.26) * gainMul);
     }
     // pad: chord on bar start
     if (sixteenth === 0) this.pad(t, chord.map((c) => mtof(song.root + c)), this.spb * 3.9, kind === 'bridge' ? 0.16 : 0.1);
     // arp lead in chorus/bridge: up-down 16ths
-    if ((full || kind === 'bridge') && step % 1 === 0) {
+    if ((e === null ? full || kind === 'bridge' : e > 0.5) && step % 1 === 0) {
       const seq = [0, 1, 2, 1];
       const n = chord[seq[sixteenth % 4]] + 12;
-      if (sixteenth % 2 === 0) this.lead(t, mtof(song.root + n + (kind === 'bridge' ? 0 : 12)), this.spb * 0.22, kind === 'bridge' ? 0.07 : 0.1);
+      if (sixteenth % 2 === 0) this.lead(t, mtof(song.root + n + (kind === 'bridge' ? 0 : 12)), this.spb * 0.22, (kind === 'bridge' ? 0.07 : 0.1) * gainMul);
     }
     // sparkle pluck answering in verse
     if (kind === 'verse' && (sixteenth === 6 || sixteenth === 10)) {
       this.lead(t, mtof(root + 24 + (sixteenth === 10 ? 7 : 3)), this.spb * 0.3, 0.05);
+    }
+    // top layer at peak energy: octave chime answering every other 16th
+    if (e !== null && e > 0.85 && sixteenth % 4 === 3) {
+      this.lead(t, mtof(song.root + chord[(sixteenth / 4 | 0) % chord.length] + 24), this.spb * 0.18, 0.07);
     }
     // riser into each chorus
     const next = song.sections.find((s) => s.beat === Math.floor(beat) + 1);
