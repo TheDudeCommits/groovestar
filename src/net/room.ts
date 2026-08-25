@@ -21,7 +21,8 @@ export type NetMsg =
   | { t: 'start'; videoId: string; bpm: number; intro: number; choreo?: ChoreoMove[]; jd?: boolean }
   | { t: 'pose'; d: number[] }          // quantized landmarks (see poseCodec)
   | { t: 'score'; s: number; stars: number }
-  | { t: 'end'; s: number };
+  | { t: 'end'; s: number }
+  | { t: 'race'; game: string; seed: string };   // arcade score race: same seed, same waves
 
 export interface Envelope { from: string; msg: NetMsg }
 

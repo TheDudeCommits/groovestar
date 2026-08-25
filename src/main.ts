@@ -18,7 +18,7 @@ import { PlayerAvatar, type Cosmetics } from './avatar';
 import { generateChoreo, freestyleWindows, carveFreestyle, smoothChoreo, type FreestyleWindow } from './choreograph';
 import { fetchVibe, vibeAt, type VibePalette } from './vibe';
 import { fetchRoutineIndex, loadRoutine, type RoutineEntry } from './routines';
-import { FruitGame } from './games/fruit';
+import { FruitGame, type RaceLink } from './games/fruit';
 import { RushGame } from './games/rush';
 import { BowlGame } from './games/bowl';
 import { TennisGame } from './games/tennis';
@@ -446,16 +446,27 @@ interface ArcadeDef {
   tip: string;
   cover: (cv: HTMLCanvasElement) => void;
   launch: () => void;
+  /** bronze, silver, gold score thresholds for the results medal */
+  medals?: [number, number, number];
+}
+
+/** live score-race session shared between the game and the results screen */
+interface RaceSession {
+  room: Room;
+  rivals: Map<string, { name: string; score: number; ended: boolean }>;
+  onUpdate: (() => void) | null;
+  relaunch: (seed: string) => void;
 }
 
 let arcadeGame: Game | null = null;
 
 const ARCADE: ArcadeDef[] = [
   {
-    id: 'fruit', title: 'Fruit Slice', sub: 'Slice with your hands', extra: '60 seconds',
-    tip: 'Your hands are the blades. Swipe fast to slice, avoid the bombs.',
+    id: 'fruit', title: 'Fruit Slice', sub: 'Sabers in your hands', extra: 'Solo or race',
+    tip: 'Your hands hold energy sabers. Swing fast to slice, avoid the bombs.',
     cover: coverFruit,
-    launch: () => startArcade(ARCADE[0], (o) => new FruitGame(o)),
+    launch: () => startFruit(),
+    medals: [150, 300, 500],
   },
   {
     id: 'blade', title: 'Beat Blade', sub: 'Slice notes on the beat', extra: 'Any song',
@@ -532,13 +543,16 @@ async function startArcade(def: ArcadeDef, make: (o: GameOpts) => Game) {
   debugCtl.enter();
 }
 
-function endArcade(def: ArcadeDef, score: number, label?: string) {
+function endArcade(def: ArcadeDef, score: number, label?: string, raceS?: RaceSession) {
   state = 'results';
   arcadeGame = null;
   // games persist their own best under gs-<id>-best just before exiting, so
   // matching it here means this run set (or tied) the record
   const best = Number(localStorage.getItem(`gs-${def.id}-best`) ?? 0);
   const newBest = score > 0 && score >= best;
+  const medal = def.medals
+    ? score >= def.medals[2] ? ['GOLD MEDAL', '#ffd23e'] : score >= def.medals[1] ? ['SILVER MEDAL', '#cfd6e4'] : score >= def.medals[0] ? ['BRONZE MEDAL', '#d9915b'] : null
+    : null;
   const res = div('overlay results');
   res.innerHTML = `
     <div class="congrats">${newBest ? 'New best!' : 'Time!'}</div>
@@ -546,14 +560,36 @@ function endArcade(def: ArcadeDef, score: number, label?: string) {
       <div class="result-name">${def.title.toUpperCase()}</div>
       <div class="result-score" id="arc-score">0</div>
     </div>
+    ${medal ? `<div class="fit-row" style="color:${medal[1]};letter-spacing:0.14em">${medal[0]}</div>` : ''}
     ${label ? `<div class="fit-row">${label}</div>` : ''}
+    ${raceS ? `<div class="fit-row" id="race-rows"></div><div class="fit-row" id="race-verdict" style="font-size:1.4em;letter-spacing:0.1em"></div>` : ''}
     <div class="result-btns">
-      <button id="again">Play again</button>
+      <button id="again">${raceS && !raceS.room.isHost ? 'Ready for a rematch' : 'Play again'}</button>
       <button id="tolist">Menu</button>
     </div>`;
   app.appendChild(res);
   countUp(res.querySelector('#arc-score') as HTMLElement, score, 1100);
   setTimeout(() => sfx.fanfare(newBest), 1100);
+
+  if (raceS) {
+    let cheered = false;
+    const render = () => {
+      const rows = res.querySelector('#race-rows');
+      const verdict = res.querySelector('#race-verdict') as HTMLElement | null;
+      if (!rows || !verdict) return;
+      const rivals = [...raceS.rivals.values()];
+      rows.textContent = rivals.map((r) => `${r.name} ${r.score}${r.ended ? '' : ', still slicing'}`).join('   ');
+      if (rivals.length && rivals.every((r) => r.ended)) {
+        const top = Math.max(...rivals.map((r) => r.score));
+        const win = score > top;
+        verdict.textContent = win ? 'YOU WIN' : score === top ? 'TIE' : `${rivals.find((r) => r.score === top)?.name} WINS`;
+        verdict.style.color = win ? '#ffd23e' : score === top ? '#fff7ee' : '#ff5d5d';
+        if (win && !cheered) { cheered = true; sfx.fanfare(true); }
+      }
+    };
+    raceS.onUpdate = render;
+    render();
+  }
   const bg = () => {
     if (state !== 'results') return;
     const t = performance.now() / 1000;
@@ -561,8 +597,162 @@ function endArcade(def: ArcadeDef, score: number, label?: string) {
     raf = requestAnimationFrame(bg);
   };
   bg();
-  document.getElementById('again')!.addEventListener('click', () => { res.remove(); cancelAnimationFrame(raf); def.launch(); });
-  document.getElementById('tolist')!.addEventListener('click', () => { res.remove(); showMenu(); });
+  document.getElementById('again')!.addEventListener('click', () => {
+    if (raceS) {
+      if (!raceS.room.isHost) { toast('Waiting for the host to start the rematch.'); return; }
+      const seed = String(Math.floor(Math.random() * 1e9));
+      raceS.room.send({ t: 'race', game: 'fruit', seed });
+      res.remove();
+      cancelAnimationFrame(raf);
+      raceS.relaunch(seed);
+      return;
+    }
+    res.remove(); cancelAnimationFrame(raf); def.launch();
+  });
+  document.getElementById('tolist')!.addEventListener('click', () => {
+    raceS?.room.destroy();
+    res.remove();
+    showMenu();
+  });
+}
+
+async function startFruit() {
+  const def = ARCADE[0];
+  const pick = div('overlay lobby');
+  pick.innerHTML = `<div class="lobby-box">
+    <div class="lobby-title">Fruit Slice</div>
+    <div class="yt-row" style="justify-content:center">
+      <button id="fs-solo" class="mp-btn">Solo</button>
+      <button id="fs-race" class="mp-btn">Race a friend</button>
+    </div>
+    <button id="fs-back" class="lobby-leave">Back</button>
+  </div>`;
+  app.appendChild(pick);
+  const choice = await new Promise<number>((resolve) => {
+    pick.querySelector('#fs-solo')!.addEventListener('click', () => resolve(1));
+    pick.querySelector('#fs-race')!.addEventListener('click', () => resolve(2));
+    pick.querySelector('#fs-back')!.addEventListener('click', () => resolve(0));
+  });
+  pick.remove();
+  if (choice === 0) return;
+  if (choice === 1) return startArcade(def, (o) => new FruitGame(o));
+  fruitRaceLobby(def);
+}
+
+async function fruitRaceLobby(def: ArcadeDef) {
+  const pick = div('overlay lobby');
+  pick.innerHTML = `<div class="lobby-box">
+    <div class="lobby-title">Fruit race</div>
+    <div class="yt-row" style="justify-content:center">
+      <button id="fr-create" class="mp-btn">Create room</button>
+      <input id="fr-code" placeholder="CODE" maxlength="4" inputmode="numeric">
+      <button id="fr-join" class="mp-btn">Join</button>
+    </div>
+    <div id="fr-status" class="yt-err"></div>
+    <div id="fr-roster" class="fit-row"></div>
+    <button id="fr-start" class="mp-btn" style="display:none">Start the race</button>
+    <button id="fr-back" class="lobby-leave">Back</button>
+  </div>`;
+  app.appendChild(pick);
+  const status = pick.querySelector('#fr-status') as HTMLElement;
+  const rosterEl = pick.querySelector('#fr-roster') as HTMLElement;
+  const startBtn = pick.querySelector('#fr-start') as HTMLButtonElement;
+  let room: Room | null = null;
+  let launched = false;
+
+  const showRoster = () => {
+    if (!room) return;
+    rosterEl.textContent = room.players.map((p) => p.name).join('   ');
+    if (room.isHost) {
+      startBtn.style.display = room.players.length >= 2 ? '' : 'none';
+      status.textContent = room.players.length >= 2 ? '' : `Room ${room.code}. Share the code, waiting for a rival`;
+    } else {
+      status.textContent = 'Connected. Waiting for the host to start';
+    }
+  };
+
+  const wire = (r: Room) => {
+    room = r;
+    r.onUpdate = showRoster;
+    r.onMessage = (_from, msg) => {
+      if (msg.t === 'race' && !launched) {
+        launched = true;
+        pick.remove();
+        launchFruitRace(def, r, msg.seed);
+      }
+    };
+    r.onClosed = (reason) => { if (!launched) { status.textContent = reason; } };
+    showRoster();
+  };
+
+  pick.querySelector('#fr-create')!.addEventListener('click', async () => {
+    if (room) return;
+    status.textContent = 'Creating room…';
+    try { wire(await Room.create(playerNameFromMenu())); } catch (e) { status.textContent = String((e as Error).message ?? e); }
+  });
+  pick.querySelector('#fr-join')!.addEventListener('click', async () => {
+    if (room) return;
+    const code = (pick.querySelector('#fr-code') as HTMLInputElement).value.trim();
+    if (!/^\d{4}$/.test(code)) { status.textContent = 'Enter the 4-digit code.'; return; }
+    status.textContent = 'Joining…';
+    try { wire(await Room.join(code, playerNameFromMenu())); } catch (e) { status.textContent = String((e as Error).message ?? e); }
+  });
+  startBtn.addEventListener('click', () => {
+    if (!room || launched) return;
+    launched = true;
+    const seed = String(Math.floor(Math.random() * 1e9));
+    room.send({ t: 'race', game: 'fruit', seed });
+    pick.remove();
+    launchFruitRace(def, room, seed);
+  });
+  pick.querySelector('#fr-back')!.addEventListener('click', () => {
+    if (!launched) { room?.destroy(); pick.remove(); }
+  });
+}
+
+async function launchFruitRace(def: ArcadeDef, room: Room, seed: string) {
+  const session: RaceSession = {
+    room,
+    rivals: new Map(room.players.filter((p) => p.id !== room.myId).map((p) => [p.id, { name: p.name, score: 0, ended: false }])),
+    onUpdate: null,
+    relaunch: (s) => launchFruitRace(def, room, s),
+  };
+  let rematch = false;
+  room.onUpdate = () => {
+    for (const p of room.players) {
+      if (p.id !== room.myId && !session.rivals.has(p.id)) session.rivals.set(p.id, { name: p.name, score: 0, ended: false });
+    }
+  };
+  room.onMessage = (from, msg) => {
+    const rv = session.rivals.get(from);
+    if (msg.t === 'score' && rv) { rv.score = msg.s; session.onUpdate?.(); }
+    if (msg.t === 'end' && rv) { rv.ended = true; rv.score = msg.s; session.onUpdate?.(); }
+    if (msg.t === 'race' && !rematch) { rematch = true; session.relaunch(msg.seed); }
+  };
+  room.onClosed = (reason) => toast(reason);
+
+  const race: RaceLink = {
+    send: (s) => room.send({ t: 'score', s, stars: 0 }),
+    rival: () => {
+      let top: { name: string; score: number } | null = null;
+      for (const r of session.rivals.values()) if (!top || r.score > top.score) top = { name: r.name, score: r.score };
+      return top;
+    },
+  };
+
+  await arcadeCamera(def.title, 'Same fruit, same waves. Highest score wins.');
+  const preview = cameraOk ? buildArcadePreview() : null;
+  arcadeGame = new FruitGame({
+    canvas, ctx, tracker: cam(), cameraOk, rig: new HandRig(), seed, race,
+    onExit: (score, label) => {
+      preview?.remove();
+      debugCtl.exit();
+      room.send({ t: 'end', s: score });
+      endArcade(def, score, label, session);
+    },
+  });
+  arcadeGame.start();
+  debugCtl.enter();
 }
 
 async function startBowling() {

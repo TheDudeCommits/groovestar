@@ -11,11 +11,14 @@ page.on('pageerror', (e) => errors.push(String(e)));
 await page.goto(`http://localhost:${process.env.PORT ?? 5174}`);
 await page.waitForFunction(() => document.querySelectorAll('.game-tile').length >= 6, null, { timeout: 15000 });
 await page.click('.game-tile');
+await page.click('#fs-solo');
 await page.waitForTimeout(4600);          // camera fail + countdown
 await page.screenshot({ path: '/tmp/fruit_early.png' });
 await page.waitForTimeout(8000);
 await page.screenshot({ path: '/tmp/fruit_mid.png' });
-await page.waitForTimeout(14000);         // ~26s in: past first frenzy
-await page.screenshot({ path: '/tmp/fruit_frenzy.png' });
+await page.waitForTimeout(18000);         // ~31s in: boss on screen
+await page.screenshot({ path: '/tmp/fruit_boss.png' });
+await page.waitForTimeout(25000);         // ~56s in: gold rush finale
+await page.screenshot({ path: '/tmp/fruit_goldrush.png' });
 console.log('console errors:', errors.length ? errors.slice(0, 5) : 'none');
 await browser.close();

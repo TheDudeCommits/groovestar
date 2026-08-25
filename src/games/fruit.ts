@@ -1,23 +1,25 @@
-// Fruit Slice — rebuilt on the Sprint 0 foundation. Both hands are always-
-// visible glowing blades that ride the HandRig's filtered, predicted wrist
-// positions; slicing tests the full swept blade path (no tunneling) gated by
-// body-relative speed. A wave director replaces the random drip: authored
-// patterns (crosses, fans, ladders, bomb traps, frenzy bursts) on an
-// intensity curve, plus golden fruit, ice fruit (slow motion) and a fever
-// meter. Juice everywhere: hit-stop, slow-mo, shake, persistent splatter,
-// squash-free vector fruit in the house style. 60 seconds.
+// Fruit Slice — energy sabers edition. Both hands hold vector-drawn energy
+// katanas that orient along your swing, leave comet trails, and cut fruit by
+// sweeping the whole blade through it. A composed synth track drives a
+// beat-reactive dusk arena. Wave director with authored patterns, golden and
+// ice fruit, a pomegranate boss you mash, a gold-rush finale, fever mode,
+// and an online score race over the multiplayer rooms (same seed, same
+// waves, live rival score).
 
 import { TUNING } from './tuning';
 import { Juice, drawGlow } from './juice';
 import { sfx } from './sfx';
-import { drawSky, flashText, type Game, type GameOpts, type Ctx } from './shared';
+import { Arena } from './arena';
+import { BLADE_RUNNING } from './music';
+import { AudioEngine } from '../audio/engine';
+import { flashText, type Game, type GameOpts, type Ctx } from './shared';
 
-type Special = 'none' | 'bomb' | 'gold' | 'ice';
+type Special = 'none' | 'bomb' | 'gold' | 'ice' | 'boss';
 
 interface FruitKind {
   name: string;
-  r: number;               // radius as a fraction of view height
-  body: string;            // flesh
+  r: number;
+  body: string;
   rind: string;
   seeds?: string;
   points: number;
@@ -33,6 +35,8 @@ const KINDS: FruitKind[] = [
 const GOLD: FruitKind = { name: 'gold', r: 0.048, body: '#ffe9a3', rind: '#ffd23e', points: 15 };
 const ICE: FruitKind = { name: 'ice', r: 0.046, body: '#dff4ff', rind: '#6ee7ff', points: 5 };
 const BOMB: FruitKind = { name: 'bomb', r: 0.048, body: '#2c2837', rind: '#43404d', points: 0 };
+const BOSS: FruitKind = { name: 'boss', r: 0.088, body: '#ff5d73', rind: '#8a2444', seeds: '#ffd23e', points: 25 };
+const BOSS_HP = 8;
 
 interface Fruit {
   kind: FruitKind;
@@ -41,66 +45,101 @@ interface Fruit {
   rot: number; vr: number;
   sliced: boolean;
   sliceAngle: number;
-  sliceAge: number;        // seconds since the cut
+  sliceAge: number;
   halfSep: number;
   dead: boolean;
-  wobble: number;
+  hp: number;
+  lastHit: number;
 }
 
 interface SliceFlash { x1: number; y1: number; x2: number; y2: number; life: number }
 
-interface Blade {
-  pts: { x: number; y: number; t: number }[];
-  rel: number;             // body-relative hand speed this frame
+interface Saber {
+  hand: { x: number; y: number } | null;
+  angle: number;
+  rel: number;
   visible: boolean;
+  tip: { x: number; y: number };
+  tipPts: { x: number; y: number; t: number }[];
 }
+
+/** live link to the online score race (wired by main.ts over the room) */
+export interface RaceLink {
+  send(score: number): void;
+  rival(): { name: string; score: number } | null;
+}
+
+export type FruitOpts = GameOpts & { seed?: string; race?: RaceLink };
 
 const ROUND_SECS = 60;
 const FEVER_SECS = 8;
+const TRAIL_MS = 200;
 
 export class FruitGame implements Game {
   private fruits: Fruit[] = [];
   private flashes: SliceFlash[] = [];
-  private blades: Record<'L' | 'R', Blade> = {
-    L: { pts: [], rel: 0, visible: false },
-    R: { pts: [], rel: 0, visible: false },
+  private sabers: Record<'L' | 'R', Saber> = {
+    L: { hand: null, angle: -Math.PI / 2 - 0.35, rel: 0, visible: false, tip: { x: 0, y: 0 }, tipPts: [] },
+    R: { hand: null, angle: -Math.PI / 2 + 0.35, rel: 0, visible: false, tip: { x: 0, y: 0 }, tipPts: [] },
   };
   private juice = new Juice();
+  private arena = new Arena();
+  private music: AudioEngine | null = null;
+  private rnd: () => number;
   private score = 0;
   private best = Number(localStorage.getItem('gs-fruit-best') ?? 0);
   private fruitCount = 0;
   private combo = 0;
   private bestCombo = 0;
-  private lastSliceAt = 0;      // gameTime seconds
+  private lastSliceAt = 0;
   private comboFlashT = 0;
-  private fever = 0;            // meter 0..1
-  private feverLeft = 0;        // seconds of active fever
+  private fever = 0;
+  private feverLeft = 0;
   private goldSpawned = 0;
   private iceSpawned = 0;
-  private iceT = 0;             // ice tint seconds remaining
+  private bossDone1 = false;
+  private bossDone2 = false;
+  private frenzyDone = false;
+  private goldRush = false;
+  private iceT = 0;
   private bombFlash = 0;
   private centerMsg = { text: '', color: '#fff', t: 0 };
   private t0 = performance.now();
   private lastT = performance.now();
-  private gameTime = 0;         // juiced seconds (physics clock)
+  private gameTime = 0;
   private pending: { at: number; fn: () => void }[] = [];
   private nextPatternAt = 0.8;
   private lastPattern = '';
   private lastTickSec = -1;
+  private lastRaceSend = 0;
   private raf = 0;
   private over = false;
   private demo = { L: 0, R: Math.PI };
   private splat: HTMLCanvasElement = document.createElement('canvas');
   private splatCtx = this.splat.getContext('2d')!;
 
-  constructor(private o: GameOpts) {}
+  constructor(private o: FruitOpts) {
+    this.rnd = o.seed ? mulberry32(strHash(o.seed)) : Math.random;
+  }
 
   start() {
     this.t0 = this.lastT = performance.now();
+    try {
+      this.music = new AudioEngine();
+      void this.music.play(BLADE_RUNNING, 0);
+    } catch { this.music = null; }
     const loop = () => { this.raf = requestAnimationFrame(loop); this.frame(); };
     loop();
   }
-  stop() { cancelAnimationFrame(this.raf); }
+
+  stop() {
+    cancelAnimationFrame(this.raf);
+    if (this.music) {
+      this.music.stop();
+      try { void this.music.ctx.close(); } catch { /* already closed */ }
+      this.music = null;
+    }
+  }
 
   private get W() { return window.innerWidth; }
   private get H() { return window.innerHeight; }
@@ -119,9 +158,15 @@ export class FruitGame implements Game {
     this.readHands(now, dt);
     this.director(left);
     this.physics(dt);
-    this.slicing();
+    this.slicing(now);
     this.timers(dt, rawDt, left);
-    this.draw(ctx, now, left);
+
+    if (this.o.race && now - this.lastRaceSend > 400) {
+      this.lastRaceSend = now;
+      this.o.race.send(this.score);
+    }
+
+    this.draw(ctx, now, rawDt, left);
 
     if (left <= 0 && !this.over) {
       this.over = true;
@@ -140,77 +185,108 @@ export class FruitGame implements Game {
       rig.update(tracker.latestLandmarks, tracker.latestWorld ?? null, now, 4 / 3);
       for (const h of ['L', 'R'] as const) {
         const s = rig.hand(h);
-        const b = this.blades[h];
+        const saber = this.sabers[h];
         if (s && s.vis > 0.35) {
-          b.visible = true;
-          b.rel = s.rel;
-          this.feed(b, s.px * this.W, s.py * this.H, now);
+          saber.visible = true;
+          saber.rel = s.rel;
+          this.moveSaber(h, s.px * this.W, s.py * this.H, s.vx, s.vy, now, dt);
         } else {
-          b.visible = false;
-          b.rel = 0;
+          saber.visible = false;
+          saber.rel = 0;
         }
       }
     } else {
-      // demo: each blade chases the nearest live fruit on its half
       for (const h of ['L', 'R'] as const) {
-        const b = this.blades[h];
-        b.visible = true;
-        b.rel = TUNING.fruit.sliceRel + 2;
+        const saber = this.sabers[h];
+        saber.visible = true;
+        saber.rel = TUNING.fruit.sliceRel + 2;
         this.demo[h] += dt * 5.2;
         const targets = this.fruits.filter((f) => !f.sliced && !f.dead && f.special !== 'bomb' && f.y < this.H * 0.95);
         const mine = targets.filter((f) => (h === 'L' ? f.x < this.W * 0.55 : f.x >= this.W * 0.45));
         const tgt = mine.sort((a, c) => a.y - c.y)[0];
         const bx = tgt ? tgt.x + Math.cos(this.demo[h]) * this.H * 0.09 : this.W * (h === 'L' ? 0.3 : 0.7) + Math.cos(this.demo[h]) * this.W * 0.12;
         const by = tgt ? tgt.y + Math.sin(this.demo[h]) * this.H * 0.09 : this.H * 0.5 + Math.sin(this.demo[h] * 1.6) * this.H * 0.2;
-        this.feed(b, bx, by, now);
+        const prev = saber.hand ?? { x: bx, y: by };
+        this.moveSaber(h, bx, by, (bx - prev.x) / Math.max(dt, 1e-3) / this.H, (by - prev.y) / Math.max(dt, 1e-3) / this.H, now, dt);
       }
     }
   }
 
-  private feed(b: Blade, x: number, y: number, t: number) {
-    b.pts.push({ x, y, t });
-    while (b.pts.length && t - b.pts[0].t > TUNING.fruit.trailMs) b.pts.shift();
+  /** place the saber at the hand, orient along motion (rest pose when idle) */
+  private moveSaber(h: 'L' | 'R', x: number, y: number, vx: number, vy: number, now: number, dt: number) {
+    const saber = this.sabers[h];
+    saber.hand = { x, y };
+    const speed = Math.hypot(vx, vy);
+    const rest = -Math.PI / 2 + (h === 'L' ? -0.35 : 0.35) + Math.sin(now / 900 + (h === 'L' ? 0 : 2)) * 0.06;
+    const want = speed > 0.8 ? Math.atan2(vy, vx) : rest;
+    // shortest-arc smoothing, quicker when swinging
+    let d = want - saber.angle;
+    while (d > Math.PI) d -= Math.PI * 2;
+    while (d < -Math.PI) d += Math.PI * 2;
+    saber.angle += d * Math.min(1, dt * (speed > 0.8 ? 16 : 6));
+    const len = this.H * 0.17;
+    saber.tip = { x: x + Math.cos(saber.angle) * len, y: y + Math.sin(saber.angle) * len };
+    saber.tipPts.push({ ...saber.tip, t: now });
+    while (saber.tipPts.length && now - saber.tipPts[0].t > TRAIL_MS) saber.tipPts.shift();
+    // comet embers stream off a fast blade
+    if (saber.rel > TUNING.fruit.sliceRel * 0.8) {
+      this.juice.burst({
+        x: saber.tip.x, y: saber.tip.y, count: 1,
+        color: [h === 'L' ? '#6ee7ff' : '#ffd23e', '#fff7ee'],
+        speed: this.H * 0.05, gravity: this.H * 0.3, size: this.H * 0.0045, life: 0.5,
+      });
+    }
   }
 
   // ---- wave director --------------------------------------------------------
 
   private director(left: number) {
-    // run due spawns
     for (let i = this.pending.length - 1; i >= 0; i--) {
       if (this.gameTime >= this.pending[i].at) {
         this.pending[i].fn();
         this.pending.splice(i, 1);
       }
     }
-    if (left < 1.6 || this.gameTime < this.nextPatternAt) return;
-
+    if (left < 1.4 || this.gameTime < this.nextPatternAt) return;
     const elapsed = ROUND_SECS - left;
     const feverOn = this.feverLeft > 0;
-    // authored beats: two frenzies mid-round, everything else weighted
-    if (!this.frenzyDone1 && elapsed > 24) { this.frenzyDone1 = true; this.patternFrenzy(); }
-    else if (!this.frenzyDone2 && elapsed > 47) { this.frenzyDone2 = true; this.patternFrenzy(); }
+
+    if (!this.goldRush && left <= 8.5) {
+      this.goldRush = true;
+      this.say('GOLD RUSH', '#ffd23e');
+      sfx.fanfare(true);
+    }
+
+    if (this.goldRush) {
+      // finale: rapid fruit, no bombs, everything double
+      if (this.rnd() < 0.3) this.patternFan(3);
+      else this.launch(0.15 + this.rnd() * 0.7);
+      this.nextPatternAt = this.gameTime + 0.42;
+      return;
+    }
+
+    if (!this.bossDone1 && elapsed > 28) { this.bossDone1 = true; this.launchBoss(); }
+    else if (!this.bossDone2 && elapsed > 50) { this.bossDone2 = true; this.launchBoss(); }
+    else if (!this.frenzyDone && elapsed > 22) { this.frenzyDone = true; this.patternFrenzy(); }
     else this.pickPattern(elapsed, feverOn);
 
     const base = Math.max(0.9, 1.6 - elapsed * 0.012);
     this.nextPatternAt = this.gameTime + base * (feverOn ? 0.55 : 1);
   }
 
-  private frenzyDone1 = false;
-  private frenzyDone2 = false;
-
   private pickPattern(elapsed: number, feverOn: boolean) {
     const table: [string, number, () => void][] = [
-      ['single', 3, () => this.launch(0.2 + Math.random() * 0.6)],
+      ['single', 3, () => this.launch(0.2 + this.rnd() * 0.6)],
       ['double', elapsed > 6 ? 3 : 0, () => this.patternCross()],
-      ['fan', elapsed > 10 ? 2.5 : 0, () => this.patternFan(3 + Math.floor(Math.random() * 2))],
+      ['fan', elapsed > 10 ? 2.5 : 0, () => this.patternFan(3 + Math.floor(this.rnd() * 2))],
       ['ladder', elapsed > 14 ? 2 : 0, () => this.patternLadder()],
       ['bomb', elapsed > 10 && !feverOn ? 1.6 : 0, () => this.patternBombTrap()],
-      ['gold', this.goldSpawned < 2 && elapsed > 12 ? 0.5 : 0, () => { this.goldSpawned++; this.launch(0.3 + Math.random() * 0.4, 'gold'); }],
-      ['ice', this.iceSpawned < 2 && elapsed > 16 ? 0.5 : 0, () => { this.iceSpawned++; this.launch(0.3 + Math.random() * 0.4, 'ice'); }],
+      ['gold', this.goldSpawned < 2 && elapsed > 12 ? 0.5 : 0, () => { this.goldSpawned++; this.launch(0.3 + this.rnd() * 0.4, 'gold'); }],
+      ['ice', this.iceSpawned < 2 && elapsed > 16 ? 0.5 : 0, () => { this.iceSpawned++; this.launch(0.3 + this.rnd() * 0.4, 'ice'); }],
     ];
     const live = table.filter(([name, w]) => w > 0 && name !== this.lastPattern);
-    let total = live.reduce((a, [, w]) => a + w, 0);
-    let roll = Math.random() * total;
+    const total = live.reduce((a, [, w]) => a + w, 0);
+    let roll = this.rnd() * total;
     for (const [name, w, fn] of live) {
       roll -= w;
       if (roll <= 0) { this.lastPattern = name; fn(); return; }
@@ -218,7 +294,7 @@ export class FruitGame implements Game {
   }
 
   private patternCross() {
-    this.launch(0.16, 'none', 0.55);      // left fruit arcs right
+    this.launch(0.16, 'none', 0.55);
     this.pend(0.12, () => this.launch(0.84, 'none', -0.55));
   }
 
@@ -234,16 +310,18 @@ export class FruitGame implements Game {
   }
 
   private patternBombTrap() {
-    const at = 0.25 + Math.random() * 0.5;
+    const at = 0.25 + this.rnd() * 0.5;
+    const side = this.rnd() < 0.5 ? -0.11 : 0.11;
     this.launch(at);
-    this.pend(0.06, () => this.launch(at + (Math.random() < 0.5 ? -0.11 : 0.11), 'bomb'));
+    this.pend(0.06, () => this.launch(at + side, 'bomb'));
   }
 
   private patternFrenzy() {
     this.say('FRENZY', '#ffd23e');
     sfx.whoosh();
     for (let i = 0; i < 12; i++) {
-      this.pend(i * 0.15, () => this.launch(0.15 + Math.random() * 0.7));
+      const fr = 0.15 + this.rnd() * 0.7;
+      this.pend(i * 0.15, () => this.launch(fr));
     }
     this.lastPattern = 'frenzy';
   }
@@ -254,19 +332,34 @@ export class FruitGame implements Game {
 
   private launch(xFrac: number, special: Special = 'none', vxBias = 0) {
     const h = this.H, w = this.W;
-    const kind = special === 'bomb' ? BOMB : special === 'gold' ? GOLD : special === 'ice' ? ICE : KINDS[Math.floor(Math.random() * KINDS.length)];
-    const g = h * 1.1;                          // matches physics gravity
-    const peak = h * (0.55 + Math.random() * 0.25);
+    const kind = special === 'bomb' ? BOMB : special === 'gold' ? GOLD : special === 'ice' ? ICE : KINDS[Math.floor(this.rnd() * KINDS.length)];
+    const g = h * 1.1;
+    const peak = h * (0.55 + this.rnd() * 0.25);
     const x = w * Math.max(0.08, Math.min(0.92, xFrac));
     this.fruits.push({
       kind, special,
       x, y: h + kind.r * h,
-      vx: (w * 0.5 - x) * 0.35 + vxBias * w * 0.35 + (Math.random() - 0.5) * w * 0.08,
+      vx: (w * 0.5 - x) * 0.35 + vxBias * w * 0.35 + (this.rnd() - 0.5) * w * 0.08,
       vy: -Math.sqrt(2 * g * peak),
-      rot: Math.random() * Math.PI * 2,
-      vr: (Math.random() - 0.5) * 4.5,
+      rot: this.rnd() * Math.PI * 2,
+      vr: (this.rnd() - 0.5) * 4.5,
       sliced: false, sliceAngle: 0, sliceAge: 0, halfSep: 0, dead: false,
-      wobble: Math.random() * Math.PI * 2,
+      hp: 1, lastHit: 0,
+    });
+  }
+
+  private launchBoss() {
+    const h = this.H, w = this.W;
+    this.say('BOSS', '#ff6ac1');
+    sfx.bell();
+    this.fruits.push({
+      kind: BOSS, special: 'boss',
+      x: w * (0.35 + this.rnd() * 0.3), y: h + BOSS.r * h,
+      vx: (this.rnd() - 0.5) * w * 0.04,
+      vy: -h * 0.62,                     // low gravity below makes it hang
+      rot: 0, vr: 0.4,
+      sliced: false, sliceAngle: 0, sliceAge: 0, halfSep: 0, dead: false,
+      hp: BOSS_HP, lastHit: 0,
     });
   }
 
@@ -275,7 +368,7 @@ export class FruitGame implements Game {
   private physics(dt: number) {
     const g = this.H * 1.1;
     for (const f of this.fruits) {
-      f.vy += g * dt;
+      f.vy += g * dt * (f.special === 'boss' && !f.sliced ? 0.16 : 1);
       f.x += f.vx * dt;
       f.y += f.vy * dt;
       f.rot += f.vr * dt;
@@ -284,32 +377,44 @@ export class FruitGame implements Game {
         f.halfSep += this.H * 0.35 * dt;
         if (f.sliceAge > 0.9) f.dead = true;
       }
-      if (f.y > this.H + this.H * 0.18) f.dead = true;
+      if (f.y > this.H + this.H * 0.2) f.dead = true;
     }
     this.fruits = this.fruits.filter((f) => !f.dead);
   }
 
   // ---- slicing --------------------------------------------------------------
 
-  private slicing() {
+  private slicing(now: number) {
     let slicedThisFrame = 0;
     let cx = 0, cy = 0;
     for (const key of ['L', 'R'] as const) {
-      const b = this.blades[key];
-      if (b.pts.length < 2 || b.rel < TUNING.fruit.sliceRel) continue;
+      const saber = this.sabers[key];
+      if (!saber.visible || !saber.hand || saber.rel < TUNING.fruit.sliceRel) continue;
       for (const f of this.fruits) {
         if (f.sliced || f.dead) continue;
         const r = f.kind.r * this.H;
-        // full swept path, newest segments first
-        for (let i = b.pts.length - 1; i >= 1; i--) {
-          const p1 = b.pts[i - 1], p2 = b.pts[i];
-          if (!segCircle(p1.x, p1.y, p2.x, p2.y, f.x, f.y, r)) continue;
-          this.slice(f, Math.atan2(p2.y - p1.y, p2.x - p1.x), p1, p2);
-          if (f.special === 'none' || f.special === 'gold') {
-            slicedThisFrame++;
-            cx += f.x; cy += f.y;
+        let hit = false;
+        let angle = saber.angle;
+        // the blade itself, hilt to tip
+        if (segCircle(saber.hand.x, saber.hand.y, saber.tip.x, saber.tip.y, f.x, f.y, r)) hit = true;
+        // plus the tip's swept path since the last frames
+        if (!hit) {
+          for (let i = saber.tipPts.length - 1; i >= 1; i--) {
+            const p1 = saber.tipPts[i - 1], p2 = saber.tipPts[i];
+            if (now - p2.t > 90) break;
+            if (segCircle(p1.x, p1.y, p2.x, p2.y, f.x, f.y, r)) {
+              hit = true;
+              angle = Math.atan2(p2.y - p1.y, p2.x - p1.x);
+              break;
+            }
           }
-          break;
+        }
+        if (!hit) continue;
+        if (f.special === 'boss') { this.hitBoss(f, now, angle); continue; }
+        this.slice(f, angle);
+        if (f.special === 'none' || f.special === 'gold') {
+          slicedThisFrame++;
+          cx += f.x; cy += f.y;
         }
       }
     }
@@ -327,17 +432,40 @@ export class FruitGame implements Game {
 
   private mult(): number {
     const m = this.combo >= 12 ? 4 : this.combo >= 8 ? 3 : this.combo >= 4 ? 2 : 1;
-    return m * (this.feverLeft > 0 ? 2 : 1);
+    return m * (this.feverLeft > 0 ? 2 : 1) * (this.goldRush ? 2 : 1);
   }
 
-  private slice(f: Fruit, angle: number, p1: { x: number; y: number }, p2: { x: number; y: number }) {
-    if (f.special === 'bomb') return this.hitBomb(f);
-    f.sliced = true;
-    f.sliceAngle = angle;
-    f.vy -= this.H * 0.12;
+  private hitBoss(f: Fruit, now: number, angle: number) {
+    if (now - f.lastHit < 140) return;
+    f.lastHit = now;
+    f.hp--;
+    f.vr = -f.vr + (this.rnd() - 0.5);
+    this.juice.burst({ x: f.x, y: f.y, count: 8, color: ['#ffd23e', '#ff5d73'], speed: this.H * 0.3, gravity: this.H * 0.5, size: this.H * 0.006, life: 0.45 });
+    this.lastSliceAt = this.gameTime;      // boss mashing keeps the chain alive
+    if (f.hp > 0) {
+      this.juice.pop(f.x, f.y - f.kind.r * this.H * 1.2, String(f.hp), '#fff7ee');
+      sfx.hit(0.45 + (BOSS_HP - f.hp) * 0.06);
+      return;
+    }
+    // smashed
+    const pts = BOSS.points * this.mult();
+    this.score += pts;
     this.fruitCount++;
+    this.fever = Math.min(1, this.fever + 0.35);
+    this.slicedVisuals(f, angle);
+    this.juice.hitStop(85);
+    this.juice.shake(9, 260);
+    this.juice.ring(f.x, f.y, '#ff6ac1', this.H * 0.3, 0.5);
+    this.juice.burst({ x: f.x, y: f.y, count: 34, color: ['#ffd23e', '#ff5d73', '#ff6ac1'], speed: this.H * 0.55, gravity: this.H * 0.6, size: this.H * 0.007, life: 0.7 });
+    this.juice.pop(f.x, f.y - this.H * 0.08, `+${pts}`, '#ffd23e', 1.3);
+    this.say('SMASHED', '#ff6ac1');
+    sfx.fanfare(false);
+    this.music?.goldSting();
+    this.checkFever();
+  }
 
-    // combo chain
+  private slice(f: Fruit, angle: number) {
+    if (f.special === 'bomb') return this.hitBomb(f);
     this.combo = this.gameTime - this.lastSliceAt < TUNING.fruit.chainMs / 1000 ? this.combo + 1 : 1;
     this.lastSliceAt = this.gameTime;
     this.bestCombo = Math.max(this.bestCombo, this.combo);
@@ -346,23 +474,12 @@ export class FruitGame implements Game {
       sfx.pop(this.combo / 4 + 4);
       this.comboFlashT = 0.5;
     }
-
     const mult = this.mult();
     const pts = f.kind.points * mult;
     this.score += pts;
-
-    const r = f.kind.r * this.H;
-    this.flashes.push({
-      x1: f.x - Math.cos(angle) * r * 1.6, y1: f.y - Math.sin(angle) * r * 1.6,
-      x2: f.x + Math.cos(angle) * r * 1.6, y2: f.y + Math.sin(angle) * r * 1.6,
-      life: 0.15,
-    });
-    this.stampSplat(f, angle);
-    this.juice.burst({
-      x: f.x, y: f.y, count: 12, color: [f.kind.body, f.kind.rind],
-      speed: this.H * 0.35, gravity: this.H * 0.6, size: this.H * 0.007, life: 0.55,
-    });
-    this.juice.pop(f.x, f.y - r * 1.3, `+${pts}`, mult > 1 ? '#ffd23e' : '#ffffff', mult > 2 ? 1.15 : 1);
+    this.fruitCount++;
+    this.slicedVisuals(f, angle);
+    this.juice.pop(f.x, f.y - f.kind.r * this.H * 1.3, `+${pts}`, mult > 1 ? '#ffd23e' : '#ffffff', mult > 2 ? 1.15 : 1);
     sfx.slice(this.combo);
 
     if (f.special === 'gold') {
@@ -381,13 +498,33 @@ export class FruitGame implements Game {
     } else {
       this.fever = Math.min(1, this.fever + 0.055);
     }
-    void p1; void p2;
+    this.checkFever();
+  }
 
+  private checkFever() {
     if (this.fever >= 1 && this.feverLeft <= 0) {
       this.feverLeft = FEVER_SECS;
       this.say('FEVER', '#ff6ac1');
       sfx.fanfare(true);
+      this.music?.goldSting();
     }
+  }
+
+  private slicedVisuals(f: Fruit, angle: number) {
+    f.sliced = true;
+    f.sliceAngle = angle;
+    f.vy -= this.H * 0.12;
+    const r = f.kind.r * this.H;
+    this.flashes.push({
+      x1: f.x - Math.cos(angle) * r * 1.6, y1: f.y - Math.sin(angle) * r * 1.6,
+      x2: f.x + Math.cos(angle) * r * 1.6, y2: f.y + Math.sin(angle) * r * 1.6,
+      life: 0.15,
+    });
+    this.stampSplat(f, angle);
+    this.juice.burst({
+      x: f.x, y: f.y, count: 12, color: [f.kind.body, f.kind.rind],
+      speed: this.H * 0.35, gravity: this.H * 0.6, size: this.H * 0.007, life: 0.55,
+    });
   }
 
   private hitBomb(f: Fruit) {
@@ -441,10 +578,8 @@ export class FruitGame implements Game {
       if (this.flashes[i].life <= 0) this.flashes.splice(i, 1);
     }
     this.juice.update(dt);
-    // urgency ticks in the last ten seconds
     const sec = Math.ceil(left);
     if (left < 10 && sec !== this.lastTickSec) { this.lastTickSec = sec; sfx.tick(); }
-    // splatter slowly fades
     if (this.splat.width) {
       this.splatCtx.save();
       this.splatCtx.globalCompositeOperation = 'destination-out';
@@ -460,25 +595,19 @@ export class FruitGame implements Game {
 
   // ---- rendering ------------------------------------------------------------
 
-  private draw(ctx: Ctx, now: number, left: number) {
+  private draw(ctx: Ctx, now: number, rawDt: number, left: number) {
     const w = this.W, h = this.H;
     if (this.splat.width !== w || this.splat.height !== h) {
       this.splat.width = w; this.splat.height = h;
     }
 
+    const beat = this.music && this.music.beat() > 0 ? this.music.beat() : this.gameTime * 2.2;
+    const feverAmt = this.feverLeft > 0 ? Math.min(1, this.feverLeft) : this.fever * 0.25;
+
     ctx.save();
     this.juice.applyShake(ctx);
-
-    drawSky(ctx, w, h);
-    // fever warms and brightens the whole sky
-    if (this.feverLeft > 0) {
-      const a = Math.min(1, this.feverLeft) * 0.16;
-      const g = ctx.createLinearGradient(0, 0, 0, h);
-      g.addColorStop(0, `rgba(255,106,193,${a})`);
-      g.addColorStop(1, `rgba(255,170,64,${a * 1.4})`);
-      ctx.fillStyle = g;
-      ctx.fillRect(0, 0, w, h);
-    }
+    this.arena.update(rawDt, w, h);
+    this.arena.draw(ctx, w, h, beat, feverAmt);
     ctx.drawImage(this.splat, 0, 0);
 
     for (const f of this.fruits) this.drawFruit(ctx, f, now);
@@ -491,10 +620,9 @@ export class FruitGame implements Game {
       ctx.globalAlpha = 1;
     }
     this.juice.draw(ctx, h);
-    this.drawBlades(ctx, now);
+    this.drawSabers(ctx, now);
     ctx.restore();
 
-    // overlays that must not shake
     if (this.iceT > 0) {
       ctx.fillStyle = `rgba(110,231,255,${Math.min(0.35, this.iceT) * 0.35})`;
       ctx.fillRect(0, 0, w, h);
@@ -519,6 +647,12 @@ export class FruitGame implements Game {
 
   private drawFruit(ctx: Ctx, f: Fruit, now: number) {
     const r = f.kind.r * this.H;
+    if (f.special === 'gold' || (this.goldRush && !f.sliced && f.special === 'none')) {
+      drawGlow(ctx, f.x, f.y, r * 2.2, '#ffd23e', 0.45 + Math.sin(now / 130) * 0.15);
+    }
+    if (f.special === 'ice' && !f.sliced) drawGlow(ctx, f.x, f.y, r * 2, '#6ee7ff', 0.4);
+    if (f.special === 'boss' && !f.sliced) drawGlow(ctx, f.x, f.y, r * 1.9, '#ff6ac1', 0.35 + Math.sin(now / 100) * 0.1);
+
     ctx.save();
     ctx.translate(f.x, f.y);
     if (f.special === 'bomb') {
@@ -534,7 +668,6 @@ export class FruitGame implements Game {
       ctx.fillStyle = '#ffd23e';
       ctx.beginPath(); ctx.arc(r * 0.7, -r * 1.2, r * 0.2 * tw, 0, Math.PI * 2); ctx.fill();
       ctx.restore();
-      // fuse tip glow at the rotated spark position
       const th = f.rot * 0.4;
       const gx = f.x + r * 0.7 * Math.cos(th) + r * 1.2 * Math.sin(th);
       const gy = f.y + r * 0.7 * Math.sin(th) - r * 1.2 * Math.cos(th);
@@ -542,20 +675,8 @@ export class FruitGame implements Game {
       return;
     }
     if (!f.sliced) {
-      if (f.special === 'gold') {
-        ctx.restore();
-        drawGlow(ctx, f.x, f.y, r * 2.4, '#ffd23e', 0.5 + Math.sin(now / 130) * 0.2);
-        ctx.save();
-        ctx.translate(f.x, f.y);
-      }
-      if (f.special === 'ice') {
-        ctx.restore();
-        drawGlow(ctx, f.x, f.y, r * 2, '#6ee7ff', 0.4);
-        ctx.save();
-        ctx.translate(f.x, f.y);
-      }
       ctx.rotate(f.rot);
-      this.drawWhole(ctx, f, r);
+      this.drawWhole(ctx, f, r, now);
     } else {
       for (const half of [-1, 1] as const) {
         ctx.save();
@@ -588,16 +709,47 @@ export class FruitGame implements Game {
     ctx.restore();
   }
 
-  private drawWhole(ctx: Ctx, f: Fruit, r: number) {
+  private drawWhole(ctx: Ctx, f: Fruit, r: number, now: number) {
     const g = ctx.createRadialGradient(-r * 0.35, -r * 0.35, r * 0.2, 0, 0, r * 1.05);
     g.addColorStop(0, lighten(f.kind.rind, 1.3));
     g.addColorStop(1, f.kind.rind);
     ctx.fillStyle = g;
     ctx.beginPath(); ctx.arc(0, 0, r, 0, Math.PI * 2); ctx.fill();
-    // rim light, warm side
     ctx.strokeStyle = 'rgba(255,247,238,0.5)';
     ctx.lineWidth = r * 0.09;
     ctx.beginPath(); ctx.arc(0, 0, r * 0.86, -2.4, -1.2); ctx.stroke();
+    if (f.special === 'boss') {
+      // pomegranate: crown + cracks that spread as it takes hits
+      ctx.fillStyle = '#8a2444';
+      ctx.beginPath();
+      ctx.moveTo(-r * 0.28, -r * 0.86);
+      ctx.lineTo(-r * 0.18, -r * 1.16);
+      ctx.lineTo(0, -r * 0.95);
+      ctx.lineTo(r * 0.18, -r * 1.16);
+      ctx.lineTo(r * 0.28, -r * 0.86);
+      ctx.closePath();
+      ctx.fill();
+      ctx.strokeStyle = '#ffd23e';
+      ctx.lineWidth = r * 0.05;
+      const cracks = BOSS_HP - f.hp;
+      for (let i = 0; i < cracks; i++) {
+        const a = (i / BOSS_HP) * Math.PI * 2 + 0.7;
+        ctx.beginPath();
+        ctx.moveTo(Math.cos(a) * r * 0.25, Math.sin(a) * r * 0.25);
+        ctx.lineTo(Math.cos(a + 0.3) * r * 0.6, Math.sin(a + 0.3) * r * 0.6);
+        ctx.lineTo(Math.cos(a + 0.15) * r * 0.9, Math.sin(a + 0.15) * r * 0.9);
+        ctx.stroke();
+      }
+      // hp pips
+      ctx.fillStyle = 'rgba(255,247,238,0.9)';
+      for (let i = 0; i < f.hp; i++) {
+        const a = -Math.PI / 2 + (i - (f.hp - 1) / 2) * 0.32;
+        ctx.beginPath();
+        ctx.arc(Math.cos(a) * r * 1.32, Math.sin(a) * r * 1.32, r * 0.05 * (1 + Math.sin(now / 150) * 0.15), 0, Math.PI * 2);
+        ctx.fill();
+      }
+      return;
+    }
     if (f.special === 'ice') {
       ctx.strokeStyle = 'rgba(255,255,255,0.7)';
       ctx.lineWidth = r * 0.06;
@@ -616,7 +768,6 @@ export class FruitGame implements Game {
       }
       return;
     }
-    // leaf + stem
     ctx.fillStyle = '#2f9e39';
     ctx.beginPath();
     ctx.ellipse(r * 0.25, -r * 0.95, r * 0.3, r * 0.14, -0.6, 0, Math.PI * 2);
@@ -654,53 +805,101 @@ export class FruitGame implements Game {
     }
   }
 
-  private drawBlades(ctx: Ctx, now: number) {
+  private drawSabers(ctx: Ctx, now: number) {
     const h = this.H;
     for (const key of ['L', 'R'] as const) {
-      const b = this.blades[key];
+      const saber = this.sabers[key];
+      if (!saber.visible || !saber.hand) continue;
       const col = key === 'L' ? '#6ee7ff' : '#ffd23e';
-      if (!b.visible || b.pts.length === 0) continue;
-      const tip = b.pts[b.pts.length - 1];
-      // ribbon trail: three passes, wide soft -> narrow core
-      if (b.pts.length >= 2) {
+      const deep = key === 'L' ? '#2a8ab8' : '#d9861f';
+      const { x, y } = saber.hand;
+      const a = saber.angle;
+      const dx = Math.cos(a), dy = Math.sin(a);
+      const len = h * 0.17;
+      const hot = Math.min(1, saber.rel / (TUNING.fruit.sliceRel * 1.6));
+
+      // comet trail from the tip: additive, tapered. Each pass is drawn as
+      // three polyline chunks (old, mid, new) rather than per-segment strokes,
+      // so round caps never stack up into bright beads at the joints.
+      if (saber.tipPts.length >= 2) {
         ctx.save();
+        ctx.globalCompositeOperation = 'lighter';
         ctx.lineCap = 'round';
         ctx.lineJoin = 'round';
+        const pts = saber.tipPts;
         for (const [width, alpha, color] of [
-          [0.02, 0.28, col],
-          [0.011, 0.6, col],
-          [0.0045, 0.95, '#ffffff'],
+          [0.022, 0.14, col],
+          [0.011, 0.34, col],
+          [0.0045, 0.7, '#ffffff'],
         ] as const) {
-          for (let i = 1; i < b.pts.length; i++) {
-            const age = (now - b.pts[i].t) / TUNING.fruit.trailMs;
+          for (let c = 0; c < 3; c++) {
+            const i0 = Math.floor((c / 3) * (pts.length - 1));
+            const i1 = Math.floor(((c + 1) / 3) * (pts.length - 1));
+            if (i1 <= i0) continue;
+            const k = (c + 1) / 3;                       // newest chunk = 1
             ctx.strokeStyle = color;
-            ctx.globalAlpha = Math.max(0, (1 - age)) * alpha;
-            ctx.lineWidth = Math.max(1, (1 - age * 0.7) * h * width);
+            ctx.globalAlpha = alpha * (0.25 + 0.75 * k) * (0.35 + hot * 0.65);
+            ctx.lineWidth = Math.max(1, h * width * (0.4 + 0.6 * k));
             ctx.beginPath();
-            ctx.moveTo(b.pts[i - 1].x, b.pts[i - 1].y);
-            ctx.lineTo(b.pts[i].x, b.pts[i].y);
+            ctx.moveTo(pts[i0].x, pts[i0].y);
+            for (let i = i0 + 1; i <= i1; i++) ctx.lineTo(pts[i].x, pts[i].y);
             ctx.stroke();
           }
         }
         ctx.restore();
       }
-      // the hand itself is ALWAYS visible: glow orb + ring, brighter when fast
-      const hot = Math.min(1, b.rel / (TUNING.fruit.sliceRel * 1.6));
-      drawGlow(ctx, tip.x, tip.y, h * (0.03 + hot * 0.02), col, 0.55 + hot * 0.45);
-      ctx.fillStyle = '#ffffff';
-      ctx.beginPath(); ctx.arc(tip.x, tip.y, h * 0.007, 0, Math.PI * 2); ctx.fill();
-      ctx.strokeStyle = col;
-      ctx.globalAlpha = 0.8;
-      ctx.lineWidth = 2;
-      ctx.beginPath(); ctx.arc(tip.x, tip.y, h * (0.016 + hot * 0.006), 0, Math.PI * 2); ctx.stroke();
+
+      ctx.save();
+      ctx.lineCap = 'round';
+      // hilt behind the hand
+      ctx.strokeStyle = '#231b3d';
+      ctx.lineWidth = h * 0.013;
+      ctx.beginPath();
+      ctx.moveTo(x - dx * h * 0.035, y - dy * h * 0.035);
+      ctx.lineTo(x + dx * h * 0.012, y + dy * h * 0.012);
+      ctx.stroke();
+      // gold guard, perpendicular
+      ctx.strokeStyle = '#ffd23e';
+      ctx.lineWidth = h * 0.007;
+      ctx.beginPath();
+      ctx.moveTo(x + dx * h * 0.014 - dy * h * 0.016, y + dy * h * 0.014 + dx * h * 0.016);
+      ctx.lineTo(x + dx * h * 0.014 + dy * h * 0.016, y + dy * h * 0.014 - dx * h * 0.016);
+      ctx.stroke();
+      // pommel
+      ctx.fillStyle = '#ffd23e';
+      ctx.beginPath();
+      ctx.arc(x - dx * h * 0.038, y - dy * h * 0.038, h * 0.005, 0, Math.PI * 2);
+      ctx.fill();
+
+      // blade: aura, body, white core — tapered by drawing thirds
+      const bx = x + dx * h * 0.02, by = y + dy * h * 0.02;
+      for (const [frac, width, alpha, color] of [
+        [1, 0.03, 0.16 + hot * 0.1, col],
+        [1, 0.014, 0.55, col],
+        [0.55, 0.011, 0.7, deep],
+        [1, 0.005, 0.95, '#ffffff'],
+      ] as const) {
+        for (let s = 0; s < 3; s++) {
+          const f0 = (s / 3) * frac, f1 = ((s + 1) / 3) * frac;
+          ctx.strokeStyle = color;
+          ctx.globalAlpha = alpha;
+          ctx.lineWidth = Math.max(1, h * width * (1 - s * 0.24));
+          ctx.beginPath();
+          ctx.moveTo(bx + dx * (len - h * 0.02) * f0, by + dy * (len - h * 0.02) * f0);
+          ctx.lineTo(bx + dx * (len - h * 0.02) * f1, by + dy * (len - h * 0.02) * f1);
+          ctx.stroke();
+        }
+      }
       ctx.globalAlpha = 1;
+      ctx.restore();
+      drawGlow(ctx, saber.tip.x, saber.tip.y, h * (0.02 + hot * 0.015), col, 0.6 + hot * 0.4);
+      drawGlow(ctx, x + dx * len * 0.55, y + dy * len * 0.55, h * 0.028, col, 0.18 + hot * 0.15);
     }
   }
 
   private drawHud(ctx: Ctx, left: number) {
     const w = this.W, h = this.H;
     ctx.save();
-    // score
     ctx.textAlign = 'left';
     ctx.fillStyle = '#fff7ee';
     ctx.font = `400 ${h * 0.052}px 'Lilita One', sans-serif`;
@@ -708,7 +907,14 @@ export class FruitGame implements Game {
     ctx.font = `700 ${h * 0.017}px 'Baloo 2', sans-serif`;
     ctx.fillStyle = 'rgba(255,247,238,0.55)';
     ctx.fillText(`BEST ${Math.max(this.best, this.score)}`, w * 0.046, h * 0.135);
-    // timer arc
+    // live rival score in a race
+    const rival = this.o.race?.rival();
+    if (rival) {
+      const ahead = this.score >= rival.score;
+      ctx.fillStyle = ahead ? '#7cf95c' : '#ff5d5d';
+      ctx.font = `700 ${h * 0.019}px 'Baloo 2', sans-serif`;
+      ctx.fillText(`${rival.name} ${rival.score}`, w * 0.046, h * 0.168);
+    }
     const cx = w / 2, cy = h * 0.085, r = h * 0.038;
     const urgent = left < 10;
     ctx.strokeStyle = 'rgba(255,255,255,0.18)';
@@ -723,7 +929,6 @@ export class FruitGame implements Game {
     const pulse = urgent ? 1 + Math.max(0, Math.sin((left % 1) * Math.PI)) * 0.15 : 1;
     ctx.font = `400 ${h * 0.026 * pulse}px 'Lilita One', sans-serif`;
     ctx.fillText(String(Math.ceil(left)), cx, cy + h * 0.01);
-    // fever meter, thin bar under the timer
     const bw = w * 0.11;
     const lvl = this.feverLeft > 0 ? this.feverLeft / FEVER_SECS : this.fever;
     ctx.fillStyle = 'rgba(255,255,255,0.14)';
@@ -734,12 +939,15 @@ export class FruitGame implements Game {
       ctx.fillStyle = '#ff6ac1';
       ctx.font = `700 ${h * 0.015}px 'Baloo 2', sans-serif`;
       ctx.fillText('FEVER, DOUBLE POINTS', cx, cy + r + h * 0.045);
+    } else if (this.goldRush) {
+      ctx.fillStyle = '#ffd23e';
+      ctx.font = `700 ${h * 0.015}px 'Baloo 2', sans-serif`;
+      ctx.fillText('GOLD RUSH, DOUBLE POINTS', cx, cy + r + h * 0.045);
     }
-    // combo, top right
     if (this.combo >= 2) {
       ctx.textAlign = 'right';
       const grow = 1 + this.comboFlashT * 0.5;
-      ctx.fillStyle = this.mult() > 1 ? '#ffd23e' : '#fff7ee';
+      ctx.fillStyle = this.combo >= 4 ? '#ffd23e' : '#fff7ee';
       ctx.font = `400 ${h * 0.042 * grow}px 'Lilita One', sans-serif`;
       ctx.fillText(`x${this.combo}`, w * 0.96, h * 0.11);
       ctx.font = `700 ${h * 0.014}px 'Baloo 2', sans-serif`;
@@ -765,4 +973,23 @@ function lighten(hex: string, f: number): string {
   const v = parseInt(hex.slice(1), 16);
   const ch = (s: number) => Math.round(Math.min(255, ((v >> s) & 255) * f));
   return `rgb(${ch(16)},${ch(8)},${ch(0)})`;
+}
+
+function strHash(s: string): number {
+  let a = 2166136261 >>> 0;
+  for (let i = 0; i < s.length; i++) {
+    a ^= s.charCodeAt(i);
+    a = Math.imul(a, 16777619);
+  }
+  return a >>> 0;
+}
+
+function mulberry32(seed: number): () => number {
+  let a = seed >>> 0;
+  return () => {
+    a = (a + 0x6d2b79f5) >>> 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
 }
