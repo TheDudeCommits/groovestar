@@ -26,7 +26,11 @@ export class AudioEngine {
     this.comp.ratio.value = 6;
     this.master = this.ctx.createGain();
     this.master.gain.value = 0.85;
-    this.master.connect(this.comp).connect(this.ctx.destination);
+    // brightness filter: games sweep it with body movement; neutral for dance
+    this.bright = this.ctx.createBiquadFilter();
+    this.bright.type = 'lowpass';
+    this.bright.frequency.value = 18000;
+    this.master.connect(this.bright).connect(this.comp).connect(this.ctx.destination);
     // shared white-noise buffer for drums
     const len = this.ctx.sampleRate;
     this.noiseBuf = this.ctx.createBuffer(1, len, this.ctx.sampleRate);
@@ -34,9 +38,32 @@ export class AudioEngine {
     for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
   }
 
+  private bright: BiquadFilterNode;
+
   get spb() { return this.song ? 60 / this.song.bpm : 0.5; }
 
   setVolume(v: number) { this.master.gain.value = v; }
+
+  /** 0..1 movement-driven master brightness (lowpass 500Hz..16kHz) */
+  setBrightness(v: number) {
+    const f = 500 * Math.pow(32, Math.max(0, Math.min(1, v)));
+    this.bright.frequency.setTargetAtTime(f, this.ctx.currentTime, 0.08);
+  }
+
+  /** player-action note: a pentatonic pluck over the CURRENT chord, quantized
+   *  to the next 16th so every hit lands musically on the grid. `tone` climbs
+   *  with the combo, so streaks literally play a rising melody. */
+  pluck(tone: number, gain = 0.12) {
+    if (!this.song) return;
+    const stepNow = ((this.ctx.currentTime - this.startTime) / this.spb) * 4;
+    const step = Math.max(0, Math.ceil(stepNow));
+    const t = this.stepTime(step);
+    const bar = Math.floor(step / 16);
+    const chord = this.song.chords[bar % this.song.chords.length];
+    const penta = [0, 2, 4, 7, 9];
+    const deg = penta[tone % 5] + 12 * Math.min(2, Math.floor(tone / 5));
+    this.lead(t, mtof(this.song.root + chord[0] + 12 + deg), this.spb * 0.3, gain);
+  }
 
   /** current position in beats (fractional); negative during count-in */
   beat(): number {
