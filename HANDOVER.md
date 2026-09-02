@@ -4,76 +4,69 @@ Live: https://groovestar.vercel.app · Repo: TheDudeCommits/groovestar (main aut
 
 ## What this is
 
-A browser camera-motion game suite. Core: a Just Dance-style dance game (solid, well-liked), plus a six-game "movement suite" (Fruit Slice, Beat Blade, Rush, Bowling, Tennis, Boxing) added in the last session which the owner has judged **not good on a real camera — needs fundamental rework, see "Why the games failed" below. Start there.**
+A browser camera-motion game suite. Home screen is now a CATALOG of seven games (Dance is one tile among them, no longer the main game). Two games are rebuilt to the owner's bar and actively iterated: **Fruit Slice** (energy-saber fruit cutting, owner-approved trajectory) and **Beat Blade** (Beat Saber-benchmark, just rebuilt frame-matched to reference footage, awaiting owner verdict). Four games remain UNREBUILT trash from an old session (Rush, Bowling, Tennis, Boxing) — they compile and run on the new gesture engine but need ground-up rebuilds like the first two. The dance game is untouched and owner-loved: protect it.
 
 ## Stack
 
-- Vite + vanilla TypeScript + Canvas 2D. No frameworks, no three.js (3D characters were tried and ROLLED BACK by owner request — do not reintroduce).
-- MediaPipe Tasks Vision PoseLandmarker (lite, GPU, VIDEO mode) from CDN. `src/pose/tracker.ts` exposes `latestLandmarks` (normalized) and `latestWorld` (meters).
-- PeerJS multiplayer (host-relay star for data, mesh for webcam video) + TURN relay via Metered (env: `METERED_DOMAIN`, `METERED_API_KEY` on Vercel; `/api/ice` hands out creds).
-- Serverless API in `/api` (origin-guarded + rate-limited, CDN-cached GETs): `choreo` + `songmeta` (Claude claude-opus-5, key in Vercel env only), `search`, `lyrics` (LRCLIB), `vibe` (thumbnail palettes), `ice`.
+- Vite + vanilla TypeScript + Canvas 2D. No frameworks, no three.js (owner rolled 3D back once; the Beat Blade rebuild pushed Canvas 2D to its limit — owner MAY be open to relaxing this for the "last 10%", ask before doing it).
+- MediaPipe Tasks Vision PoseLandmarker (lite, GPU) from CDN. `src/pose/tracker.ts`.
+- PeerJS multiplayer (host-relay star + webcam mesh) + TURN via Metered. `/api/ice`.
+- Serverless `/api`: choreo + songmeta (Claude), search, lyrics, vibe (thumbnail palettes), ice.
+- `npm run dev` / `npm run build` (tsc + vite). macOS: no `timeout`, `sed -i ''`. Playwright-core with `channel: 'chrome'` for testing; smoke scripts in `tools/smoke_*.mjs` (run from project dir; `PORT=5173 node tools/smoke_fruit.mjs`).
 
-## Commands
+## THE FOUNDATION (Sprint 0, all games build on this)
 
-- `cd /Users/amir/Claude/groovestar && npm run dev` (localhost:5173), `npm run build` (tsc + vite).
-- Testing: playwright-core with `channel: 'chrome'`, fake camera flag `--use-file-for-fake-video-capture=/tmp/fakecam.y4m` (a JD gameplay clip; recreate with yt-dlp + `ffmpeg -i clip.mp4 -pix_fmt yuv420p -s 640x480 /tmp/fakecam.y4m`). Run test scripts FROM the project dir (node_modules resolution). macOS: no `timeout` cmd; `sed -i ''`.
-- CAUTION: editing files while a dev-server playwright run is active hot-reloads the page and corrupts the test.
+- `src/pose/rig.ts` — **HandRig**: One-Euro filter + 70ms prediction per joint, velocities in height-units/s, speeds in SHOULDER-WIDTHS/s (distance-independent). **CRITICAL, hard-won**: in mirror view viewer-L = subject LEFT landmarks (15/13/11/23). This was crossed for a whole session and made hands feel swapped; do not "fix" it back.
+- `src/pose/gestures.ts` — rebuilt detectors (peak-detected swings, world-landmarks-only punches in m/s with 2D-foreshortening fallback for the phone cam which sends NO worldLandmarks, body-relative lane/jump/duck with latching). Rush/Bowl/Tennis/Box still consume these; their rebuilds should go continuous like fruit/blade.
+- `src/games/tuning.ts` — every threshold in one live table. Console: `gsTune()`, `gsTune('fruit.sliceRel', 2.5)`, `gsTuneReset()`. Persists in localStorage.
+- `src/games/debug.ts` — backquote toggles the gesture debug overlay in any arcade game (signal bars vs thresholds, event flashes, raw-vs-predicted wrists). THE tuning instrument — a real-camera tuning session with the owner has STILL never happened and every threshold is an educated guess.
+- `src/games/juice.ts` — hit-stop, slow-mo, shake, pooled particles (spark/dust/shard/ring), pops, squash, glow sprites (never use shadowBlur in games), adaptive quality `q` (sheds particle counts when frame dt EMA > 18.5ms).
+- `src/games/sfx.ts` — SAMPLE-FIRST sound engine: 34 recorded one-shots in `public/sfx/*.mp3` (ripped Fruit Ninja pack the owner uploaded — fine for personal use, NOT license-clean commercially), variant rotation + pitch jitter, synth fallback until decoded, master 0.35. Also the persistent saber hum (saberHum/saberHumStop).
+- `src/games/saber.ts` — **Sabers module** (both blade games use it): lightsaber render (white-hot core, color sheath, additive bloom, metallic hilt, emitter flare), swept light-plane trails, tip streaks, embers, throttled whooshes, speed-driven hum. Style colors from progression.
+- `src/games/flow.ts` — pre-game body calibration (framing guidance, stores shoulder/torso scale) + 3-2-1-GO countdown + results count-up. Wired centrally in `arcadeCamera`/`endArcade` in main.ts.
+- `src/games/progress.ts` — lifetime fruit stats + medal counts + SABER_STYLES (Classic/Ember/Starlight/Bloom unlocked at 0/2/5/9 medals). Demo (no-camera) runs never write stats/best/medals.
+- `src/games/arena.ts` — fruit's beat-reactive dusk backdrop (cached gradients). `src/games/music.ts` — BLADE_RUNNING, the composed 132 BPM fruit track.
+- `src/audio/engine.ts` gained: `energy` (0..1 live layer override — null = dance behavior untouched), `setBrightness()` (movement-driven master lowpass), `pluck(tone)` (pentatonic hit notes quantized to next 16th — slices literally play melodies), `setVolume()`.
 
-## The dance game (owner is happy with this — protect it)
+## Menu / navigation
 
-- `src/main.ts` (~2000 lines): menu, all flows, play loop, results. States: menu/ready/play/results.
-- Modes: Classics catalog (44 extracted real JD routines in `public/routines/*.json`, index.json curated titles), any-YouTube-song (AI choreo via /api/choreo, 45s client wait, CDN-cached globally), multiplayer dance-off (rooms, 4-digit codes, host broadcasts routine), phone-as-camera, fitness mode (25-kcal milestone flashes, total on results only).
-- Body renderer `src/body.ts` (BodyArt): constructed anatomy — curved tapered limbs, torso from measured shoulder/hip scan (`shoulderScale`/`hipScale` in BodyShape), clothing as geometry (hoodie/jacket/tee/skirt via `Look`), joint cover caps (shoulders/hips — fixed visible seams), face with tracking pupils/blinks, spring hair. Soft gradients — owner REJECTED hard cel shading + interior line art (rolled back). `drawCharacter` in coach.ts renders choreography-driven characters (crew, mini guide, menu, victory) via pooled BodyArt with `lite: true`.
-- Judgment rim = the white sticker outline tinted by judgment color (single element; gold/green/blue/red). Pictograms are the ORIGINAL thin stick figures — owner rejected my chunky-silhouette redesign as more confusing. Open question for pictograms: ask owner whether the confusion is which-limb, which-direction, or when-to-hit before redesigning again.
-- Characters: `src/characters.ts` CAST (8 presets) + auto look from calibration scan. 3D skin removed.
-- Tracking feel: One-Euro filter + 70ms velocity extrapolation + full-frame-rate detection when <9ms/detect (in avatar.update + tracker). Owner noticed and wants this snappiness. LESSON: commit feel changes separately from visual changes (a visual rollback once took the tracking with it).
-- Scoring: raw points normalized against a simulated flawless run (combo multiplier ×2/×3/×4 at 4/8/12; OK holds combo; X breaks). Flawless = exactly 13333. Strictness was raised twice at owner request (similarity zero at 70°, PERFECT ≥0.85, timing weight 30%).
+`showMenu()` = home catalog. `showDanceHome()` = old dance menu (classics/any-song/dance-off + calibrate/character footer). `showGameHome(def)` generic per-game home; `showFruitHome()` full version (solo/race buttons, saber style picker, stats, medal targets). endArcade "Menu" returns to the game's home. Home footer: name, fitness toggle, phone camera.
 
-## UI rules (owner-enforced, do not violate)
+## Fruit Slice (flagship, owner likes the direction)
 
-- NO emojis anywhere. NO em dashes in copy. No boxed panels — letterspaced uppercase section labels, underline inputs, type-only buttons with gold sweep-underline hover. Chip toggles (rounded, gold fill when active).
-- Fonts: Lilita One (display) + Baloo 2 (UI). Warm violet-magenta-sunset gradient sky, single gold accent `--acc: #ffd23e`. Owner rejected: cold techno fonts, near-black gloom, lime accent, opacity-dim hovers.
-- Owner detests "vibe-coded / AI-generated" looks. Minimal text. Balanced alignment (one column grid).
+`src/games/fruit.ts` (~1000 lines). 60s round: rig-driven sabers cut via blade-line + swept-tip-path collision gated by `fruit.sliceRel` shoulder-widths/s; seeded wave director (patterns: single/cross/fan/ladder/bombTrap/frenzy + scheduled bosses at 28s/50s); 9 fruit kinds incl. 2-hit coconut, golden (+fever), ice (slow-mo), pomegranate BOSS (8 hits, cracks, hp pips); fever meter → 8s double points; seeded finale variants (goldrush/frenzy/twinboss); saber-ignite intro, slow-mo outro; directional cut-face splash + persistent fading splatter layer; medal targets in HUD (`medals: [180,400,750]` — NOT yet tuned from real play, ask the owner for their real scores); music energy/brightness/pluck all wired; kcal integration.
+**Online race**: fruitRaceLobby → Room (4-digit codes, ≤4 players), same seed = same waves, live rival score in HUD, spectator webcam corners (room.shareStream + onStream in `launchFruitRace`), verdict + host rematch on results. NEVER tested on real two-device networks.
 
-## THE MOVEMENT SUITE — why the games failed & the fix plan
+## Beat Blade (just rebuilt, awaiting owner verdict)
 
-`src/games/`: fruit.ts, beatblade.ts, rush.ts, bowl.ts, tennis.ts, box.ts, shared.ts, covers.ts. Gesture engine: `src/pose/gestures.ts` (SwingDetector, PunchDetector, BodyDetector). Registry + launchers in main.ts (`ARCADE` array).
+`src/games/beatblade.ts`. Rebuilt frame-matched against reference Beat Saber footage (yt-dlp frames → iterate screenshots — the "gauntlet"; frames were at /tmp/bsframes, regenerate from https://www.youtube.com/watch?v=r6OYcMpm7cA if needed). Near-black arena tinted by the song's vibe palette (`accent` from fetchVibe), laser-rod fan from the vanishing point, edge light towers, converging highway + rolling beat grid, music video as floating framed jumbotron (`VIDEO_WIN` fractions — main.ts setBounds must match), glossy extruded 3D note cubes w/ glowing arrows that materialize at the horizon and split along the actual cut angle, multiplier ring (x1-x4 at combo 10/20/30), energy bar, combo strobes, count-in ignite, grades S/A/B/C + FULL COMBO. Continuous detection: matching hand's blade sweep through note + motion-direction dot ≥ 0.2 (perfect ≥ 0.7 within 0.18 beats). Seeded pattern-grammar charts (density ramp, direction runs, bar-start doubles, crossovers w/ dashed rim, rest every 16th beat).
+**`?bladetest` query param** = synthetic 128bpm clock + demo autopilot, no YouTube — use for all visual iteration.
 
-Owner verdict after real-camera play: ALL SIX are bad. Root causes (honest assessment):
+## Owner's standing quality bar (from this session's feedback)
 
-1. **Everything was tuned in demo mode / fake-camera footage, never on a real body.** All thresholds are guesses.
-2. **Unit bug in PunchDetector**: it mixes `worldLandmarks` z (METERS) with normalized-landmark z depending on availability, then applies one fused threshold (1.35). The scales differ wildly — punch detection is effectively random. Fix: use worldLandmarks exclusively, thresholds in m/s (punch z-velocity is typically 2–4 m/s).
-3. **Gesture latency**: SwingDetector spans a 6-frame history (~200ms) then has a 350ms refractory — swings feel swallowed. Tennis's hit window (z ≤ 0.14, ~0.3s) is far too tight against that latency.
-4. **No visible hand/body cursors in most games** — players can't see what the game thinks they're doing, so it feels broken even when tracking works.
-5. **Discrete gesture events are the wrong model for half of these.** Tennis/bowling would feel dramatically better as CONTINUOUS mechanics: racket/ball glued to the tracked hand every frame, contact by overlap+velocity, rather than "did a SwingEvent fire inside a window."
+AAA or rebuild again. Specifically: stunning visuals, fluid on-beat feel, epic atmosphere, effects that "go crazy with the song", badass lightsabers, non-repetitive/replayable, online play vs friends. They compare directly against commercial benchmarks (Fruit Ninja, Beat Saber) and will send reference footage — match it. They upload assets when they want them used (the SFX pack). They notice and dislike "AI-generated" sounding/looking output.
 
-Recommended plan for next session, in order:
-1. Build a **gesture debug overlay** (toggle via localStorage `gs-debug`): draw live wrist speeds, punch fusion components, lane value, jump/duck flags, thresholds as bars on screen. Have the owner stand in front of the camera for 2 minutes per gesture; tune the numbers live. This converts guesswork into measurement and is the highest-leverage hour available.
-6. Centralize all thresholds into one tunable config object (with localStorage overrides) instead of magic numbers per file.
-2. Fix PunchDetector units (worldLandmarks only).
-3. Convert Tennis + Fruit + Beat Blade to continuous hand-cursor mechanics (racket follows hand; blades already do this — their problem is threshold + fruit spawn pacing). Add always-visible hand cursors to every game.
-4. Rebuild game-by-game WITH the owner playing after each change ("we'll go through them one by one together" was the plan — do that, don't batch).
-5. Not yet built from the blueprint (`docs/EXPANSION.md`): couch 2P (`numPoses: 2`), online parallel-race MP for arcade games, Beat Blade mic-sync charts.
+## UI rules (owner-enforced)
 
-## Classics extraction pipeline (works, documented for reuse)
+NO emojis. NO em dashes in copy. No boxed panels; letterspaced uppercase labels, type-only buttons, chip toggles. Lilita One + Baloo 2. Warm violet-magenta sky + gold `#ffd23e` accent for the suite (Beat Blade's dark arena is the sanctioned exception). Middle dot `·` as separator is house style. Minimal text, milestones over persistent HUD.
 
-`tools/extract_jd/`: `run_one.sh` (yt-dlp h264 download → pose_extract.mjs headless-Chrome MediaPipe over the video via localhost range server → build_routine.py: octave-family autocorrelation BPM + least-squares beat snap + Claude tempo prior via /api/songmeta → 16-kf 2-beat windows). `batch.sh` (3 workers; note the `< /dev/null` stdin fix). `build_index.py` (curated titles, quality culls). Culled: Pac-Man, Hips Don't Lie Sumo (costumes defeat tracking), That POWER, Lean On (fragmented footage). Blue (AFIqSaZM2D0) has lead=178 beats (video's routine starts ~84s in) — classics seek past long leads at start; classics show NO karaoke overlay (song-vs-video timeline mismatch).
+## Next up (owner's plan)
+
+1. Owner plays the new Beat Blade with a real song — expect a feedback round (direction strictness: loosen with dot threshold; note readability; environment).
+2. THE tuning session: owner on camera with backquote overlay, fix all TUNING numbers from measurement (biggest outstanding lever; never done).
+3. Medal thresholds from the owner's real scores.
+4. Then rebuild game 3 onward one at a time on the same stack (Boxing was next in the original plan: coach character via BodyArt + world-space punch classification; then Rush with BodyArt runner mirroring the player, Tennis continuous racket, Bowling pendulum release). Each gets: arena-class environment, its own music track (Song in music.ts + engine.energy), sample SFX, seeded content, race mode where it fits, medals + stats + home screen.
+5. Owed from earlier lists: daily challenge (seed infra exists), ghost race vs own best, async challenge links, announcer voice, per-game rebuilds of covers.
+
+## Lessons this session (do not relearn)
+
+- Games must feed on the RIG, not raw landmarks; anything tuned on fake-camera footage is a guess until the owner plays it.
+- Commit feel changes separately from visuals.
+- The arcade preview canvas must be self-painting (`buildArcadePreview`) — a plain buildPreview is a blank rectangle outside dance mode.
+- AudioContexts leak per game restart unless closed (`music.ctx.close()` in stop()).
+- Vite dev has no /api — YouTube search UI needs a pasted URL; songmeta falls back to 120bpm; use ?bladetest for blade.
+- `vercel --prod` from local FAILS; deploy by git push only. Owner's smoke evidence: screenshots > words.
 
 ## Env / accounts
 
-- Vercel project `groovestar` (linked via `.vercel/`): env has ANTHROPIC_API_KEY, METERED_DOMAIN=groovestar.metered.live, METERED_API_KEY. `npx vercel` CLI is authenticated; `vercel --prod` from local FAILS (build env) — deploy by git push only.
-- Quaternius CC0 packs were downloaded then removed with the 3D rollback; itch download flow + gdown venv (/tmp/jdvenv) documented in git history if ever needed.
-
-## Testing recipes
-
-- Menu/gameplay screenshots: playwright headless + fake cam; wait for `.hud` via querySelector-polling (the element is zero-size — `waitForSelector` visibility never fires).
-- Demo mode (no camera flags) exercises every game via autopilots.
-- FPS probe and CDP CPU profile snippets are in git history (session of 2026-08-24). Headless is software-rendered — only use RELATIVE numbers.
-- Scorer simulations: `npx tsx` scripts importing src modules directly (see git history for examples).
-
-## Owner working style (important)
-
-- Ships fast, judges by playing on a real camera + screenshots; wants rollbacks honored immediately and completely.
-- Prefers being shown 2-3 concrete options ranked, then says "implement N".
-- Wants milestones/celebrations over persistent HUD labels; happy uplifting tone; hates clutter.
-- When something's broken, they send a screenshot — read it carefully, it usually contains the diagnosis.
+Vercel project `groovestar` (env: ANTHROPIC_API_KEY, METERED_DOMAIN, METERED_API_KEY). Classics extraction pipeline documented in git history + `tools/extract_jd/` (unchanged this session). Fitness mode + phone-as-camera + dance multiplayer all working, untouched.
