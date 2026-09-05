@@ -44,6 +44,7 @@ export class Scorer {
   private raw = 0;
   private maxRaw = 1;
   combo = 0;
+  bestCombo = 0;
   judged = 0;
   counts: Record<Judgment, number> = { X: 0, OK: 0, GOOD: 0, SUPER: 0, PERFECT: 0, YEAH: 0 };
   /** per-move log, used by the results victory dance */
@@ -189,6 +190,7 @@ export class Scorer {
   private bumpCombo(j: Judgment) {
     if (j === 'X') this.combo = 0;
     else if (j !== 'OK') this.combo++;
+    this.bestCombo = Math.max(this.bestCombo, this.combo);
   }
 
   private judgeFreestyle(f: { energySum: number; n: number; samples: number[][] }): JudgmentEvent {

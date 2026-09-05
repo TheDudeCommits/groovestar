@@ -135,7 +135,7 @@ export class BoxGame implements Game {
       this.over = true;
       this.stop();
       const best = Number(localStorage.getItem('gs-box-best') ?? 0);
-      if (this.score > best) localStorage.setItem('gs-box-best', String(this.score));
+      if (this.o.cameraOk && this.score > best) localStorage.setItem('gs-box-best', String(this.score));
       this.o.onExit(this.score, `${this.punches} punches in ${ROUND_SECS} seconds`);
     }
   }
