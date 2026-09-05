@@ -135,7 +135,7 @@ export class RushGame implements Game {
       this.stop();
       const score = Math.round(this.dist) + this.coins * 5;
       const best = Number(localStorage.getItem('gs-rush-best') ?? 0);
-      if (score > best) localStorage.setItem('gs-rush-best', String(score));
+      if (this.o.cameraOk && score > best) localStorage.setItem('gs-rush-best', String(score));
       this.o.onExit(score, `${Math.round(this.dist)} m, ${this.coins} coins`);
     }, 900);
   }

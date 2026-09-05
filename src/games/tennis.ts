@@ -135,7 +135,7 @@ export class TennisGame implements Game {
       setTimeout(() => {
         this.stop();
         const best = Number(localStorage.getItem('gs-tennis-best') ?? 0);
-        if (this.me > best) localStorage.setItem('gs-tennis-best', String(this.me));
+        if (this.o.cameraOk && this.me > best) localStorage.setItem('gs-tennis-best', String(this.me));
         this.o.onExit(this.me, this.me > this.ai ? `You win ${this.me} to ${this.ai}` : `AI wins ${this.ai} to ${this.me}`);
       }, 1400);
       return;

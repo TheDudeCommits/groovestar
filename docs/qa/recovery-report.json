@@ -1,0 +1,11 @@
+{
+  "origin": "http://127.0.0.1:5179",
+  "checks": [
+    "Camera denial waits for explicit demo choice; no scored fallback",
+    "WebGL context loss freezes play; restored scene resumes",
+    "Challenge preserves soundtrack, intensity and low-impact mode",
+    "Portrait Blade, Rush and Boxing layouts render without page overflow",
+    "Classic renderer uses cover fallback; Fruit pause exit returns to game home"
+  ],
+  "errors": []
+}

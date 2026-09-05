@@ -1,3 +1,20 @@
+# GrooveStar · Kinetic Broadcast
+
+A browser movement arcade with Dance, Beat Blade, Boxing, Rush, Fruit Slice, Tennis and Bowling. Kinetic Broadcast adds an original 3D cast, authored game venues, camera movement practice, shared results/progress and original audio while retaining Classic Canvas and established Dance/YouTube/friend modes.
+
+See [HANDOVER.md](HANDOVER.md) for current deployment and continuation details, [implementation and acceptance](docs/KINETIC_IMPLEMENTATION.md) for tested scope and open device gates, [art bible](docs/KINETIC_ART_BIBLE.md), and [gameplay evidence](docs/qa/README.md).
+
+```sh
+npm ci
+npm run dev
+npm test
+npm run build
+```
+
+Camera processing runs in the browser. Explicit demos preview all games without earning progress. Physical webcam/phone tuning and real-network acceptance are still required for the Kinetic preview. The older documentation below explains retained baseline systems; the handover takes precedence where behavior changed.
+
+---
+
 # ⭐ GrooveStar
 
 A camera-controlled dance game in the browser, built as a faithful recreation of the
