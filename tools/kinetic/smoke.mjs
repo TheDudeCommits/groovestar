@@ -1,5 +1,5 @@
 import { chromium } from "playwright-core";
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, writeFile, readFile } from "node:fs/promises";
 import assert from "node:assert/strict";
 const origin = process.env.GROOVESTAR_QA_URL ?? "http://127.0.0.1:5179";
 await mkdir("output/playwright", { recursive: true });
@@ -12,6 +12,10 @@ try {
     deviceScaleFactor: 1,
   });
   page.on("pageerror", (e) => errors.push(e.message));
+  if (process.env.GROOVESTAR_QA_SHARE_FILE)
+    await page.goto(
+      JSON.parse(await readFile(process.env.GROOVESTAR_QA_SHARE_FILE, "utf8")),
+    );
   await page.goto(origin);
   await page.waitForSelector(".k-game-tile");
   await page.waitForLoadState("networkidle");

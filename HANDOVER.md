@@ -13,7 +13,12 @@ Updated 5 September 2026. The owner selected **Kinetic Broadcast** and authorize
 - Verified rollback deployment: `dpl_H3p18giKRphkamZCKTsiq5TmGJ1x`, READY, `groovestar-54esks1w6-amirs-projects-d9680079.vercel.app`.
 - Vercel project `prj_9LPZCjCKgtcapicr4yJrof7g5OaT`, team `team_9UHUI9xdsOl7LAy5xl8hUIV6`, framework Vite, Node 24.x.
 - Vercel API verified `link.productionBranch = main`. Explicit CLI `--target=preview` establishes preview routing on this existing project. Preview deployments retain the project's existing Vercel authentication protection.
-- Implementation commit and preview evidence will be recorded after the first deployment. Production has not been promoted by this implementation task.
+- Application commit: `5f1dc0fb985a8217359e12d2968eb375fe3be97d`.
+- Verified preview: https://groovestar-kxffincn8-amirs-projects-d9680079.vercel.app
+- Preview deployment: `dpl_4F36BGr4eP2qVbahKVeDT7jDntyT`, **READY**, target Preview (`target: null` in the Vercel API), source CLI, exact application commit above.
+- The first preview `dpl_8zMx5qMEc42c2b9XcSqHTFpBvPQn` was superseded after enabling the existing server services for Preview. `ANTHROPIC_API_KEY`, `METERED_DOMAIN` and `METERED_API_KEY` now target Production + Preview, with existing secret values preserved and no secret values read or written to the repository. Vercel authentication remains enabled.
+- Deployed desktop/mobile and all-seven-game smoke passed with zero browser errors. Evidence: `docs/qa/preview-smoke-report.json` and `preview-*.png`.
+- Production has not been promoted. The canonical Production alias still points to the recorded rollback deployment. A following documentation/QA commit records this release; application source/assets are identical to the deployed application commit.
 
 The original handover is preserved verbatim in `docs/HANDOVER_BASELINE.md`. Its comments about missing Three.js, 15Hz image-only phone packets, borrowed sound effects and every push being Production describe the baseline, not this branch. Original planning document: `VISUAL_OVERHAUL_PLAN.md`.
 

@@ -12,3 +12,5 @@ Actual engine captures from local Chrome, 5 September 2026. The recorded session
 - `recovery-report.json`: camera denial, context recovery, challenge settings and fallback checks.
 
 Run the scripts from the repository root. `npm run dev -- --host 127.0.0.1 --port 5179` starts the local QA server. `GROOVESTAR_QA_URL` can point the smoke/recovery/round suites at a deployed build. Motion fixtures import source modules and require the local Vite server. All browser scripts close the browser in a `finally` block.
+
+Deployed preview evidence: `preview-smoke-report.json`, `preview-services-report.json`, and `preview-*.png`. The protected preview was opened through a temporary share link; its access token and cookie are not stored in the repository.

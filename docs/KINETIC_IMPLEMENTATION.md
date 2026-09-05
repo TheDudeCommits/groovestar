@@ -29,6 +29,12 @@ Owner selection: 5 September 2026. Isolated worktree `/Users/amir/Claude/grooves
 - Local smoke p95 RAF interval was about 16.8ms in brief camera-free runs. Blade static scenery batching reduced measured draw calls from 272 to 81. Do not extrapolate this to sustained camera inference or phone input performance.
 - All automation browsers close in `finally`. Output snapshots and recordings are evidence, not private camera captures.
 
+## Verified preview release
+
+Application commit `5f1dc0fb985a8217359e12d2968eb375fe3be97d` is deployed as READY preview `dpl_4F36BGr4eP2qVbahKVeDT7jDntyT`: https://groovestar-kxffincn8-amirs-projects-d9680079.vercel.app. The deployed desktop/mobile and all-seven-game smoke passed. Service checks confirmed `/api/ice` 200 with TURN, `/api/search` 200 with eight results, configured music-analysis request validation, and 44 Dance Classics. This is not a live peer connection or paid AI-generation test.
+
+Existing server secret target lists were extended to Preview while retaining Production and unchanged values. Deployment authentication is unchanged. `docs/qa/preview-*.json` and images capture the evidence. Production remains the baseline release; see HANDOVER.md for its exact rollback ID.
+
 ## Explicitly outstanding acceptance and later expansion
 
 The implementation is a broad playable preview. The accepted plan's physical/device gates remain open:
