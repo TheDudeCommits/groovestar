@@ -194,6 +194,10 @@ export abstract class KineticSession implements Game {
       frames: this.stage.frames,
       phone:
         (this.options.tracker as unknown as { stats?: unknown }).stats ?? null,
+      inference: (() => {
+        const t = this.options.tracker as unknown as { mode?: string; inferenceMs?: number };
+        return t.mode ? { mode: t.mode, ms: Math.round((t.inferenceMs ?? 0) * 10) / 10 } : null;
+      })(),
       drawCalls: this.stage.renderer.info.render.calls,
       frameP95: this.frameTimes.length
         ? this.frameTimes.slice().sort((a, b) => a - b)[

@@ -4,9 +4,8 @@
 //  - a motion-energy estimate (how much the player is actually moving)
 
 import { FilesetResolver, PoseLandmarker, type NormalizedLandmark } from '@mediapipe/tasks-vision';
-
-const WASM_URL = 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm';
-const MODEL_URL = 'https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task';
+import { poseEngine, type PoseResult } from './engine';
+import { POSE_MODEL_URL, POSE_WASM_URL } from './pose-protocol';
 
 // MediaPipe landmark indices
 const L = { shL: 11, shR: 12, elL: 13, elR: 14, wrL: 15, wrR: 16, hipL: 23, hipR: 24 };
@@ -34,6 +33,10 @@ export class PoseTracker {
   latestWorld: NormalizedLandmark[] | null = null;
   ready = false;
   error: string | null = null;
+  /** where inference runs: a worker (preferred) or this thread (fallback) */
+  mode: 'worker' | 'main' | null = null;
+  private inFlight = false;
+  private inFlightAt = 0;
 
   constructor() {
     this.video = document.createElement('video');
@@ -48,12 +51,15 @@ export class PoseTracker {
       });
       this.video.srcObject = stream;
       await this.video.play();
-      const files = await FilesetResolver.forVisionTasks(WASM_URL);
-      this.lm = await PoseLandmarker.createFromOptions(files, {
-        baseOptions: { modelAssetPath: MODEL_URL, delegate: 'GPU' },
-        runningMode: 'VIDEO',
-        numPoses: 1,
-      });
+      // localStorage gs-pose-main=1 forces the old main-thread path (A/B diagnostics)
+      let forceMain = false;
+      try { forceMain = localStorage.getItem('gs-pose-main') === '1'; } catch { /* storage blocked */ }
+      if (!forceMain && await poseEngine.preload()) {
+        this.mode = 'worker';
+        poseEngine.onResult((r) => this.applyWorkerResult(r));
+      } else {
+        await this.initMainThread();
+      }
       this.ready = true;
       return true;
     } catch (e) {
@@ -63,12 +69,26 @@ export class PoseTracker {
     }
   }
 
+  private fallingBack = false;
+
+  /** Fallback: inference on this thread, as before the worker existed. */
+  private async initMainThread() {
+    const files = await FilesetResolver.forVisionTasks(POSE_WASM_URL);
+    this.lm = await PoseLandmarker.createFromOptions(files, {
+      baseOptions: { modelAssetPath: POSE_MODEL_URL, delegate: 'GPU' },
+      runningMode: 'VIDEO',
+      numPoses: 1,
+    });
+    this.mode = 'main';
+  }
+
   /** rolling average of what one detection costs (ms) */
   private detCost = 8;
 
   /** call once per rAF */
   update() {
     if(this.lastT&&performance.now()-this.lastT>240){this.latestLandmarks=null;this.latestWorld=null;this.latest={...this.latest,features:null,points:null,energy:0};}
+    if (this.mode === 'worker') { this.pump(); return; }
     if (!this.ready || !this.lm || this.video.readyState < 2) return;
     const now = performance.now();
     if (this.video.currentTime === this.lastVideoTime) return;
@@ -96,6 +116,51 @@ export class PoseTracker {
     this.latest = computeFrame(lms, now, this.st, this.latest.t);
   }
 
+  /** Worker mode: hand the newest camera frame to the worker, one at a time. */
+  private pump() {
+    if (!this.ready || this.video.readyState < 2) return;
+    const now = performance.now();
+    if (this.inFlight && now - this.inFlightAt < 1000) return;
+    if (!poseEngine.usable) {
+      this.inFlight = false;
+      if (poseEngine.status.stage === 'error' && !this.fallingBack) {
+        this.fallingBack = true;
+        this.initMainThread().catch(() => { this.error = 'Motion tracking stopped'; }).finally(() => { this.fallingBack = false; });
+      }
+      return;
+    }
+    if (this.video.currentTime === this.lastVideoTime) return;
+    this.lastVideoTime = this.video.currentTime;
+    this.inFlight = true;
+    this.inFlightAt = now;
+    createImageBitmap(this.video).then((bitmap) => {
+      if (!this.ready || this.mode !== 'worker' || !poseEngine.detect(bitmap, now)) {
+        bitmap.close();
+        this.inFlight = false;
+      }
+    }).catch(() => { this.inFlight = false; });
+  }
+
+  private applyWorkerResult(r: PoseResult) {
+    this.inFlight = false;
+    if (!this.ready || this.mode !== 'worker') return;
+    this.detCost = this.detCost * 0.9 + r.cost * 0.1;
+    this.lastT = performance.now();
+    const lms = r.landmarks;
+    if (!lms || lms.length < 33) {
+      this.latest = { t: r.ts, features: null, energy: this.decayEnergy(), points: null };
+      this.latestLandmarks = null;
+      this.latestWorld = null;
+      return;
+    }
+    this.latestLandmarks = lms;
+    this.latestWorld = r.world;
+    this.latest = computeFrame(lms, r.ts, this.st, this.latest.t);
+  }
+
+  /** average inference cost in ms, for diagnostics */
+  get inferenceMs() { return this.detCost; }
+
   private st: FrameState = { lastWrists: null, energy: 0 };
 
   private decayEnergy() {
@@ -107,6 +172,8 @@ export class PoseTracker {
     const s = this.video.srcObject as MediaStream | null;
     s?.getTracks().forEach((t) => t.stop());
     this.video.srcObject = null;this.ready=false;this.latestLandmarks=null;this.latestWorld=null;this.latest={t:0,features:null,points:null,energy:0};this.lastVideoTime=-1;this.lm?.close();this.lm=null;
+    // the worker keeps its model loaded so the next round starts instantly
+    this.inFlight=false;this.mode=null;this.lastT=0;
   }
 }
 

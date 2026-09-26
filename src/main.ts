@@ -24,6 +24,7 @@ import {dailySeed,saveRun,type RunRecord} from './kinetic/core/records';
 
 import { SONGS, type Song, type SectionDef } from './songs';
 import { PoseTracker } from './pose/tracker';
+import { poseEngine } from './pose/engine';
 import { Scorer, type JudgmentEvent } from './pose/scorer';
 import { choreoPose, addGroove, drawCharacter, coachStyleOf } from './coach';
 import { drawScene } from './scenes';
@@ -2371,3 +2372,10 @@ else if(initialQuery.has('demo')) {const id=initialQuery.get('demo') as GameId;i
 else if(initialQuery.has('dancetest'))setTimeout(()=>void startOriginalDance(true),400);
 else if(initialQuery.has('asset')){stopKineticPreview();void import('./kinetic/render/asset').then(m=>m.renderAsset(initialQuery.get('asset')??'dance',initialQuery.get('cast')??'nova'));}
 else if(initialQuery.has('game')) {const id=initialQuery.get('game') as GameId;if(['blade','box','rush','fruit','bowl','tennis'].includes(id)){const challenge=initialQuery.get('challenge');if(challenge&&challenge.length<160&&initialQuery.get('v')==='2'){sessionStorage.setItem('gs-next-seed',challenge);sessionStorage.setItem('gs-next-track',String(Math.max(0,Math.min(2,Number(initialQuery.get('track'))||0))));sessionStorage.setItem('gs-next-endless',initialQuery.get('endless')==='1'?'1':'0');const level=initialQuery.get('level');setSettings({difficulty:level==='expert'?'expert':level==='athlete'?'athlete':'flow',lowImpact:initialQuery.get('impact')==='low'});}setTimeout(()=>kineticActions().open(id),100);}}
+// Load the pose model in the background while the player browses, so the
+// camera setup starts tracking immediately. Demo and capture routes skip it.
+if(!['bladetest','demo','dancetest','asset'].some(k=>initialQuery.has(k))&&navigator.mediaDevices){
+  const warm=()=>void poseEngine.preload();
+  const idle=(window as unknown as {requestIdleCallback?:(cb:()=>void,o?:{timeout:number})=>void}).requestIdleCallback;
+  setTimeout(()=>idle?idle(warm,{timeout:3000}):warm(),1200);
+}
