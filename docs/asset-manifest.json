@@ -1,0 +1,325 @@
+{
+  "version": 1,
+  "assets": [
+    {
+      "path": "public/kinetic/audio/afterimage.mp3",
+      "bytes": 1821301,
+      "sha256": "c1ea0a7d43807ed2f4c4a5007cbf655d5a3c4fa467e3c0f711902c3bdd7b28cc"
+    },
+    {
+      "path": "public/kinetic/audio/signal.mp3",
+      "bytes": 1821301,
+      "sha256": "9ad3c1ebb96bef51f5222c38d8f9618f94aa02b0ea316585e6560e56bcdf0ae0"
+    },
+    {
+      "path": "public/kinetic/audio/velocity.mp3",
+      "bytes": 1821301,
+      "sha256": "8d438d2f97fba395ca76b4f8798a5b36108257acc1ddd17f846fb2522e23583e"
+    },
+    {
+      "path": "public/kinetic/cast/blaze.webp",
+      "bytes": 14520,
+      "sha256": "39277216573d4865a42bcf854aeb74d1092c859e7d7a356463d954f872d90e13"
+    },
+    {
+      "path": "public/kinetic/cast/kiko.webp",
+      "bytes": 14104,
+      "sha256": "cf906f7147f4f116a3b76fb3612e1589d9219f65e1f0faa762345d8e258d87a9"
+    },
+    {
+      "path": "public/kinetic/cast/luna.webp",
+      "bytes": 14060,
+      "sha256": "3ab92bf60ff3f2b53409148731805bd621bfa320a6a25fffbf81e1f75dcfbfd6"
+    },
+    {
+      "path": "public/kinetic/cast/midnight.webp",
+      "bytes": 14160,
+      "sha256": "44b32bc9fc1b3e809fa0a2813df6ef72334986e0223782916b660767f87cb5ec"
+    },
+    {
+      "path": "public/kinetic/cast/nova.webp",
+      "bytes": 14532,
+      "sha256": "c400b46e2bdd1fb234815bae0dfabbdbcad578bcaad6b82f97be451ea480150e"
+    },
+    {
+      "path": "public/kinetic/cast/rex.webp",
+      "bytes": 14154,
+      "sha256": "f3895f9debccff053e700ce22ea58be57ab9dee4b65b37836654c3baf7a7940a"
+    },
+    {
+      "path": "public/kinetic/cast/sol.webp",
+      "bytes": 14130,
+      "sha256": "6825982c35437ac0c027f28cec8df08228e642567e34dc0774891f7c3b206ce1"
+    },
+    {
+      "path": "public/kinetic/cast/velvet.webp",
+      "bytes": 14404,
+      "sha256": "8ff41e9e06cf248f9fb326c44431da1538c9f362f0328c43f2e82d459ffc5a2a"
+    },
+    {
+      "path": "public/kinetic/covers/blade.webp",
+      "bytes": 31972,
+      "sha256": "959784b467e903edaf45d8780bcf34e5caac1cf9c7c2874b5256579f329d23dc"
+    },
+    {
+      "path": "public/kinetic/covers/bowl.webp",
+      "bytes": 54042,
+      "sha256": "7195c3d6c95d689eb4e2dcdc1459650ad813980626173159bb638d7207b60b35"
+    },
+    {
+      "path": "public/kinetic/covers/box.webp",
+      "bytes": 31624,
+      "sha256": "5ab04ca08a46aa4b0b50478743446348210fa48b7e7d97e99863240054b6620f"
+    },
+    {
+      "path": "public/kinetic/covers/dance.webp",
+      "bytes": 24626,
+      "sha256": "ed8362395fb8b1ae4cce37e54073eb012677cdaa800bca55d3656b90a6ebeaf2"
+    },
+    {
+      "path": "public/kinetic/covers/fruit.webp",
+      "bytes": 24392,
+      "sha256": "5ceb6df5cbabf569b1430580cfc200cb780645759e3aa165d39744df680c0c73"
+    },
+    {
+      "path": "public/kinetic/covers/rush.webp",
+      "bytes": 33854,
+      "sha256": "905cee2c9dc2d01702b0b1bc482e23537c6477a63fc1971f025ef7bb0e7420c3"
+    },
+    {
+      "path": "public/kinetic/covers/tennis.webp",
+      "bytes": 35618,
+      "sha256": "db0ed2fb8ca6e142649b382c9f3343afcfadb9658207793d38fec654f9f87d39"
+    },
+    {
+      "path": "public/licenses/Barlow-Condensed-OFL.txt",
+      "bytes": 6167,
+      "sha256": "046ee27d8bddc6b6ee08eee53c96dbf3ec1f6df561644e018507dd8ffcb11d31"
+    },
+    {
+      "path": "public/licenses/IBM-Plex-Mono-OFL.txt",
+      "bytes": 5299,
+      "sha256": "23b0a9d0c6d3f140a0b77e483c5cfa6bba574325ef5cb189ed9f2fec4884533f"
+    },
+    {
+      "path": "public/licenses/Manrope-OFL.txt",
+      "bytes": 4383,
+      "sha256": "d826ab6583b12c26807d8716a545bdbbb672df04f48608a364ba9efdbe501c30"
+    },
+    {
+      "path": "public/licenses/Three-MIT.txt",
+      "bytes": 1081,
+      "sha256": "8b378ebe60e2fe500158cb0ac71cb5e8b7d92953c2abcc63a0eb90499653b5bc"
+    },
+    {
+      "path": "public/models/blaze.glb",
+      "bytes": 181104,
+      "sha256": "8ab38c3911b5b6e2a1d7170abcb276bc197097c980f8c70952478f581e6842cc"
+    },
+    {
+      "path": "public/models/kiko.glb",
+      "bytes": 222216,
+      "sha256": "19a9120c91647f23a8d6a5d9238df7552284a8ca5ca8d07300196d9ccd97e48c"
+    },
+    {
+      "path": "public/models/luna.glb",
+      "bytes": 196152,
+      "sha256": "638e43fb244ed0f7a62be4b281d2488e7d910bbe21507c8a8e614944ee23cd74"
+    },
+    {
+      "path": "public/models/midnight.glb",
+      "bytes": 301540,
+      "sha256": "5bde31c9eb4535fb6549364976e174e4590bac27d5397cde00f46e061ea7c0c9"
+    },
+    {
+      "path": "public/models/nova.glb",
+      "bytes": 173508,
+      "sha256": "eef84896548c41f206ef88b24ce3055b5cd2f435c4c8e497535cfddbd954c7d6"
+    },
+    {
+      "path": "public/models/rex.glb",
+      "bytes": 245908,
+      "sha256": "6495143161f90bdddbf7852726da24b3020ce3fb636e49e1f51544cea85848fc"
+    },
+    {
+      "path": "public/models/sol.glb",
+      "bytes": 337032,
+      "sha256": "55309a247c7d29766395d89f03b7094f0cd6803a8dd90988574d1004ea0b2eaf"
+    },
+    {
+      "path": "public/models/velvet.glb",
+      "bytes": 271196,
+      "sha256": "4eb7594c1f173afdc9fb1e52c495ba912c0a84b841c1b19ed244c0b306aa80e1"
+    },
+    {
+      "path": "public/sfx/bomb-explode.mp3",
+      "bytes": 5686,
+      "sha256": "7e1cbd707139461db12c8e7323c372982d8a41caf0375604a1da5d1a38ab8122"
+    },
+    {
+      "path": "public/sfx/bonus-banana-freeze.mp3",
+      "bytes": 5686,
+      "sha256": "de1e046e68bc7d3b2602d964ea6dcc78ac2aa866abfa76a8e1bbf7d31197a622"
+    },
+    {
+      "path": "public/sfx/bonus-banana-frenzy.mp3",
+      "bytes": 5686,
+      "sha256": "b4414fdeaa857430e711bde01307c31e465f7dd73dfe816a33090ae1da1b2833"
+    },
+    {
+      "path": "public/sfx/bonus-firework-explode.mp3",
+      "bytes": 5686,
+      "sha256": "9e5bc18a2637a4302dbfdb4df80eef2dc1774e09776276949aff365412c1d282"
+    },
+    {
+      "path": "public/sfx/clean-slice-1.mp3",
+      "bytes": 4432,
+      "sha256": "56e413d0091288217be8df0a9cf421eafc267f84b59aa5f5c9197b426e813f7f"
+    },
+    {
+      "path": "public/sfx/clean-slice-2.mp3",
+      "bytes": 4432,
+      "sha256": "d5899ff4e93783d69a9ec3e5bd027265a6d46df56c7c2768e1b13a7bf5d9101f"
+    },
+    {
+      "path": "public/sfx/clean-slice-3.mp3",
+      "bytes": 4432,
+      "sha256": "64f699743d8f47ab38a8606e4ff3aea8bb2c1565398b344d59f94202f6b487f1"
+    },
+    {
+      "path": "public/sfx/combo-6.mp3",
+      "bytes": 5686,
+      "sha256": "8e585896cd04e0702ffe78a1f4917ad29a32450a7264dcf5d59ced835ee1cf0b"
+    },
+    {
+      "path": "public/sfx/combo-7.mp3",
+      "bytes": 5686,
+      "sha256": "df6ea59f10e7f1c36c4c9977e6e9a9fb3841263508abd2ecbdb0c4010669b492"
+    },
+    {
+      "path": "public/sfx/combo-8.mp3",
+      "bytes": 5686,
+      "sha256": "ce700dbcbb96c6fb88464e856c6a3e92f3331f6d7632d103fc3072af71559edc"
+    },
+    {
+      "path": "public/sfx/combo.mp3",
+      "bytes": 5686,
+      "sha256": "6316937e6264f747e71a686fc639f6fa338286b82ff0dbfa96bc40115769bfab"
+    },
+    {
+      "path": "public/sfx/critical.mp3",
+      "bytes": 5686,
+      "sha256": "6eb78b905208106805df9205cae269c24cca555c26186ba0ae00e1623586ff6d"
+    },
+    {
+      "path": "public/sfx/dragonfruit.mp3",
+      "bytes": 5686,
+      "sha256": "bc4fb91ee12744a929f18c91e63a1b0b2e2d8dc782331094da3dd99759797a18"
+    },
+    {
+      "path": "public/sfx/game-over.mp3",
+      "bytes": 18852,
+      "sha256": "a10a80ae93f9f957c364b7045d565770556ed75704665f5cbaf6e2fe6af38162"
+    },
+    {
+      "path": "public/sfx/game-start.mp3",
+      "bytes": 18852,
+      "sha256": "175f46e8b2954429a129f31b1e5435323c0e253a6fa0631486a12fb56c2505e4"
+    },
+    {
+      "path": "public/sfx/impact-apple.mp3",
+      "bytes": 5686,
+      "sha256": "83a8eafa4a9310b0d7f7f33d9fdf48d6b2898326190c81d7038f5a79dccef321"
+    },
+    {
+      "path": "public/sfx/impact-coconut-more-attack.mp3",
+      "bytes": 5686,
+      "sha256": "df31def8c9ee5bad7ebcd6851fc8190c5fa06164ca81d3c0abe3d45635b7834e"
+    },
+    {
+      "path": "public/sfx/impact-coconut.mp3",
+      "bytes": 5686,
+      "sha256": "e7aaa1e2e74dc7241c6e03cc0b62852dded7adc044f249cac13d47d8482bdcee"
+    },
+    {
+      "path": "public/sfx/impact-kiwifruit.mp3",
+      "bytes": 5686,
+      "sha256": "9f264c72ba8e5c06fc6aa0d44bd0680f129dc72998a58ab63ec122eaf16da4fd"
+    },
+    {
+      "path": "public/sfx/impact-orange.mp3",
+      "bytes": 5686,
+      "sha256": "34ac2c7b0d9ae0a168ccc6e20f1334dab69cb754dd082f948643d2dcdd03334e"
+    },
+    {
+      "path": "public/sfx/impact-pineapple.mp3",
+      "bytes": 5686,
+      "sha256": "54910bcaff691c686333978e3f2b6870563cc4b0c5bd9c5e5ec88a3f55608e82"
+    },
+    {
+      "path": "public/sfx/impact-plum.mp3",
+      "bytes": 5686,
+      "sha256": "5b6638cdb6028e8c1ac44772134232ff861350cda867b085c4180c7976f7c07e"
+    },
+    {
+      "path": "public/sfx/impact-watermelon.mp3",
+      "bytes": 5686,
+      "sha256": "3d7e9af69d6d772d7d03dd41d2752c9a2e4ac113627e45176651fd324094fc19"
+    },
+    {
+      "path": "public/sfx/pome-slice-1.mp3",
+      "bytes": 4432,
+      "sha256": "626440322832e0b4b9f0dc2c12c0e4999e3e6289e24a53f71e764740777ef590"
+    },
+    {
+      "path": "public/sfx/pome-slice-3.mp3",
+      "bytes": 4432,
+      "sha256": "1182cfccb4061685ca6de85ea49b9c9ae2ffcc80fa20ef82e3f1ec32fd9bf52e"
+    },
+    {
+      "path": "public/sfx/popup-1.mp3",
+      "bytes": 5686,
+      "sha256": "224ad98ae84ea7af20ebaa76d67b6d8f2f68826359e6106aae3f767057a08fd2"
+    },
+    {
+      "path": "public/sfx/progress-complete.mp3",
+      "bytes": 18852,
+      "sha256": "d8a748a1d188aa923b99a6c74fcad51518c8a326af2ee83b8bf3bed35dc52c0c"
+    },
+    {
+      "path": "public/sfx/splatter-medium-1.mp3",
+      "bytes": 5686,
+      "sha256": "63c7e135856f6bc1d4258ed87f81dcd2af66b85a90a2cb69a773dea677420e0a"
+    },
+    {
+      "path": "public/sfx/sword-swipe-1.mp3",
+      "bytes": 4432,
+      "sha256": "5566fcf998a3b7d6d36f811ebf5d75dfeeb9504a0243a4122b5886639d7ce27f"
+    },
+    {
+      "path": "public/sfx/sword-swipe-3.mp3",
+      "bytes": 4432,
+      "sha256": "d1275fd821d973e36164b705439033f2a9b3aa43dac5063a057fe54dd3244094"
+    },
+    {
+      "path": "public/sfx/sword-swipe-5.mp3",
+      "bytes": 4432,
+      "sha256": "339864f4e80a770f78fb71f4de3e55f129d0404b8263b775032697ad958bbd6b"
+    },
+    {
+      "path": "public/sfx/throw-fruit.mp3",
+      "bytes": 4432,
+      "sha256": "13f2e9f67921fabe976ca09efaec07aef470bf440b7354c2033e805fd6fa2f0a"
+    },
+    {
+      "path": "public/sfx/time-tick.mp3",
+      "bytes": 5686,
+      "sha256": "999b66f003e96397f8a310e223cc4ab90213e79308b0f0d334378d77a8e26aca"
+    },
+    {
+      "path": "public/sfx/time-tock.mp3",
+      "bytes": 5686,
+      "sha256": "bfd2f5d7b224e25095864f21aa9d9d200d4bc1706cff7af35670cf87296986c2"
+    }
+  ]
+}

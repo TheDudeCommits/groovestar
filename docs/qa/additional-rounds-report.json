@@ -1,0 +1,37 @@
+[
+  {
+    "id": "bowl2",
+    "mid": {
+      "id": "bowl",
+      "demo": true,
+      "elapsed": 14.45099999999994,
+      "score": 15,
+      "hits": 2,
+      "misses": 0,
+      "paused": false,
+      "poseAge": null,
+      "frameMs": 1.6125115114461381,
+      "frames": 868,
+      "phone": null,
+      "drawCalls": 227,
+      "frameP95": 16.700000000000728,
+      "phase": "roll",
+      "frame": 1,
+      "player": 0,
+      "totals": [
+        15,
+        15
+      ],
+      "pinsDown": 10,
+      "scoring": "5-frame arcade: strike 15, spare 12, otherwise pinfall"
+    },
+    "result": "BOWLING · DEMO COMPLETE · RECORDS DISABLED\nTHAT’S\nYOUR ENERGY.\n75POINTS\n100%\nACCURACY\n10\nBEST COMBO\n0\nACTIVE SECONDS\n75 POINTS\nPLAYER 1\n75 POINTS\nPLAYER 2\nONE MORE ROUND ↗\nBACK TO BOWLING\n\nThe next good move is yours.\n\n2 MORE MEDALS TO EMBER",
+    "errors": []
+  },
+  {
+    "id": "dance",
+    "mid": null,
+    "result": "DANCE · DEMO COMPLETE · RECORDS DISABLED\nTHAT’S\nYOUR ENERGY.\n10,284POINTS\n100%\nACCURACY\n70\nBEST COMBO\n0\nACTIVE SECONDS\n5 / 5\nSTARS\nONE MORE ROUND ↗\nBACK TO DANCE\n\nThe next good move is yours.\n\n2 MORE MEDALS TO EMBER",
+    "errors": []
+  }
+]

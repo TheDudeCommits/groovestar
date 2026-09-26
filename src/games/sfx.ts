@@ -1,5 +1,6 @@
-// SFX — sample-first sound engine for the movement suite. Real recorded
-// one-shots live in /public/sfx (mono mp3, ~270KB total) and are lazily
+import {settings} from '../kinetic/core/settings';
+// SFX — original rendered one-shots from tools/kinetic/build_audio.mjs.
+// Samples live in /public/sfx and are lazily
 // decoded on first use; until a buffer is ready, a small synth fallback
 // covers the call so the game is never silent. Variants are rotated and
 // slightly pitch-randomized so rapid slicing never sounds machine-gunned.
@@ -52,7 +53,7 @@ class Sfx {
         comp.threshold.value = -16;
         comp.ratio.value = 5;
         this.master = this.ctx.createGain();
-        this.master.gain.value = 0.35;
+        this.master.gain.value = 0.35 * settings().volume;
         this.master.connect(comp).connect(this.ctx.destination);
         const len = this.ctx.sampleRate;
         this.noise = this.ctx.createBuffer(1, len, len);
@@ -61,6 +62,7 @@ class Sfx {
         this.loadAll();
       } catch { return null; }
     }
+    if(this.master)this.master.gain.value=.35*settings().volume;
     if (this.ctx.state === 'suspended') void this.ctx.resume();
     return this.ctx;
   }

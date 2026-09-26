@@ -7,14 +7,14 @@
 //
 // Conventions:
 // - Positions are mirrored viewer-space, normalized 0..1 (multiply by W/H).
-// - "Viewer left" hand ('L') is the subject's right arm, matching gestures.ts.
+// - "Viewer left" hand ('L') uses subject-left landmarks in the calibrated mirror mapping.
 // - Velocities and speeds are isotropic height units/s (x scaled by aspect,
 //   so a diagonal swipe measures the same as a vertical one).
 // - `rel` speeds are in SHOULDER-WIDTHS PER SECOND: dividing by the player's
 //   live on-screen shoulder width makes thresholds independent of body size
 //   and distance from the camera. TUNING thresholds use these units.
 // - World-space z velocity is meters/s, positive TOWARD the camera; null when
-//   world landmarks are unavailable (the phone camera link sends none).
+//   world landmarks are unavailable (older phone clients omit them).
 
 import type { NormalizedLandmark } from '@mediapipe/tasks-vision';
 import { TUNING } from '../games/tuning';
@@ -52,6 +52,7 @@ const JOINTS = {
   elL: 13, elR: 14,
   wrL: 15, wrR: 16,
   hipL: 23, hipR: 24,
+  kneeL: 25, kneeR: 26, ankleL: 27, ankleR: 28, heelL: 29, heelR: 30, footL: 31, footR: 32,
 } as const;
 export type RigJoint = keyof typeof JOINTS;
 
@@ -99,7 +100,8 @@ export class HandRig {
   torso: number;
   aspect = 16 / 9;
   hasPose = false;
-  private lastSeen = 0;
+  private lastSeen = -Infinity;
+  private previousFrame: NormalizedLandmark[] | null = null;
 
   constructor() {
     const cal = loadBodyScale();
@@ -109,13 +111,15 @@ export class HandRig {
 
   update(lms: NormalizedLandmark[] | null, world: NormalizedLandmark[] | null, now: number, aspect = 16 / 9) {
     this.aspect = aspect;
-    if (!lms) { this.hasPose = now - this.lastSeen < 600; return; }
+    if (!lms || lms === this.previousFrame) { this.hasPose = !!lms && now - this.lastSeen < 240; return; }
+    this.previousFrame = lms;
     this.lastSeen = now;
     this.hasPose = true;
     const tSec = now / 1000;
     const look = TUNING.rig.lookaheadMs / 1000;
     for (const key of Object.keys(JOINTS) as RigJoint[]) {
       const lm = lms[JOINTS[key]];
+      if (!lm || !Number.isFinite(lm.x) || !Number.isFinite(lm.y)) { this.joints.delete(key); continue; }
       let f = this.euro.get(key);
       if (!f) { f = { x: new OneEuro(), y: new OneEuro() }; this.euro.set(key, f); }
       const fx = f.x.filter(1 - lm.x, tSec);
@@ -131,6 +135,7 @@ export class HandRig {
     }
     const shL = this.joints.get('shL')!, shR = this.joints.get('shR')!;
     const hipL = this.joints.get('hipL')!, hipR = this.joints.get('hipR')!;
+    if (!shL || !shR || !hipL || !hipR) { this.hasPose = false; return; }
     const sw = Math.hypot((shL.x - shR.x) * aspect, shL.y - shR.y);
     if (sw > 0.02) this.shoulderW += (sw - this.shoulderW) * 0.04;
     const to = Math.hypot(
@@ -140,7 +145,7 @@ export class HandRig {
     if (to > 0.03) this.torso += (to - this.torso) * 0.04;
 
     for (const h of ['L', 'R'] as const) {
-      if (world) {
+      if (world?.[JOINTS[h === 'L' ? 'wrL' : 'wrR']] && Number.isFinite(world[JOINTS[h === 'L' ? 'wrL' : 'wrR']].z)) {
         const wz = world[JOINTS[h === 'L' ? 'wrL' : 'wrR']].z;
         // z shrinks toward the camera, so toward-camera velocity is -dz/dt
         this.zVel[h] = -this.zEuro[h].filter(wz, tSec).vel;

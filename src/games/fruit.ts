@@ -1,3 +1,7 @@
+import {FruitArena} from '../kinetic/render/fruit-arena';
+import {CanvasControls} from '../kinetic/core/canvas-controls';
+import {settings} from '../kinetic/core/settings';
+import {saveRun,type RunRecord} from '../kinetic/core/records';
 // Fruit Slice — energy sabers edition. Both hands hold vector-drawn energy
 // katanas that orient along your swing, leave comet trails, and cut fruit by
 // sweeping the whole blade through it. A composed synth track drives a
@@ -70,7 +74,7 @@ export interface RaceLink {
 }
 
 export type FruitOpts = GameOpts & {
-  seed?: string;
+  seed?: string;onRecord?:(r:RunRecord)=>void;onQuit?:()=>void;onRestart?:()=>void;
   race?: RaceLink;
   /** bronze, silver, gold thresholds — drives the next-medal HUD target */
   medals?: [number, number, number];
@@ -88,7 +92,7 @@ export class FruitGame implements Game {
   private flashes: SliceFlash[] = [];
   private juice = new Juice();
   private saberRig = new Sabers(this.juice);
-  private arena = new Arena();
+  private arena = new FruitArena();
   private music: AudioEngine | null = null;
   private rnd: () => number;
   private score = 0;
@@ -124,7 +128,7 @@ export class FruitGame implements Game {
   private lastTickSec = -1;
   private lastRaceSend = 0;
   private raf = 0;
-  private over = false;
+  private over = false;private stopped=false;private userPaused=false;private held=false;private controls:CanvasControls|null=null;private activeSeconds=0;private missedFruit=0;private previousPose:unknown=null;
   private demo = { L: 0, R: Math.PI };
   private splat: HTMLCanvasElement = document.createElement('canvas');
   private splatCtx = this.splat.getContext('2d')!;
@@ -137,9 +141,10 @@ export class FruitGame implements Game {
 
   start() {
     this.t0 = this.lastT = performance.now();
+    if(!this.o.race)this.controls=new CanvasControls(v=>{this.userPaused=v;},()=>{this.stop();this.o.onRestart?.();},()=>{this.stop();this.o.onQuit?.();});
     try {
       this.music = new AudioEngine();
-      this.music.setVolume(0.62);
+      this.music.setVolume(0.62*settings().volume);
       this.music.energy = 0.3;
       void this.music.play(BLADE_RUNNING, 0);
     } catch { this.music = null; }
@@ -148,6 +153,7 @@ export class FruitGame implements Game {
   }
 
   stop() {
+    if(this.stopped)return;this.stopped=true;this.controls?.dispose();
     cancelAnimationFrame(this.raf);
     this.saberRig.dispose();
     if (this.music) {
@@ -165,7 +171,13 @@ export class FruitGame implements Game {
   private frame() {
     const { ctx } = this.o;
     const now = performance.now();
-    const rawDt = Math.min(0.05, (now - this.lastT) / 1000);
+    if(this.stopped)return;
+    const delta=now-this.lastT;
+    this.o.tracker.update();this.o.rig?.update(this.o.tracker.latestLandmarks,this.o.tracker.latestWorld??null,now,this.o.tracker.aspect??4/3);
+    const hold=this.userPaused||(!this.o.race&&this.o.cameraOk&&!this.o.rig?.hasPose);
+    if(hold!==this.held){this.held=hold;if(hold)void this.music?.ctx.suspend();else void this.music?.ctx.resume();}
+    if(hold){this.t0+=delta;this.lastT=now;this.draw(ctx,now,0,Math.max(0,ROUND_SECS-(now-this.t0)/1000));return;}
+    const rawDt = Math.min(0.05, delta / 1000);
     this.lastT = now;
     const left = Math.max(0, ROUND_SECS - (now - this.t0) / 1000);
     const dt = this.juice.step(rawDt);
@@ -178,13 +190,15 @@ export class FruitGame implements Game {
     this.readHands(now, dt);
     if (this.introT <= 0 && this.outroT <= 0) {
       this.director(left);
-      this.slicing(now);
+      const fresh=this.o.tracker.latestLandmarks!==this.previousPose;this.previousPose=this.o.tracker.latestLandmarks;
+      if(!this.o.cameraOk||fresh&&this.o.rig?.hasPose)this.slicing(now);
     }
     this.physics(dt);
     this.timers(dt, rawDt, left);
 
     // fitness: integrate movement effort into calories (same rate as dance)
     const energy = this.o.tracker.latest.energy;
+    if(this.o.cameraOk&&energy>.15)this.activeSeconds+=rawDt;
     if (this.o.cameraOk) this.kcal += ((3.2 + 9 * energy) / 60) * rawDt;
 
     // dynamic music: combo, fever and the finale push layers in; the whole
@@ -226,7 +240,8 @@ export class FruitGame implements Game {
           const medal = !m ? 0 : this.score >= m[2] ? 3 : this.score >= m[1] ? 2 : this.score >= m[0] ? 1 : 0;
           addFruitRun({ sliced: this.fruitCount, bossKills: this.bossKills, combo: this.bestCombo, kcal: this.kcal, medal: medal as 0 | 1 | 2 | 3 });
         }
-        const kcalNote = this.kcal >= 1 ? `, ${Math.round(this.kcal)} kcal` : '';
+        const config=settings();const record:RunRecord={version:2,id:'fruit',score:this.score,seconds:60,activeSeconds:this.activeSeconds,hits:this.fruitCount,misses:this.missedFruit,combo:this.bestCombo,seed:this.o.seed??'classic',difficulty:config.difficulty,lowImpact:config.lowImpact,camera:this.o.cameraOk,date:new Date().toISOString()};saveRun(record);this.o.onRecord?.(record);
+        const kcalNote = this.kcal >= 1 ? `, ${Math.round(this.kcal)} estimated kcal` : '';
         this.o.onExit(this.score, `${this.fruitCount} fruit sliced, best combo ${this.bestCombo}${kcalNote}`);
       }
     }
@@ -239,12 +254,12 @@ export class FruitGame implements Game {
     tracker.update();
     const scale = this.bladeLen();
     if (cameraOk && rig) {
-      rig.update(tracker.latestLandmarks, tracker.latestWorld ?? null, now, 4 / 3);
+      rig.update(tracker.latestLandmarks, tracker.latestWorld ?? null, now, tracker.aspect??4/3);
       for (const h of ['L', 'R'] as const) {
         const s = rig.hand(h);
         if (s && s.vis > 0.35) {
           const boost = TUNING.fruit.predictBoostMs / 1000;
-          const px = (s.px + (s.vx / (4 / 3)) * boost) * this.W;
+          const px = (s.px + (s.vx / (tracker.aspect??4/3)) * boost) * this.W;
           const py = (s.py + s.vy * boost) * this.H;
           this.saberRig.move(h, px, py, s.vx, s.vy, s.rel, now, dt, this.H, scale);
         } else {
@@ -439,7 +454,7 @@ export class FruitGame implements Game {
         f.halfSep += this.H * 0.35 * dt;
         if (f.sliceAge > 0.9) f.dead = true;
       }
-      if (f.y > this.H + this.H * 0.2) f.dead = true;
+      if (f.y > this.H + this.H * 0.2) {f.dead=true;if(!f.sliced&&f.special!=='bomb')this.missedFruit++;}
     }
     this.fruits = this.fruits.filter((f) => !f.dead);
   }
@@ -697,7 +712,7 @@ export class FruitGame implements Game {
     const feverAmt = this.feverLeft > 0 ? Math.min(1, this.feverLeft) : this.fever * 0.25;
 
     ctx.save();
-    this.juice.applyShake(ctx);
+    if(!settings().reducedMotion)this.juice.applyShake(ctx);
     this.arena.update(rawDt, w, h);
     this.arena.draw(ctx, w, h, beat, feverAmt);
     ctx.drawImage(this.splat, 0, 0);
@@ -719,7 +734,7 @@ export class FruitGame implements Game {
       ctx.fillStyle = `rgba(110,231,255,${Math.min(0.35, this.iceT) * 0.35})`;
       ctx.fillRect(0, 0, w, h);
     }
-    if (this.bombFlash > 0) {
+    if (this.bombFlash > 0 && !settings().reducedMotion) {
       ctx.fillStyle = `rgba(255,60,60,${this.bombFlash * 0.3})`;
       ctx.fillRect(0, 0, w, h);
     }
@@ -730,7 +745,7 @@ export class FruitGame implements Game {
       ctx.save();
       ctx.textAlign = 'center';
       ctx.fillStyle = 'rgba(255,247,238,0.7)';
-      ctx.font = `700 ${h * 0.022}px 'Baloo 2', sans-serif`;
+      ctx.font = `700 ${h * 0.022}px 'Manrope', sans-serif`;
       ctx.fillText('Step back so the camera can see you', w / 2, h * 0.5);
       ctx.restore();
     }
@@ -986,16 +1001,16 @@ export class FruitGame implements Game {
     ctx.save();
     ctx.textAlign = 'left';
     ctx.fillStyle = '#fff7ee';
-    ctx.font = `400 ${h * 0.052}px 'Lilita One', sans-serif`;
+    ctx.font = `400 ${h * 0.052}px 'Barlow Condensed', sans-serif`;
     ctx.fillText(String(this.score), w * 0.045, h * 0.1);
-    ctx.font = `700 ${h * 0.017}px 'Baloo 2', sans-serif`;
+    ctx.font = `700 ${h * 0.017}px 'Manrope', sans-serif`;
     ctx.fillStyle = 'rgba(255,247,238,0.55)';
-    ctx.fillText(`BEST ${Math.max(this.best, this.score)}`, w * 0.046, h * 0.135);
+    ctx.fillText(this.o.cameraOk?`BEST ${Math.max(this.best, this.score)}`:'DEMO · RECORDS DISABLED', w * 0.046, h * 0.135);
     // next medal target keeps a goal on screen the whole round
     if (this.o.medals) {
       const [b, s, g] = this.o.medals;
       const next = this.score < b ? ['BRONZE', b] as const : this.score < s ? ['SILVER', s] as const : this.score < g ? ['GOLD', g] as const : null;
-      ctx.font = `700 ${h * 0.015}px 'Baloo 2', sans-serif`;
+      ctx.font = `700 ${h * 0.015}px 'Manrope', sans-serif`;
       if (next) {
         ctx.fillStyle = next[0] === 'GOLD' ? '#ffd23e' : next[0] === 'SILVER' ? '#cfd6e4' : '#d9915b';
         ctx.fillText(`${next[0]} AT ${next[1]}`, w * 0.046, h * 0.162);
@@ -1009,7 +1024,7 @@ export class FruitGame implements Game {
     if (rival) {
       const ahead = this.score >= rival.score;
       ctx.fillStyle = ahead ? '#7cf95c' : '#ff5d5d';
-      ctx.font = `700 ${h * 0.019}px 'Baloo 2', sans-serif`;
+      ctx.font = `700 ${h * 0.019}px 'Manrope', sans-serif`;
       ctx.fillText(`${rival.name} ${rival.score}`, w * 0.046, h * 0.192);
     }
     const cx = w / 2, cy = h * 0.085, r = h * 0.038;
@@ -1024,7 +1039,7 @@ export class FruitGame implements Game {
     ctx.textAlign = 'center';
     ctx.fillStyle = '#fff7ee';
     const pulse = urgent ? 1 + Math.max(0, Math.sin((left % 1) * Math.PI)) * 0.15 : 1;
-    ctx.font = `400 ${h * 0.026 * pulse}px 'Lilita One', sans-serif`;
+    ctx.font = `400 ${h * 0.026 * pulse}px 'Barlow Condensed', sans-serif`;
     ctx.fillText(String(Math.ceil(left)), cx, cy + h * 0.01);
     const bw = w * 0.11;
     const lvl = this.feverLeft > 0 ? this.feverLeft / FEVER_SECS : this.fever;
@@ -1034,11 +1049,11 @@ export class FruitGame implements Game {
     ctx.fillRect(cx - bw / 2, cy + r + h * 0.02, bw * Math.min(1, lvl), h * 0.006);
     if (this.feverLeft > 0) {
       ctx.fillStyle = '#ff6ac1';
-      ctx.font = `700 ${h * 0.015}px 'Baloo 2', sans-serif`;
+      ctx.font = `700 ${h * 0.015}px 'Manrope', sans-serif`;
       ctx.fillText('FEVER, DOUBLE POINTS', cx, cy + r + h * 0.045);
     } else if (this.goldRush) {
       ctx.fillStyle = this.finale === 'frenzy' ? '#ff6ac1' : '#ffd23e';
-      ctx.font = `700 ${h * 0.015}px 'Baloo 2', sans-serif`;
+      ctx.font = `700 ${h * 0.015}px 'Manrope', sans-serif`;
       const label = this.finale === 'goldrush' ? 'GOLD RUSH, DOUBLE POINTS' : this.finale === 'frenzy' ? 'FRENZY FINALE' : 'FINAL BOSSES, DOUBLE POINTS';
       ctx.fillText(label, cx, cy + r + h * 0.045);
     }
@@ -1046,9 +1061,9 @@ export class FruitGame implements Game {
       ctx.textAlign = 'right';
       const grow = 1 + this.comboFlashT * 0.5;
       ctx.fillStyle = this.combo >= 4 ? '#ffd23e' : '#fff7ee';
-      ctx.font = `400 ${h * 0.042 * grow}px 'Lilita One', sans-serif`;
+      ctx.font = `400 ${h * 0.042 * grow}px 'Barlow Condensed', sans-serif`;
       ctx.fillText(`x${this.combo}`, w * 0.96, h * 0.11);
-      ctx.font = `700 ${h * 0.014}px 'Baloo 2', sans-serif`;
+      ctx.font = `700 ${h * 0.014}px 'Manrope', sans-serif`;
       ctx.fillStyle = 'rgba(255,247,238,0.55)';
       ctx.fillText('COMBO', w * 0.958, h * 0.135);
     }

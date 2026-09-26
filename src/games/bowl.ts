@@ -150,7 +150,7 @@ export class BowlGame implements Game {
         this.stop();
         const totals = this.scores.map((s) => s.reduce((a, b) => a + b, 0));
         const best = Number(localStorage.getItem('gs-bowl-best') ?? 0);
-        if (totals[0] > best) localStorage.setItem('gs-bowl-best', String(totals[0]));
+        if (this.o.cameraOk && totals[0] > best) localStorage.setItem('gs-bowl-best', String(totals[0]));
         const label = this.players === 2
           ? (totals[0] === totals[1] ? 'Tied game' : `Player ${totals[0] > totals[1] ? 1 : 2} wins ${Math.max(...totals)} to ${Math.min(...totals)}`)
           : `${FRAMES} frames`;

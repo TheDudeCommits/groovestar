@@ -1,3 +1,4 @@
+import {settings} from '../kinetic/core/settings';
 // HUD systems, matching the observed reference layout:
 //  top    — player name chip + judgment pops beneath it
 //  left   — vertical progress meter with 5 stars accumulating
@@ -200,7 +201,7 @@ function drawPicto(
     ctx.shadowColor = '#ffd23e';
     ctx.shadowBlur = 16;
   }
-  const stroke = gold ? '#ffd23e' : '#ffffff';
+  const stroke = gold ? '#f35d42' : settings().renderer==='3d'?'#171917':'#ffffff';
   ctx.strokeStyle = stroke;
   ctx.fillStyle = stroke;
   ctx.lineCap = 'round';

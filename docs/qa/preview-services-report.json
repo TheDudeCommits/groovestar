@@ -1,0 +1,26 @@
+{
+  "origin": "https://groovestar-kxffincn8-amirs-projects-d9680079.vercel.app",
+  "checks": [
+    {
+      "endpoint": "/api/ice",
+      "status": 200,
+      "hasTurn": true
+    },
+    {
+      "endpoint": "/api/search",
+      "status": 200,
+      "results": 8
+    },
+    {
+      "endpoint": "/api/songmeta",
+      "status": 400,
+      "configured": true,
+      "note": "Missing title validation reached; no paid generation called"
+    },
+    {
+      "view": "Dance Classics",
+      "count": 44
+    }
+  ],
+  "errors": []
+}

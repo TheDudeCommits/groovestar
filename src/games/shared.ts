@@ -8,19 +8,27 @@ export type Ctx = CanvasRenderingContext2D;
 /** what every game needs from a camera source (webcam tracker or phone cam) */
 export interface TrackerLike {
   update(): void;
-  latest: { points: { x: number; y: number }[] | null; energy: number };
+  aspect?: number;
+  latest: { t?: number; points: { x: number; y: number }[] | null; energy: number };
   latestLandmarks: NormalizedLandmark[] | null;
   latestWorld?: NormalizedLandmark[] | null;
 }
 
-export interface GameOpts {
-  canvas: HTMLCanvasElement;
-  ctx: Ctx;
+/** Rendering-independent services owned by the app. */
+export interface GameSessionOpts {
   tracker: TrackerLike;
   cameraOk: boolean;
   /** filtered + predictive input layer; feed it per frame, read hands from it */
   rig?: HandRig;
   onExit: (score: number, label?: string) => void;
+  onQuit?: () => void;
+  onRestart?: () => void;
+}
+
+/** Retained Canvas games add their presentation surface. */
+export interface GameOpts extends GameSessionOpts {
+  canvas: HTMLCanvasElement;
+  ctx: Ctx;
 }
 
 export interface Game {

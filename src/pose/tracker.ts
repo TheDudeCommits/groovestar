@@ -24,6 +24,8 @@ export class PoseTracker {
   private lm: PoseLandmarker | null = null;
   private lastWrists: { x: number; y: number }[] | null = null;
   private lastT = 0;
+  private lastVideoTime = -1;
+  get aspect() { return this.video.videoWidth / Math.max(1, this.video.videoHeight) || 4 / 3; }
   private energySmooth = 0;
   latest: PlayerFrame = { t: 0, features: null, energy: 0, points: null };
   /** raw (unmirrored) landmarks from the last successful detection */
@@ -55,6 +57,7 @@ export class PoseTracker {
       this.ready = true;
       return true;
     } catch (e) {
+      this.stop();
       this.error = e instanceof Error ? e.message : String(e);
       return false;
     }
@@ -65,12 +68,15 @@ export class PoseTracker {
 
   /** call once per rAF */
   update() {
+    if(this.lastT&&performance.now()-this.lastT>240){this.latestLandmarks=null;this.latestWorld=null;this.latest={...this.latest,features:null,points:null,energy:0};}
     if (!this.ready || !this.lm || this.video.readyState < 2) return;
     const now = performance.now();
+    if (this.video.currentTime === this.lastVideoTime) return;
     // full-frame-rate detection when the machine can afford it; fall back to
     // ~30fps only when a detection costs a real chunk of the frame budget
     const minGap = this.detCost > 9 ? 33 : 0;
     if (now - this.lastT < minGap) return;
+    this.lastVideoTime = this.video.currentTime;
     let res;
     const t0 = performance.now();
     try {
@@ -100,7 +106,7 @@ export class PoseTracker {
   stop() {
     const s = this.video.srcObject as MediaStream | null;
     s?.getTracks().forEach((t) => t.stop());
-    this.video.srcObject = null;
+    this.video.srcObject = null;this.ready=false;this.latestLandmarks=null;this.latestWorld=null;this.latest={t:0,features:null,points:null,energy:0};this.lastVideoTime=-1;this.lm?.close();this.lm=null;
   }
 }
 

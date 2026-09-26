@@ -4,6 +4,24 @@
 // (official embed as audio/backdrop + procedurally generated choreography).
 
 import './style.css';
+import '@fontsource/barlow-condensed/latin-500.css';
+import '@fontsource/barlow-condensed/latin-600.css';
+import '@fontsource/barlow-condensed/latin-700.css';
+import '@fontsource/barlow-condensed/latin-800.css';
+import '@fontsource/barlow-condensed/latin-600-italic.css';
+import '@fontsource/manrope/latin-400.css';
+import '@fontsource/manrope/latin-600.css';
+import '@fontsource/manrope/latin-700.css';
+import '@fontsource/ibm-plex-mono/latin-400.css';
+import '@fontsource/ibm-plex-mono/latin-500.css';
+import './kinetic/kinetic.css';
+import {renderHome,renderGameHome,renderResult,openCast,stopKineticPreview,decorateDanceHome} from './kinetic/ui';
+import {prepareSession} from './kinetic/setup';
+import {CanvasControls} from './kinetic/core/canvas-controls';
+import {settings as kineticSettings,setSettings} from './kinetic/core/settings';
+import {gameDef,type GameId} from './kinetic/core/catalog';
+import {dailySeed,saveRun,type RunRecord} from './kinetic/core/records';
+
 import { SONGS, type Song, type SectionDef } from './songs';
 import { PoseTracker } from './pose/tracker';
 import { Scorer, type JudgmentEvent } from './pose/scorer';
@@ -65,6 +83,7 @@ let state: 'menu' | 'ready' | 'play' | 'results' = 'menu';
 let stageLight: { x: number; color: string } | null = null;
 /** phone-as-camera link (TV side) — when connected it replaces the local webcam */
 let phoneCam: TvCamHost | null = null;
+let phoneSender:{stop:()=>void}|null=null;
 const cam = () => (phoneCam?.connected ? phoneCam : tracker);
 /** gesture debug overlay (backquote during any arcade game) */
 const debugCtl = installDebugHotkey(() => cam(), () => arcadeGame !== null);
@@ -268,7 +287,12 @@ function attachYtSearch(
 
 /** shared prelude for every full-screen menu state */
 function menuScreen(): HTMLElement {
+  dancePresentation?.dispose();dancePresentation=null;
+  stopKineticPreview();
+  arcadeGame?.stop();
+  arcadeGame = null;
   state = 'menu';
+  if(tracker.ready&&!phoneCam?.connected&&!phoneSender)tracker.stop();
   cancelAnimationFrame(raf);
   activeRoom?.destroy();
   activeRoom = null;
@@ -280,41 +304,61 @@ function menuScreen(): HTMLElement {
 
 /** the front door: a catalog of every game, dance included */
 function showMenu() {
-  const menu = menuScreen();
-  menu.innerHTML = `
-    <div class="logo">GROOVE<span>STAR</span></div>
-    <div class="classics-panel games-panel"><div class="yt-title">Pick your game</div>
-    <div class="classics-row" id="home-row"></div></div>`;
-  const row = menu.querySelector('#home-row')!;
-  const tile = (cover: (cv: HTMLCanvasElement) => void, title: string, sub: string, extra: string, open: () => void) => {
-    const t = div('song-tile classic-tile game-tile');
-    const cv2 = document.createElement('canvas');
-    cv2.width = 400; cv2.height = 224;
-    cover(cv2);
-    t.appendChild(cv2);
-    const meta = div('song-meta');
-    meta.innerHTML = `<div class="song-title">${title}</div>
-      <div class="song-artist">${sub}</div><div class="song-diff">${extra}</div>`;
-    t.appendChild(meta);
-    t.addEventListener('click', open);
-    row.appendChild(t);
+  renderHome(menuScreen(), kineticActions());
+}
+function kineticActions() {
+  return {
+    home: () => showMenu(),
+    open: (id: GameId) => id === 'dance' ? showDanceHome() : showGameHome(ARCADE.find(g => g.id === id)!),
+    play: (id: GameId, demo: boolean, track = 0, endless = false) => { void launchKinetic(id, demo, track, endless); },
+    phone: () => openPhoneCam(), race: () => fruitRaceLobby(ARCADE[0]), youtube: () => startBeatBlade(), dance: () => showDanceHome(),
   };
-  tile(coverDance, 'Dance', 'Classics, any song, dance off', 'The floor is yours', () => showDanceHome());
-  for (const gdef of ARCADE) tile(gdef.cover, gdef.title, gdef.sub, gdef.extra, () => showGameHome(gdef));
-
-  const foot = div('menu-foot');
-  foot.innerHTML = `
-    <div class="foot-row">
-      <label>Player name <input id="pname" maxlength="14" value="${localStorage.getItem('gs-name') ?? 'DANCER'}"></label>
-      <button id="fit-toggle" class="calib-btn ${fitnessOn() ? 'on' : ''}">Fitness${fitStreak() > 1 ? ` ${fitStreak()}d` : ''}</button>
-      <button id="phone-cam" class="calib-btn ${phoneCam?.connected ? 'on' : ''}">Phone camera</button>
-    </div>`;
-  menu.appendChild(foot);
-  foot.querySelector('#fit-toggle')!.addEventListener('click', () => {
-    localStorage.setItem('gs-fitness', fitnessOn() ? '0' : '1');
-    showMenu();
-  });
-  foot.querySelector('#phone-cam')!.addEventListener('click', () => openPhoneCam());
+}
+let requestedDemo = false;
+let lastKineticRecord: RunRecord | null = null;
+let dancePresentation:import('./kinetic/render/dance').DancePresentation|null=null;
+let broadcastFloor:typeof import('./kinetic/render/dance').broadcastFloor|null=null;
+async function launchKinetic(id: GameId, demo = false, track = 0, endless = false) {
+  playerNameFromMenu();
+  stopKineticPreview();
+  if (id === 'dance') { showDanceHome(); return; }
+  const def = ARCADE.find(g => g.id === id)!;
+  if (!['blade','box','rush','tennis','bowl','fruit'].includes(id) || kineticSettings().renderer === 'classic') {
+    requestedDemo = demo;
+    if(id==='fruit'){await startArcade(def,o=>new FruitGame({...o,medals:def.medals}));requestedDemo=false;return;}
+    if(id==='blade' && demo) { startBladeHarness(); return; }
+    await def.launch();
+    requestedDemo = false;
+    return;
+  }
+  const calibrated = await prepareSession(id, demo, async () => {
+    if(phoneCam?.connected) return true;
+    if(tracker.ready) return true;
+    trackerStarted = true;
+    return tracker.init();
+  }, () => cam());
+  if(calibrated === null) { showGameHome(def); return; }
+  cameraOk = calibrated;
+  state = 'play'; cancelAnimationFrame(raf);
+  app.querySelectorAll('.overlay, .yt-holder').forEach(e=>e.remove());
+  const preview = cameraOk ? buildArcadePreview() : null;
+  const seed = sessionStorage.getItem('gs-next-seed') ?? dailySeed(id);
+  sessionStorage.removeItem('gs-next-seed');sessionStorage.removeItem('gs-next-endless');sessionStorage.removeItem('gs-next-track');
+  const opts = {id,canvas,ctx,tracker:cam(),cameraOk,track,endless,seed,players:Number(sessionStorage.getItem('gs-bowl-players')??1),
+    onRecord:(r: RunRecord)=>{lastKineticRecord=r;},
+    onQuit:()=>{preview?.remove();debugCtl.exit();showGameHome(def);},
+    onRestart:()=>{preview?.remove();debugCtl.exit();if(seed)sessionStorage.setItem('gs-next-seed',seed);void launchKinetic(id,demo,track,endless);},
+    onExit:(score:number,label?:string)=>{preview?.remove();debugCtl.exit();endArcade(def,score,label);},
+  };
+  try {
+    if(id==='fruit'){arcadeGame=new FruitGame({...opts,rig:new HandRig(),medals:def.medals});}
+    else if(id==='blade') { const {KineticBlade}=await import('./kinetic/games/blade');arcadeGame=new KineticBlade(opts); }
+    else if(id==='box') { const {KineticBox}=await import('./kinetic/games/boxing');arcadeGame=new KineticBox(opts); }
+    else if(id==='rush') { const {KineticRush}=await import('./kinetic/games/rush');arcadeGame=new KineticRush(opts); }
+    else if(id==='tennis') { const {KineticTennis}=await import('./kinetic/games/tennis');arcadeGame=new KineticTennis(opts); }
+    else { const {KineticBowl}=await import('./kinetic/games/bowling');arcadeGame=new KineticBowl(opts); }
+    arcadeGame.start();debugCtl.enter();
+  } catch(e) { app.querySelectorAll('.kinetic-game').forEach(x=>x.remove());preview?.remove();showGameHome(def);toast('The 3D scene could not start. Choose Classic Canvas in Settings to play on this device.');console.error(e); }
 }
 
 function showDanceHome() {
@@ -340,6 +384,7 @@ function showDanceHome() {
         <div class="song-meta"><div class="song-title">${escapeHtml(e.title)}</div>
         <div class="song-artist">${escapeHtml(e.artist || 'Just Dance')}</div>
         <div class="song-diff">${Math.round(e.bpm)} BPM</div></div>`;
+      tile.setAttribute('role','button');tile.tabIndex=0;tile.addEventListener('keydown',ev=>{if(ev.key==='Enter'||ev.key===' '){ev.preventDefault();tile.click();}});
       tile.addEventListener('click', () => startClassic(e));
       crow.appendChild(tile);
     }
@@ -411,13 +456,8 @@ function showDanceHome() {
     showDanceHome();
   });
   foot.querySelector('#phone-cam')!.addEventListener('click', () => openPhoneCam());
-  foot.querySelector('#char-cycle')!.addEventListener('click', () => {
-    const ids = ['auto', ...CAST.map((c) => c.id)];
-    const next = ids[(ids.indexOf(charPref()) + 1) % ids.length];
-    localStorage.setItem('gs-char', next);
-    const btn = foot.querySelector('#char-cycle')!;
-    btn.textContent = `Dancer · ${next === 'auto' ? 'My look' : CAST.find((c) => c.id === next)!.name}`;
-  });
+  foot.querySelector('#char-cycle')!.addEventListener('click', () => openCast(showDanceHome));
+  decorateDanceHome(menu,kineticActions(),demo=>void startOriginalDance(demo));
   app.appendChild(menu);
 
   const loop = () => {
@@ -532,6 +572,7 @@ const ARCADE: ArcadeDef[] = [
 ];
 
 async function arcadeCamera(title: string, tip: string): Promise<boolean> {
+  stopKineticPreview();
   state = 'play';
   cancelAnimationFrame(raf);
   app.querySelectorAll('.overlay, .yt-holder').forEach((e) => e.remove());
@@ -540,9 +581,11 @@ async function arcadeCamera(title: string, tip: string): Promise<boolean> {
     <div class="ready-tip" id="arc-tip">Starting the camera</div>
     <div class="ready-tip" id="arc-status"></div></div>`;
   app.appendChild(card);
-  if (phoneCam?.connected) {
+  if (requestedDemo) {
+    cameraOk = false;
+  } else if (phoneCam?.connected) {
     cameraOk = true;
-  } else if (!trackerStarted) {
+  } else if (!trackerStarted || !tracker.ready) {
     trackerStarted = true;
     cameraOk = await tracker.init();
   }
@@ -564,6 +607,8 @@ async function startArcade(def: ArcadeDef, make: (o: GameOpts) => Game) {
   const preview = cameraOk ? buildArcadePreview() : null;
   arcadeGame = make({
     canvas, ctx, tracker: cam(), cameraOk, rig: new HandRig(),
+    onQuit: () => {preview?.remove();debugCtl.exit();showGameHome(def);},
+    onRestart: () => {preview?.remove();debugCtl.exit();requestedDemo=!cameraOk;void startArcade(def,make);},
     onExit: (score, label) => {
       preview?.remove();
       debugCtl.exit();
@@ -575,18 +620,19 @@ async function startArcade(def: ArcadeDef, make: (o: GameOpts) => Game) {
 }
 
 function endArcade(def: ArcadeDef, score: number, label?: string, raceS?: RaceSession) {
+  if(lastKineticRecord && lastKineticRecord.id===def.id && !raceS){const r=lastKineticRecord;lastKineticRecord=null;const menu=menuScreen();state='results';renderResult(menu,r,kineticActions());return;}
   state = 'results';
   arcadeGame = null;
   // games persist their own best under gs-<id>-best just before exiting, so
   // matching it here means this run set (or tied) the record
   const best = Number(localStorage.getItem(`gs-${def.id}-best`) ?? 0);
-  const newBest = score > 0 && score >= best;
+  const newBest = cameraOk && score > 0 && score >= best;
   const medal = def.medals
     ? score >= def.medals[2] ? ['GOLD MEDAL', '#ffd23e'] : score >= def.medals[1] ? ['SILVER MEDAL', '#cfd6e4'] : score >= def.medals[0] ? ['BRONZE MEDAL', '#d9915b'] : null
     : null;
   const res = div('overlay results');
   res.innerHTML = `
-    <div class="congrats">${newBest ? 'New best!' : 'Time!'}</div>
+    <div class="congrats">${!cameraOk?'Demo complete':newBest ? 'New best!' : 'Time!'}</div>
     <div class="result-banner">
       <div class="result-name">${def.title.toUpperCase()}</div>
       <div class="result-score" id="arc-score">0</div>
@@ -648,33 +694,12 @@ function endArcade(def: ArcadeDef, score: number, label?: string, raceS?: RaceSe
 }
 
 function launchFruitSolo() {
-  const def = ARCADE[0];
-  startArcade(def, (o) => new FruitGame({ ...o, medals: def.medals }));
+  const demo=requestedDemo;requestedDemo=false;return launchKinetic('fruit',demo);
 }
 
 /** every arcade game gets a dedicated home screen; fruit has the full one */
 function showGameHome(def: ArcadeDef) {
-  if (def.id === 'fruit') return showFruitHome();
-  const menu = menuScreen();
-  const best = Number(localStorage.getItem(`gs-${def.id}-best`) ?? 0);
-  menu.innerHTML = `
-    <div class="logo">${def.title.toUpperCase().split(' ')[0]}<span>${def.title.toUpperCase().split(' ').slice(1).join(' ') || ''}</span></div>
-    <div class="classics-panel games-panel"><div class="classics-row" id="gh-cover"></div></div>
-    <div class="yt-title">${def.sub}</div>
-    <div class="fit-row">${def.tip}</div>
-    ${best ? `<div class="fit-row">Best score ${best}</div>` : ''}
-    <div class="yt-row" style="justify-content:center">
-      <button id="gh-play" class="mp-btn">Play</button>
-    </div>
-    <div class="menu-foot"><div class="foot-row"><button id="home-back" class="calib-btn">All games</button></div></div>`;
-  const cv = document.createElement('canvas');
-  cv.width = 400; cv.height = 224;
-  def.cover(cv);
-  const holder = div('song-tile classic-tile game-tile');
-  holder.appendChild(cv);
-  menu.querySelector('#gh-cover')!.appendChild(holder);
-  menu.querySelector('#gh-play')!.addEventListener('click', () => def.launch());
-  menu.querySelector('#home-back')!.addEventListener('click', () => showMenu());
+  renderGameHome(menuScreen(), def.id as GameId, kineticActions());
 }
 
 function showFruitHome() {
@@ -695,7 +720,7 @@ function showFruitHome() {
     <div class="yt-title">Sabers</div>
     <div class="yt-row" id="fh-styles" style="justify-content:center;flex-wrap:wrap"></div>
     <div class="yt-title">Your record</div>
-    <div class="fit-row">Best score ${best} · Longest combo ${st.bestCombo} · Fruit sliced ${st.sliced} · Bosses smashed ${st.bossKills}${st.kcal >= 1 ? ` · ${Math.round(st.kcal)} kcal burned` : ''}</div>
+    <div class="fit-row">Best score ${best} · Longest combo ${st.bestCombo} · Fruit sliced ${st.sliced} · Bosses smashed ${st.bossKills}${st.kcal >= 1 ? ` · ${Math.round(st.kcal)} estimated kcal` : ''}</div>
     <div class="fit-row">Medals · gold ${medals.gold} · silver ${medals.silver} · bronze ${medals.bronze}${def.medals ? ` · Next targets ${def.medals.join(' / ')}` : ''}</div>
     <div class="menu-foot"><div class="foot-row"><button id="home-back" class="calib-btn">All games</button></div></div>`;
   const cv = document.createElement('canvas');
@@ -833,7 +858,7 @@ async function launchFruitRace(def: ArcadeDef, room: Room, seed: string) {
   camsRoot.style.cssText = 'position:fixed;right:22px;bottom:86px;display:flex;flex-direction:column;gap:10px;z-index:6';
   app.appendChild(camsRoot);
   const camStream = cam().video.srcObject as MediaStream | null;
-  if (camStream) room.shareStream(camStream);
+  if (camStream && kineticSettings().shareVideo) room.shareStream(camStream);
   room.onStream = (id, stream) => {
     const name = session.rivals.get(id)?.name ?? 'RIVAL';
     const cell = div('race-cam');
@@ -887,6 +912,8 @@ async function startBowling() {
   const preview = cameraOk ? buildArcadePreview() : null;
   arcadeGame = new BowlGame({
     canvas, ctx, tracker: cam(), cameraOk, rig: new HandRig(),
+    onQuit: () => {preview?.remove();debugCtl.exit();showGameHome(def);},
+    onRestart: () => {preview?.remove();debugCtl.exit();requestedDemo=!cameraOk;void startBowling();},
     onExit: (score, label) => { preview?.remove(); debugCtl.exit(); endArcade(def, score, label); },
   }, choice);
   arcadeGame.start();
@@ -932,9 +959,11 @@ async function startBeatBlade() {
   const meta = await fetchSongMeta(chosen, src.title, src.duration);
   const bpm = meta ?? 120;
   const totalBeats = Math.min(200, Math.max(64, Math.floor((src.duration * bpm) / 60) - 8));
-  if (phoneCam?.connected) {
+  if (requestedDemo) {
+    cameraOk = false;
+  } else if (phoneCam?.connected) {
     cameraOk = true;
-  } else if (!trackerStarted) {
+  } else if (!trackerStarted || !tracker.ready) {
     trackerStarted = true;
     cameraOk = await tracker.init();
   }
@@ -967,7 +996,7 @@ async function startBeatBlade() {
 
 function playerNameFromMenu(): string {
   const nameInput = document.getElementById('pname') as HTMLInputElement | null;
-  const name = (nameInput?.value || 'DANCER').toUpperCase();
+  const name = (nameInput?.value || localStorage.getItem('gs-name') || 'DANCER').toUpperCase();
   localStorage.setItem('gs-name', name);
   return name;
 }
@@ -993,7 +1022,7 @@ async function readyFlow(song: Song, bannerHtml: string) {
 
   if (phoneCam?.connected) {
     cameraOk = true; // the phone is the camera
-  } else if (!trackerStarted) {
+  } else if (!trackerStarted || !tracker.ready) {
     trackerStarted = true;
     cameraOk = await tracker.init();
   }
@@ -1056,6 +1085,7 @@ function swatches(s: StyleProfile): string {
 // YouTube flow
 
 async function startYouTube(videoId: string) {
+  stopKineticPreview();
   const playerName = playerNameFromMenu();
   state = 'ready';
   cancelAnimationFrame(raf);
@@ -1164,6 +1194,7 @@ async function startYouTube(videoId: string) {
 
 /** a Just Dance classic: the extracted routine + the original gameplay video as the stage */
 async function startClassic(entry: RoutineEntry) {
+  stopKineticPreview();
   const playerName = playerNameFromMenu();
   state = 'ready';
   cancelAnimationFrame(raf);
@@ -1433,7 +1464,7 @@ async function startYouTubeMP(videoId: string, bpm: number, introBeats: number, 
   await readyFlow(song, `<b>${escapeHtml(song.title)}</b><span>room ${room.code} · ${room.players.length} dancers${jd ? ' · the real routine' : ''}</span>`);
   if (playerStyle) room.send({ t: 'style', style: playerStyle });
   const camStream = cam().video.srcObject as MediaStream | null;
-  if (camStream) room.shareStream(camStream);
+  if (camStream && kineticSettings().shareVideo) room.shareStream(camStream);
   const lyr = await Promise.race([lyricsPromise, wait(1500).then(() => null)]);
   if (lyr) song.lyrics = lyricsToLines(lyr, useBpm, 4);
   const vibe = await Promise.race([vibePromise, wait(1500).then(() => null)]);
@@ -1488,7 +1519,7 @@ function openPhoneCam() {
     </div>`;
   app.appendChild(overlay);
   const status = overlay.querySelector('#pc-status') as HTMLElement;
-  overlay.querySelector('#pc-close')!.addEventListener('click', () => overlay.remove());
+  overlay.querySelector('#pc-close')!.addEventListener('click', () => {phoneSender?.stop();phoneSender=null;overlay.remove();});
   overlay.querySelector('#pc-disconnect')?.addEventListener('click', () => {
     phoneCam?.destroy(); phoneCam = null; overlay.remove(); showMenu();
   });
@@ -1502,7 +1533,7 @@ function openPhoneCam() {
       const body = overlay.querySelector('#pc-body') as HTMLElement;
       body.innerHTML = `
         <div class="lobby-code">CAMERA CODE <b>${phoneCam.code}</b></div>
-        <div class="lobby-wait">On your phone, open groovestar.vercel.app, tap Phone camera and enter this code.</div>`;
+        <div class="lobby-wait">On your phone, open ${escapeHtml(location.host)}, tap Phone camera and enter this code.</div>`;
       status.textContent = 'Waiting for the phone\u2026';
       phoneCam.onChange = () => {
         if (phoneCam?.connected) {
@@ -1524,7 +1555,7 @@ function openPhoneCam() {
     if (!/^\d{4}$/.test(code)) { status.textContent = 'Enter the 4-digit code shown on the big screen.'; status.className = 'calib-status warn'; return; }
     status.textContent = 'Starting camera\u2026';
     status.className = 'calib-status scan';
-    if (!trackerStarted) {
+    if (!trackerStarted || !tracker.ready) {
       trackerStarted = true;
       cameraOk = await tracker.init();
     }
@@ -1534,10 +1565,12 @@ function openPhoneCam() {
       return;
     }
     try {
-      await connectPhoneCam(code, tracker, (s) => { status.textContent = s; });
+      const link=await connectPhoneCam(code, tracker, (s) => { status.textContent = s; });
+      phoneSender={stop:()=>{link.stop();tracker.stop();cameraOk=false;}};
       status.className = 'calib-status good';
       (overlay.querySelector('#pc-body') as HTMLElement).innerHTML =
-        `<div class="lobby-wait">Keep this phone propped up, pointed at the dance floor, screen on.</div>`;
+        `<div class="k-phone-camera"></div><div class="lobby-wait">Keep your whole body in frame. Your phone is now the controller.</div>`;
+      const holder=overlay.querySelector('.k-phone-camera')!;holder.appendChild(tracker.video);tracker.video.style.cssText='width:100%;max-height:45vh;object-fit:contain;transform:scaleX(-1)';(overlay.querySelector('#pc-close') as HTMLElement).textContent='STOP CAMERA & DISCONNECT';
       try { await (navigator as any).wakeLock?.request('screen'); } catch { /* unsupported */ }
     } catch (e) {
       status.textContent = String((e as Error).message ?? e);
@@ -1587,7 +1620,7 @@ async function openCalibrate() {
   });
   syncPickers();
 
-  if (!trackerStarted) {
+  if (!trackerStarted || !tracker.ready) {
     trackerStarted = true;
     cameraOk = await tracker.init();
   }
@@ -1691,6 +1724,8 @@ async function openCalibrate() {
 
 interface FxState { gloveFlash: number; goldBurst: number; shake: number }
 interface PlayOpts {
+  controls?:CanvasControls;
+  lostHint?:HTMLElement;
   clock: SongClock;
   yt?: YouTubeSource;
   mic?: BeatListener;
@@ -1707,6 +1742,7 @@ interface PlayOpts {
 
 function play(song: Song, playerName: string, opts: PlayOpts) {
   state = 'play';
+  if(kineticSettings().renderer==='3d')void import('./kinetic/render/dance').then(m=>{if(state!=='play')return;try{dancePresentation=new m.DancePresentation(app,playerStyle);broadcastFloor=m.broadcastFloor;}catch{dancePresentation=null;}});
   const { clock, yt } = opts;
   const scorer = new Scorer(song.choreo, opts.freestyle ?? []);
   scorer.demoMode = !cameraOk;
@@ -1728,6 +1764,11 @@ function play(song: Song, playerName: string, opts: PlayOpts) {
   let lastFitT = performance.now();
   const countdown = div('overlay countdown');
   app.appendChild(countdown);
+  let manualPause=false,trackingPause=false;
+  const pauseAudio=()=>{const hold=manualPause||trackingPause;if(yt){if(hold)yt.pause();else yt.play();}else{const ac=(clock as unknown as {ctx?:AudioContext}).ctx;if(ac){if(hold)void ac.suspend();else void ac.resume();}}};
+  if(!opts.room){opts.lostHint=div('k-dance-tracking');opts.lostHint.textContent='Step back into frame · your dance is paused';opts.lostHint.hidden=true;app.appendChild(opts.lostHint);
+   const cleanup=()=>{clock.stop();opts.yt?.destroy();opts.mic?.stop();opts.controls?.dispose();opts.lostHint?.remove();dancePresentation?.dispose();dancePresentation=null;hud.destroy();preview?.remove();cancelAnimationFrame(raf);};
+   opts.controls=new CanvasControls(v=>{manualPause=v;pauseAudio();},()=>{cleanup();opts.onAgain();},()=>{cleanup();showDanceHome();});}
   const playStart = performance.now();
   let tapShown = false;
   let lastSync = 0;
@@ -1737,6 +1778,7 @@ function play(song: Song, playerName: string, opts: PlayOpts) {
     raf = requestAnimationFrame(loop);
     const beat = clock.beat();
     cam().update();
+    if(!opts.room){const lost=cameraOk&&!cam().latest.features;if(lost!==trackingPause){trackingPause=lost;pauseAudio();if(opts.lostHint)opts.lostHint.hidden=!lost;}if(manualPause||trackingPause){lastFitT=performance.now();return;}}
 
     if (beat < 0) {
       countdown.textContent = String(Math.max(1, Math.ceil(-beat)));
@@ -1753,6 +1795,7 @@ function play(song: Song, playerName: string, opts: PlayOpts) {
       countdown.remove();
     }
 
+    if(!fitnessOn()&&beat>0&&cameraOk&&cam().latest.features&&cam().latest.energy>.15)fit.active+=Math.min(.2,(performance.now()-lastFitT)/1000);
     // fitness mode: integrate effort into calories + active time
     if (fitnessOn() && beat > 0) {
       const nowF = performance.now();
@@ -1792,10 +1835,11 @@ function play(song: Song, playerName: string, opts: PlayOpts) {
     fx.goldBurst *= 0.94;
     fx.gloveFlash *= 0.9;
     fx.shake *= 0.86;
-    const sx = (Math.random() - 0.5) * fx.shake, sy = (Math.random() - 0.5) * fx.shake;
+    const sx = kineticSettings().reducedMotion?0:(Math.random() - 0.5) * fx.shake, sy = kineticSettings().reducedMotion?0:(Math.random() - 0.5) * fx.shake;
     ctx.save();
     ctx.translate(sx, sy);
-    drawScene({ ctx, w: W(), h: H(), beat: Math.max(0, beat), section, song, goldBurst: fx.goldBurst });
+    if(dancePresentation?.ready && !yt && broadcastFloor)broadcastFloor(ctx,W(),H(),Math.max(0,beat));
+    else drawScene({ ctx, w: W(), h: H(), beat: Math.max(0, beat), section, song, goldBurst: fx.goldBurst });
 
     // stage color pair: graded to the music video, easing between its acts
     const stageCols = vibeAt(opts.vibe ?? null, Math.max(0, beat) / song.beats, [song.accent, song.accent2]);
@@ -1851,7 +1895,7 @@ function play(song: Song, playerName: string, opts: PlayOpts) {
       const aspect = cam().video.videoWidth / Math.max(1, cam().video.videoHeight);
       avatar.update(cam().latestLandmarks, aspect || 4 / 3, performance.now());
       // optional backup crew: two smaller clones of you dancing the routine
-      if (crew) {
+      if (crew && !dancePresentation?.ready) {
         const crewPose = goldHold ? pose : addGroove(pose, Math.max(0, beat + 0.5), 0.9);
         for (const cxr of [0.22, 0.78]) {
           drawCharacter(ctx, `crew${cxr}`, crewPose, playerStyle, W() * cxr, H() * 0.8, H() * 0.3, {
@@ -1860,7 +1904,7 @@ function play(song: Song, playerName: string, opts: PlayOpts) {
         }
       }
       if (avatar.hasPose) {
-        avatar.draw(ctx, playerStyle, W() / 2, H() * 0.84, H() * 0.56, {
+        if(!dancePresentation?.ready)avatar.draw(ctx, playerStyle, W() / 2, H() * 0.84, H() * 0.56, {
           beat: Math.max(0, beat), accent: song.accent, w: W(),
           gloveFlash: fx.gloveFlash, goldGlow: fx.goldBurst > 0.25,
           cosmetics, skin: skinPref(), light: stageLight ?? undefined,
@@ -1869,14 +1913,15 @@ function play(song: Song, playerName: string, opts: PlayOpts) {
       } else {
         hintStepIn(ctx);
       }
-      drawCharacter(ctx, 'mini', coachPose, coachStyleOf(song), W() * 0.885, H() * 0.64, H() * 0.21, {
+      if(!dancePresentation?.ready)drawCharacter(ctx, 'mini', coachPose, coachStyleOf(song), W() * 0.885, H() * 0.64, H() * 0.21, {
         goldHold: goldHold && fx.goldBurst > 0.2, beat: Math.max(0, beat),
       });
     } else {
-      drawCharacter(ctx, 'demo', coachPose, coachStyleOf(song), W() / 2, H() * 0.84, H() * 0.56, {
+      if(!dancePresentation?.ready)drawCharacter(ctx, 'demo', coachPose, coachStyleOf(song), W() / 2, H() * 0.84, H() * 0.56, {
         gloveFlash: fx.gloveFlash, goldHold: goldHold && fx.goldBurst > 0.2, beat: Math.max(0, beat),
       });
     }
+    dancePresentation?.update(cam(),coachPose,cameraOk);
     if (!inFs) drawPictograms(ctx, song, beat, W(), H());
     ctx.restore();
     drawPreview(preview);
@@ -1894,6 +1939,14 @@ function play(song: Song, playerName: string, opts: PlayOpts) {
     }
   }
   loop();
+}
+
+async function startOriginalDance(demo=false){
+ stopKineticPreview();const calibrated=await prepareSession('dance',demo,async()=>{if(phoneCam?.connected)return true;if(tracker.ready)return true;trackerStarted=true;return tracker.init();},()=>cam());
+ if(calibrated===null){showDanceHome();return;}cameraOk=calibrated;const song=SONGS[0];playerStyle=applyCharacter(defaultStyle(song),charPref(),1);
+ app.querySelectorAll('.overlay,.yt-holder').forEach(e=>e.remove());cancelAnimationFrame(raf);
+ const {AudioEngine}=await import('./audio/engine');const music=new AudioEngine();music.setVolume(kineticSettings().volume*.65);await music.play(song,4);
+ play(song,playerNameFromMenu(),{clock:music,onAgain:()=>void startOriginalDance(demo)});
 }
 
 /**
@@ -2177,7 +2230,9 @@ function drawPreview(cv: HTMLCanvasElement | null) {
 
 async function endSong(song: Song, scorer: Scorer, hud: Hud, preview: HTMLCanvasElement | null, opts: PlayOpts) {
   state = 'results';
+  opts.controls?.dispose();opts.lostHint?.remove();
   opts.clock.stop();
+  dancePresentation?.dispose();dancePresentation=null;
   hud.destroy();
   preview?.remove();
   app.querySelectorAll('.mp-corners').forEach((e) => e.remove());
@@ -2198,14 +2253,21 @@ async function endSong(song: Song, scorer: Scorer, hud: Hud, preview: HTMLCanvas
   const res = div('overlay results');
   const finalScore = Math.round(scorer.score);
   const stars = scorer.stars();
-  addStars(stars);
-  if (fitnessOn() && opts.fitness && opts.fitness.kcal > 1) {
+  if(cameraOk)addStars(stars);
+  const hits=Object.entries(scorer.counts).reduce((sum,[key,val])=>sum+(key==='X'?0:val),0);const config=kineticSettings();const danceRecord:RunRecord={version:2,id:'dance',score:finalScore,seconds:song.beats*60/song.bpm,activeSeconds:opts.fitness?.active??0,hits,misses:scorer.counts.X,combo:scorer.bestCombo,seed:`dance:${song.id}`,difficulty:config.difficulty,lowImpact:config.lowImpact,camera:cameraOk,date:new Date().toISOString(),details:[{label:scorer.superstar?'SUPERSTAR':'STARS',value:`${stars} / 5`}]};saveRun(danceRecord);
+  if (cameraOk && fitnessOn() && opts.fitness && opts.fitness.kcal > 1) {
     const s = fitStats();
     s.kcal += opts.fitness.kcal;
     s.secs += opts.fitness.active;
     const day = new Date().toISOString().slice(0, 10);
     s.days[day] = (s.days[day] ?? 0) + opts.fitness.kcal;
     try { localStorage.setItem('gs-fit', JSON.stringify(s)); } catch { /* full */ }
+  }
+  if(config.renderer==='3d'&&!opts.room){
+    opts.yt?.destroy();opts.mic?.stop();
+    const menu=menuScreen();state='results';const actions=kineticActions();
+    renderResult(menu,danceRecord,{...actions,play:(id,demo,track,endless)=>{if(id==='dance')opts.onAgain();else actions.play(id,demo,track,endless);}});
+    return;
   }
   res.innerHTML = `
     <div class="congrats">Congratulations!</div>
@@ -2218,7 +2280,7 @@ async function endSong(song: Song, scorer: Scorer, hud: Hud, preview: HTMLCanvas
     <div class="result-counts">${(['PERFECT', 'SUPER', 'GOOD', 'OK', 'X'] as const)
       .map((k) => `<span class="rc rc-${k}">${k === 'X' ? '✕' : k} <b>${scorer.counts[k] + (k === 'PERFECT' ? scorer.counts.YEAH : 0)}</b></span>`).join('')}
     </div>
-    ${fitnessOn() && opts.fitness ? `<div class="fit-row">${Math.round(opts.fitness.kcal)} kcal · ${Math.round(opts.fitness.active / 60)} active min · ${fitStreak()} day streak</div>` : ''}
+    ${fitnessOn() && opts.fitness ? `<div class="fit-row">${Math.round(opts.fitness.kcal)} estimated kcal · ${Math.round(opts.fitness.active / 60)} active min · ${fitStreak()} day streak</div>` : ''}
     ${opts.room ? `<div class="mp-ranking">${rankingHtml(opts, Math.round(scorer.score))}</div>` : ''}
     <div class="result-btns">
       <button id="again">${opts.room ? 'BACK TO LOBBY' : 'DANCE AGAIN'}</button>
@@ -2296,22 +2358,16 @@ const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 showMenu();
 
-// visual-iteration harness: ?bladetest runs Beat Blade on a synthetic clock
-// (no YouTube, demo autopilot) so the environment can be screenshotted fast
-if (new URLSearchParams(location.search).has('bladetest')) {
-  setTimeout(() => {
-    state = 'play';
-    cancelAnimationFrame(raf);
-    app.querySelectorAll('.overlay, .yt-holder').forEach((e) => e.remove());
-    const t0 = performance.now();
-    const clock: BeatClockLike = {
-      beat: () => ((performance.now() - t0) / 1000) * (128 / 60) - 4,
-      get finished() { return false; },
-    };
-    arcadeGame = new BeatBladeGame({
-      canvas, ctx, tracker: cam(), cameraOk: false, clock, totalBeats: 96, seed: 'gauntlet',
-      onExit: () => showMenu(),
-    });
-    arcadeGame.start();
-  }, 400);
+function startBladeHarness() {
+  state='play';cancelAnimationFrame(raf);stopKineticPreview();
+  app.querySelectorAll('.overlay, .yt-holder').forEach(e=>e.remove());
+  const t0=performance.now();
+  arcadeGame=new BeatBladeGame({canvas,ctx,tracker:cam(),cameraOk:false,clock:{beat:()=>((performance.now()-t0)/1000)*128/60-4,get finished(){return false;}},totalBeats:96,seed:'gauntlet',onExit:()=>showMenu()});
+  arcadeGame.start();
 }
+const initialQuery = new URLSearchParams(location.search);
+if(initialQuery.has('bladetest')) setTimeout(startBladeHarness,400);
+else if(initialQuery.has('demo')) {const id=initialQuery.get('demo') as GameId;if(['blade','box','rush','fruit','bowl','tennis'].includes(id))setTimeout(()=>void launchKinetic(id,true),400);}
+else if(initialQuery.has('dancetest'))setTimeout(()=>void startOriginalDance(true),400);
+else if(initialQuery.has('asset')){stopKineticPreview();void import('./kinetic/render/asset').then(m=>m.renderAsset(initialQuery.get('asset')??'dance',initialQuery.get('cast')??'nova'));}
+else if(initialQuery.has('game')) {const id=initialQuery.get('game') as GameId;if(['blade','box','rush','fruit','bowl','tennis'].includes(id)){const challenge=initialQuery.get('challenge');if(challenge&&challenge.length<160&&initialQuery.get('v')==='2'){sessionStorage.setItem('gs-next-seed',challenge);sessionStorage.setItem('gs-next-track',String(Math.max(0,Math.min(2,Number(initialQuery.get('track'))||0))));sessionStorage.setItem('gs-next-endless',initialQuery.get('endless')==='1'?'1':'0');const level=initialQuery.get('level');setSettings({difficulty:level==='expert'?'expert':level==='athlete'?'athlete':'flow',lowImpact:initialQuery.get('impact')==='low'});}setTimeout(()=>kineticActions().open(id),100);}}
