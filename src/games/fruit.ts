@@ -782,8 +782,32 @@ export class FruitGame implements Game {
       return;
     }
     if (!f.sliced) {
+      ctx.save();
       ctx.rotate(f.rot);
       this.drawWhole(ctx, f, r, now);
+      ctx.restore();
+      // Stage lighting that does not spin with the fruit: key highlight,
+      // core shadow and a two-color rim from the neon market.
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(0, 0, r * 1.02, 0, Math.PI * 2);
+      ctx.clip();
+      const hl = ctx.createRadialGradient(-r * 0.38, -r * 0.42, 0, -r * 0.38, -r * 0.42, r * 0.75);
+      hl.addColorStop(0, 'rgba(255,255,255,0.5)');
+      hl.addColorStop(1, 'rgba(255,255,255,0)');
+      ctx.fillStyle = hl;
+      ctx.fillRect(-r, -r, r * 2, r * 2);
+      const sh = ctx.createRadialGradient(-r * 0.2, -r * 0.25, r * 0.4, 0, 0, r * 1.05);
+      sh.addColorStop(0, 'rgba(20,0,40,0)');
+      sh.addColorStop(1, 'rgba(20,0,40,0.5)');
+      ctx.fillStyle = sh;
+      ctx.fillRect(-r, -r, r * 2, r * 2);
+      ctx.restore();
+      ctx.lineWidth = r * 0.09;
+      ctx.strokeStyle = 'rgba(63,224,255,0.75)';
+      ctx.beginPath(); ctx.arc(0, 0, r * 0.97, 0.2, 1.4); ctx.stroke();
+      ctx.strokeStyle = 'rgba(255,63,180,0.7)';
+      ctx.beginPath(); ctx.arc(0, 0, r * 0.97, 1.6, 2.7); ctx.stroke();
     } else {
       for (const half of [-1, 1] as const) {
         ctx.save();
@@ -999,24 +1023,44 @@ export class FruitGame implements Game {
   private drawHud(ctx: Ctx, left: number) {
     const w = this.W, h = this.H;
     ctx.save();
+    // Score panel: angled glass card, top-left, like the other Primetime HUDs.
+    const px = w * 0.02, py = h * 0.03, pw = Math.max(h * 0.3, 190), ph = h * 0.17;
+    ctx.beginPath();
+    ctx.moveTo(px, py); ctx.lineTo(px + pw, py); ctx.lineTo(px + pw - h * 0.022, py + ph); ctx.lineTo(px, py + ph); ctx.closePath();
+    const pg = ctx.createLinearGradient(px, py, px + pw, py + ph);
+    pg.addColorStop(0, 'rgba(20,10,52,0.84)');
+    pg.addColorStop(1, 'rgba(8,4,22,0.74)');
+    ctx.fillStyle = pg;
+    ctx.fill();
+    ctx.fillStyle = '#3fe0ff';
+    ctx.fillRect(px, py, 3, ph);
     ctx.textAlign = 'left';
-    ctx.fillStyle = '#fff7ee';
-    ctx.font = `400 ${h * 0.052}px 'Barlow Condensed', sans-serif`;
-    ctx.fillText(String(this.score), w * 0.045, h * 0.1);
-    ctx.font = `700 ${h * 0.017}px 'Manrope', sans-serif`;
-    ctx.fillStyle = 'rgba(255,247,238,0.55)';
-    ctx.fillText(this.o.cameraOk?`BEST ${Math.max(this.best, this.score)}`:'DEMO · RECORDS DISABLED', w * 0.046, h * 0.135);
+    ctx.font = `700 ${h * 0.016}px 'Barlow Condensed', sans-serif`;
+    ctx.fillStyle = '#3fe0ff';
+    ctx.fillText(this.o.cameraOk ? 'FRUIT SLICE' : 'FRUIT SLICE · DEMO', px + h * 0.022, py + h * 0.033);
+    ctx.font = `italic 900 ${h * 0.068}px 'Barlow Condensed', sans-serif`;
+    const sg = ctx.createLinearGradient(0, py + h * 0.04, 0, py + h * 0.11);
+    sg.addColorStop(0.3, '#ffffff');
+    sg.addColorStop(1, '#b9f3ff');
+    ctx.fillStyle = sg;
+    ctx.shadowColor = 'rgba(63,224,255,0.6)';
+    ctx.shadowBlur = 14;
+    ctx.fillText(String(this.score), px + h * 0.02, py + h * 0.105);
+    ctx.shadowBlur = 0;
+    ctx.font = `700 ${h * 0.015}px 'Barlow Condensed', sans-serif`;
+    ctx.fillStyle = 'rgba(255,247,238,0.72)';
+    ctx.fillText(this.o.cameraOk ? `BEST ${Math.max(this.best, this.score)}` : 'RECORDS DISABLED IN DEMO', px + h * 0.022, py + h * 0.132);
     // next medal target keeps a goal on screen the whole round
     if (this.o.medals) {
       const [b, s, g] = this.o.medals;
       const next = this.score < b ? ['BRONZE', b] as const : this.score < s ? ['SILVER', s] as const : this.score < g ? ['GOLD', g] as const : null;
-      ctx.font = `700 ${h * 0.015}px 'Manrope', sans-serif`;
+      ctx.font = `italic 800 ${h * 0.016}px 'Barlow Condensed', sans-serif`;
       if (next) {
-        ctx.fillStyle = next[0] === 'GOLD' ? '#ffd23e' : next[0] === 'SILVER' ? '#cfd6e4' : '#d9915b';
-        ctx.fillText(`${next[0]} AT ${next[1]}`, w * 0.046, h * 0.162);
+        ctx.fillStyle = next[0] === 'GOLD' ? '#ffd23e' : next[0] === 'SILVER' ? '#cfd6e4' : '#e59a62';
+        ctx.fillText(`${next[0]} AT ${next[1]}`, px + h * 0.022, py + h * 0.156);
       } else {
         ctx.fillStyle = '#ffd23e';
-        ctx.fillText('GOLD MEDAL SECURED', w * 0.046, h * 0.162);
+        ctx.fillText('GOLD MEDAL SECURED', px + h * 0.022, py + h * 0.156);
       }
     }
     // live rival score in a race
@@ -1024,48 +1068,62 @@ export class FruitGame implements Game {
     if (rival) {
       const ahead = this.score >= rival.score;
       ctx.fillStyle = ahead ? '#7cf95c' : '#ff5d5d';
-      ctx.font = `700 ${h * 0.019}px 'Manrope', sans-serif`;
-      ctx.fillText(`${rival.name} ${rival.score}`, w * 0.046, h * 0.192);
+      ctx.font = `italic 800 ${h * 0.02}px 'Barlow Condensed', sans-serif`;
+      ctx.fillText(`${rival.name} ${rival.score}`, px + h * 0.022, py + ph + h * 0.03);
     }
-    const cx = w / 2, cy = h * 0.085, r = h * 0.038;
+    // Timer ring with a glow, and the fever bar under it.
+    const cx = w / 2, cy = h * 0.085, r = h * 0.042;
     const urgent = left < 10;
-    ctx.strokeStyle = 'rgba(255,255,255,0.18)';
+    ctx.fillStyle = 'rgba(10,6,28,0.7)';
+    ctx.beginPath(); ctx.arc(cx, cy, r * 1.25, 0, Math.PI * 2); ctx.fill();
+    ctx.strokeStyle = 'rgba(255,255,255,0.14)';
     ctx.lineWidth = h * 0.008;
     ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.stroke();
-    ctx.strokeStyle = urgent ? '#ff5d5d' : '#ffd23e';
+    ctx.strokeStyle = urgent ? '#ff3fb4' : '#ffd23e';
+    ctx.shadowColor = ctx.strokeStyle;
+    ctx.shadowBlur = 12;
+    ctx.lineCap = 'round';
     ctx.beginPath();
     ctx.arc(cx, cy, r, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * (left / ROUND_SECS));
     ctx.stroke();
+    ctx.shadowBlur = 0;
     ctx.textAlign = 'center';
     ctx.fillStyle = '#fff7ee';
     const pulse = urgent ? 1 + Math.max(0, Math.sin((left % 1) * Math.PI)) * 0.15 : 1;
-    ctx.font = `400 ${h * 0.026 * pulse}px 'Barlow Condensed', sans-serif`;
-    ctx.fillText(String(Math.ceil(left)), cx, cy + h * 0.01);
-    const bw = w * 0.11;
+    ctx.font = `italic 900 ${h * 0.034 * pulse}px 'Barlow Condensed', sans-serif`;
+    ctx.fillText(String(Math.ceil(left)), cx, cy + h * 0.012);
+    const bw = w * 0.12;
     const lvl = this.feverLeft > 0 ? this.feverLeft / FEVER_SECS : this.fever;
+    const by = cy + r * 1.25 + h * 0.018;
     ctx.fillStyle = 'rgba(255,255,255,0.14)';
-    ctx.fillRect(cx - bw / 2, cy + r + h * 0.02, bw, h * 0.006);
-    ctx.fillStyle = this.feverLeft > 0 ? '#ff6ac1' : '#ffd23e';
-    ctx.fillRect(cx - bw / 2, cy + r + h * 0.02, bw * Math.min(1, lvl), h * 0.006);
+    ctx.beginPath(); ctx.roundRect(cx - bw / 2, by, bw, h * 0.008, h * 0.004); ctx.fill();
+    const fg = ctx.createLinearGradient(cx - bw / 2, 0, cx + bw / 2, 0);
+    fg.addColorStop(0, '#8d5cff'); fg.addColorStop(0.5, '#ff3fb4'); fg.addColorStop(1, '#ffd23e');
+    ctx.fillStyle = fg;
+    ctx.beginPath(); ctx.roundRect(cx - bw / 2, by, Math.max(h * 0.008, bw * Math.min(1, lvl)), h * 0.008, h * 0.004); ctx.fill();
+    ctx.font = `italic 800 ${h * 0.018}px 'Barlow Condensed', sans-serif`;
     if (this.feverLeft > 0) {
       ctx.fillStyle = '#ff6ac1';
-      ctx.font = `700 ${h * 0.015}px 'Manrope', sans-serif`;
-      ctx.fillText('FEVER, DOUBLE POINTS', cx, cy + r + h * 0.045);
+      ctx.fillText('FEVER · DOUBLE POINTS', cx, by + h * 0.035);
     } else if (this.goldRush) {
       ctx.fillStyle = this.finale === 'frenzy' ? '#ff6ac1' : '#ffd23e';
-      ctx.font = `700 ${h * 0.015}px 'Manrope', sans-serif`;
-      const label = this.finale === 'goldrush' ? 'GOLD RUSH, DOUBLE POINTS' : this.finale === 'frenzy' ? 'FRENZY FINALE' : 'FINAL BOSSES, DOUBLE POINTS';
-      ctx.fillText(label, cx, cy + r + h * 0.045);
+      const label = this.finale === 'goldrush' ? 'GOLD RUSH · DOUBLE POINTS' : this.finale === 'frenzy' ? 'FRENZY FINALE' : 'FINAL BOSSES · DOUBLE POINTS';
+      ctx.fillText(label, cx, by + h * 0.035);
     }
     if (this.combo >= 2) {
       ctx.textAlign = 'right';
       const grow = 1 + this.comboFlashT * 0.5;
-      ctx.fillStyle = this.combo >= 4 ? '#ffd23e' : '#fff7ee';
-      ctx.font = `400 ${h * 0.042 * grow}px 'Barlow Condensed', sans-serif`;
-      ctx.fillText(`x${this.combo}`, w * 0.96, h * 0.11);
-      ctx.font = `700 ${h * 0.014}px 'Manrope', sans-serif`;
-      ctx.fillStyle = 'rgba(255,247,238,0.55)';
-      ctx.fillText('COMBO', w * 0.958, h * 0.135);
+      ctx.font = `italic 900 ${h * 0.07 * grow}px 'Barlow Condensed', sans-serif`;
+      const cg = ctx.createLinearGradient(0, h * 0.13, 0, h * 0.2);
+      cg.addColorStop(0, '#ffffff'); cg.addColorStop(0.45, '#ffe27a'); cg.addColorStop(1, '#ff9a1a');
+      ctx.fillStyle = this.combo >= 4 ? cg : '#fff7ee';
+      ctx.shadowColor = 'rgba(255,170,40,0.6)';
+      ctx.shadowBlur = 16;
+      ctx.fillText(`x${this.combo}`, w * 0.965, h * 0.2);
+      ctx.shadowBlur = 0;
+      ctx.font = `italic 800 ${h * 0.022}px 'Barlow Condensed', sans-serif`;
+      ctx.fillStyle = '#fff';
+      ctx.fillText('COMBO', w * 0.962, h * 0.232);
     }
     ctx.restore();
   }

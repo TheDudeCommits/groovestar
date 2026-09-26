@@ -206,20 +206,28 @@ function drawPicto(
     const pad = s * 0.45;
     const x0 = Math.min(...xs) - pad, x1 = Math.max(...xs) + pad;
     const y0 = Math.min(...ys) - pad - s * 0.2, y1 = Math.max(...ys) + pad;
-    ctx.fillStyle = 'rgba(238,234,225,0.9)';
-    ctx.strokeStyle = gold ? '#f35d42' : now ? '#171917' : 'rgba(23,25,23,0.35)';
-    ctx.lineWidth = now || gold ? 3 : 1.5;
+    // Primetime neon card: dark glass, cyan edge; the live move glows gold.
+    const grad = ctx.createLinearGradient(0, y0, 0, y1);
+    grad.addColorStop(0, now ? 'rgba(60,34,8,0.82)' : 'rgba(18,10,48,0.78)');
+    grad.addColorStop(1, now ? 'rgba(28,14,4,0.9)' : 'rgba(8,4,24,0.86)');
+    ctx.fillStyle = grad;
+    ctx.shadowColor = gold ? '#ff3fb4' : now ? '#ffd23e' : '#3fe0ff';
+    ctx.shadowBlur = now || gold ? 26 : 14;
+    ctx.strokeStyle = gold ? '#ff3fb4' : now ? '#ffd23e' : 'rgba(63,224,255,0.9)';
+    ctx.lineWidth = now || gold ? 4 : 2.5;
     ctx.beginPath();
-    ctx.roundRect(x0, y0, x1 - x0, y1 - y0, 8);
+    ctx.roundRect(x0, y0, x1 - x0, y1 - y0, 12);
     ctx.fill();
     ctx.stroke();
+    ctx.shadowBlur = 0;
   }
   // card glow for gold
   if (gold) {
     ctx.shadowColor = '#ffd23e';
     ctx.shadowBlur = 16;
   }
-  const stroke = gold ? '#f35d42' : settings().renderer==='3d'?'#171917':'#ffffff';
+  const stroke = gold ? '#ffd9f0' : carded ? (now ? '#ffe9a8' : '#eaf8ff') : '#ffffff';
+  if (carded) { ctx.shadowColor = now ? '#ffd23e' : '#3fe0ff'; ctx.shadowBlur = 10; }
   ctx.strokeStyle = stroke;
   ctx.fillStyle = stroke;
   ctx.lineCap = 'round';
@@ -241,7 +249,7 @@ function drawPicto(
   ctx.beginPath(); ctx.arc(hd[0], hd[1], s * 0.2, 0, Math.PI * 2); ctx.fill();
 
   // accent arrows on the moving limb (yellow in the reference)
-  ctx.strokeStyle = gold ? '#fff3b0' : accent;
+  ctx.strokeStyle = gold ? '#fff3b0' : carded ? '#41d9ff' : accent;
   ctx.fillStyle = ctx.strokeStyle;
   ctx.lineWidth = Math.max(2.5, size * 0.045);
   const arrow = (from: [number, number], dir: string, side: number) => {

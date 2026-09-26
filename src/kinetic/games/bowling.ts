@@ -1,8 +1,8 @@
 import * as T from "three";
 import { KineticSession, type KineticOpts } from "../core/session";
 import type { MotionState } from "../core/input";
-import { alley, pin } from "../render/sports";
-import { material, mesh, COLORS } from "../render/stage";
+import { bowlVenue, ptPin } from "../render/pt/court-venue";
+import { PT, neon, softDot } from "../render/pt/palette";
 import { announce } from "../core/settings";
 interface PinBody {
   object: T.Group;
@@ -17,6 +17,7 @@ export class KineticBowl extends KineticSession {
   private pins: PinBody[] = [];
   private ball: T.Mesh;
   private guide: T.Mesh;
+  private world;
   private phase: "aim" | "roll" | "settle" = "aim";
   private phaseAt = 0;
   private aim = 0;
@@ -30,25 +31,32 @@ export class KineticBowl extends KineticSession {
   private frameScores: number[][] = [[], []];
   private players: number;
   constructor(o: KineticOpts) {
-    super(o);
+    super(o, { bloom: 0.66, bloomThreshold: 0.82, exposure: 1.0 });
     this.duration = Infinity;
     this.players = o.players ?? 1;
-    alley(this.stage);
+    this.world = bowlVenue(this.stage, this.show);
     this.stage.camera.position.set(0, 3.1, 5);
     this.stage.camera.lookAt(0, 0.3, -10);
-    this.ball = mesh(
-      new T.SphereGeometry(0.29, 32, 24),
-      material(COLORS.blue, 0.16, 0.55),
-      this.stage.scene,
-    );
-    this.guide = mesh(
-      new T.ConeGeometry(0.12, 0.035, 3),
-      material(COLORS.coral),
-      this.stage.scene,
-      0,
-      0.06,
-      -2,
-    );
+    // Galaxy ball: swirling UV nebula with a bright rim.
+    const ballMat = new T.ShaderMaterial({
+      uniforms: { uTime: { value: 0 } },
+      vertexShader: `varying vec3 vN; varying vec3 vP; varying vec3 vV; void main(){ vN = normalize(normalMatrix * normal); vP = position; vec4 mv = modelViewMatrix * vec4(position, 1.0); vV = normalize(-mv.xyz); gl_Position = projectionMatrix * mv; }`,
+      fragmentShader: `varying vec3 vN; varying vec3 vP; varying vec3 vV; uniform float uTime;
+        void main(){ vec3 p = normalize(vP); float sw = sin(p.x * 7.0 + sin(p.y * 5.0 + uTime) * 2.0) * sin(p.z * 6.0 - uTime * 0.7);
+          vec3 c = mix(vec3(0.18, 0.05, 0.45), vec3(1.0, 0.25, 0.7), smoothstep(-0.2, 0.8, sw));
+          c = mix(c, vec3(0.25, 0.85, 1.0), smoothstep(0.6, 1.0, sin(p.y * 9.0 + p.x * 4.0)));
+          float fr = pow(1.0 - max(dot(normalize(vN), normalize(vV)), 0.0), 2.0);
+          c += vec3(0.6, 0.8, 1.0) * fr * 1.2;
+          gl_FragColor = vec4(c * 1.3, 1.0); }`,
+    });
+    this.ball = new T.Mesh(new T.SphereGeometry(0.29, 40, 28), ballMat);
+    this.stage.scene.add(this.ball);
+    const halo = new T.Sprite(new T.SpriteMaterial({ map: softDot(), color: new T.Color(PT.violet).multiplyScalar(1.2), blending: T.AdditiveBlending, depthWrite: false }));
+    halo.scale.setScalar(1.2);
+    this.ball.add(halo);
+    this.guide = new T.Mesh(new T.ConeGeometry(0.14, 0.04, 3), neon(PT.cyan, 2.4));
+    this.guide.position.set(0, 0.06, -2);
+    this.stage.scene.add(this.guide);
     this.rack();
   }
   private rack() {
@@ -59,7 +67,7 @@ export class KineticBowl extends KineticSession {
           z = -14 - row * 0.48;
         let body = this.pins[index++];
         if (!body) {
-          const object = pin();
+          const object = ptPin();
           this.stage.scene.add(object);
           body = { object, x, z, vx: 0, vz: 0, down: false, fall: 0 };
           this.pins.push(body);
@@ -77,6 +85,8 @@ export class KineticBowl extends KineticSession {
   }
 
   protected step(dt: number, t: number, input: MotionState) {
+    this.world.update(t);
+    (this.ball.material as T.ShaderMaterial).uniforms.uTime.value = t;
     this.guide.visible = this.phase === "aim";
     if (this.phase === "aim") {
       this.aim = this.options.cameraOk
@@ -153,6 +163,7 @@ export class KineticBowl extends KineticSession {
     }
   }
   private knock(p: PinBody, vx: number, vz: number) {
+    if (!p.down) this.world.sparks.emit(new T.Vector3(p.x, 0.5, p.z), PT.magenta, 14, 3.5, 0.5);
     p.down = true;
     p.vx = vx;
     p.vz = vz;
@@ -176,7 +187,13 @@ export class KineticBowl extends KineticSession {
     }
     const strike = down === 10 && this.attempt === 1,
       spare = down === 10 && this.attempt === 2;
-    this.judge(strike ? "STRIKE" : spare ? "SPARE" : `${gained} DOWN`);
+    this.judge(strike ? "STRIKE!" : spare ? "SPARE!" : `${gained} DOWN`, gained > 0, strike ? "perfect" : spare ? "great" : "good");
+    if (strike || spare) {
+      this.show.hit(1);
+      this.world.confetti.burst(strike ? 200 : 120);
+      this.world.sparks.emit(new T.Vector3(0, 0.6, -14.5), PT.gold, 70, 7, 0.9);
+    } else if (gained) this.show.hit(gained / 10);
+    else this.show.miss();
     this.downBefore = down;
     if (down === 10 || this.attempt === 2) {
       const points = strike ? 15 : spare ? 12 : down;

@@ -1,9 +1,9 @@
 import * as T from "three";
 import { KineticSession, type KineticOpts } from "../core/session";
 import type { MotionState } from "../core/input";
-import { cityWorld } from "../render/worlds";
+import { rushVenue, rushProp } from "../render/pt/rush-venue";
 import { Character } from "../render/character";
-import { material, mesh, block, COLORS } from "../render/stage";
+import { PT } from "../render/pt/palette";
 import { course, type CourseObstacle } from "./charts";
 import { bestGhost, type RunRecord } from "../core/records";
 import { characterId } from "../core/settings";
@@ -22,40 +22,30 @@ export class KineticRush extends KineticSession {
   private shield = 0;
   private lives = 3;
   private ghost?: RunRecord;
-  private ghostMesh: T.Mesh;
+  private ghostRunner: Character | null = null;
   private coins = 0;
   private courseBlock = 0;
   constructor(o: KineticOpts) {
-    super(o);
+    super(o, { bloom: 0.62, bloomThreshold: 0.86, exposure: 0.95 });
     this.duration = 90;
-    this.world = cityWorld(this.stage);
+    this.world = rushVenue(this.stage, this.show);
     this.stage.camera.position.set(0, 2.8, 6.2);
     this.stage.camera.lookAt(0, 1.2, -7);
     this.runner.group.rotation.y = Math.PI;
     this.stage.scene.add(this.runner.group);
-    this.preparation = this.runner
-      .load(characterId())
-      .then(() => this.runner.play("Run"));
-    this.ghost = bestGhost(
-      "rush",
-      this.seed,
-      this.config.difficulty,
-      this.config.lowImpact,
-      !!o.endless,
-    );
-    this.ghostMesh = mesh(
-      new T.ConeGeometry(0.28, 0.7, 6),
-      new T.MeshBasicMaterial({
-        color: COLORS.blue,
-        transparent: true,
-        opacity: 0.3,
-      }),
-      this.stage.scene,
-      0,
-      0.6,
-      0,
-    );
-    this.ghostMesh.visible = !!this.ghost;
+    if (this.stage.key) {
+      this.stage.key.position.set(-2, 6, 7);
+      this.stage.key.target.position.set(0, 1, 0);
+    }
+    this.preparation = this.runner.load(characterId()).then(() => this.runner.play("Run"));
+    this.ghost = bestGhost("rush", this.seed, this.config.difficulty, this.config.lowImpact, !!o.endless);
+    if (this.ghost) {
+      const ghost = new Character({ style: "hologram", color: PT.cyan });
+      ghost.group.rotation.y = Math.PI;
+      this.stage.scene.add(ghost.group);
+      void ghost.load(characterId()).then(() => ghost.play("Run"));
+      this.ghostRunner = ghost;
+    }
     this.obstacles = [];
     this.appendCourse();
   }
@@ -70,31 +60,7 @@ export class KineticRush extends KineticSession {
       ...generated.map((ob) => {
         const object = new T.Group();
         this.stage.scene.add(object);
-        const ink = material(COLORS.ink),
-          red = material(COLORS.coral),
-          chalk = material(COLORS.paper);
-        if (ob.kind === "block") {
-          block(object, 1.9, 1.65, 1.0, 0, 0.825, 0, red);
-          for (let i = 0; i < 3; i++)
-            block(object, 1.94, 0.12, 0.04, 0, 0.4 + i * 0.45, 0.52, chalk);
-        } else if (ob.kind === "hurdle") {
-          for (const x of [-0.9, 0.9])
-            block(object, 0.07, 0.6, 0.08, x, 0.3, 0, ink);
-          block(object, 1.9, 0.18, 0.15, 0, 0.62, 0, red);
-        } else if (ob.kind === "bar") {
-          for (const x of [-0.93, 0.93])
-            block(object, 0.075, 2.4, 0.1, x, 1.2, 0, ink);
-          block(object, 1.94, 0.27, 0.2, 0, 1.48, 0, red);
-        } else {
-          const m = new T.MeshStandardMaterial({
-            color: ob.kind === "coin" ? 0xd9b966 : COLORS.blue,
-            emissive: ob.kind === "coin" ? 0x72542e : COLORS.blue,
-            emissiveIntensity: 0.2,
-            metalness: 0.7,
-            roughness: 0.3,
-          });
-          mesh(new T.TorusGeometry(0.23, 0.07, 8, 24), m, object, 0, 1, 0);
-        }
+        object.add(rushProp(ob.kind));
         object.visible = false;
         return { ...ob, object, done: false };
       }),
@@ -145,17 +111,14 @@ export class KineticRush extends KineticSession {
       this.jump > 0 ? Math.sin((this.jump / 0.95) * Math.PI) * 0.8 : 0;
     this.runner.group.scale.y = this.duck ? 0.62 : 1;
     this.runner.group.rotation.z = -(this.targetLane - this.lane) * 0.15;
-    this.runner.update(dt * (this.jump > 0 ? 0.3 : 1));
-    this.world.update(t * 8);
-    if (this.ghost) {
+    this.runner.update(dt * (this.jump > 0 ? 0.3 : 1) * (1 + this.show.level * 0.06));
+    this.world.update(t * 8, t);
+    if (this.ghost && this.ghostRunner) {
       const p = this.ghost.replay?.find((p) => p.t >= t);
+      this.ghostRunner.update(dt);
       if (p) {
-        this.ghostMesh.position.set(
-          p.x * 2.75,
-          0.5 + (p.y > 0 ? Math.sin((p.y / 0.95) * Math.PI) * 0.8 : 0),
-          -1.3,
-        );
-        this.ghostMesh.scale.y = p.action === "duck" ? 0.6 : 1;
+        this.ghostRunner.group.position.set(p.x * 2.75, p.y > 0 ? Math.sin((p.y / 0.95) * Math.PI) * 0.8 : 0, -1.6);
+        this.ghostRunner.group.scale.y = p.action === "duck" ? 0.62 : 1;
       }
     }
     for (const ob of this.obstacles) {
@@ -163,18 +126,24 @@ export class KineticRush extends KineticSession {
       ob.object.visible = !ob.done && diff < 10 && diff > -0.2;
       if (!ob.object.visible) continue;
       ob.object.position.set(ob.lane * 2.75, 0, -diff * 8);
-      if (ob.kind === "coin" || ob.kind === "shield")
-        ob.object.rotation.y = t * 2;
+      if (ob.kind === "coin" || ob.kind === "shield") ob.object.rotation.y = t * 3;
+      if (ob.kind === "block")
+        ob.object.traverse((m) => {
+          if (m.userData.blink) m.visible = Math.sin(t * 10 + m.position.x * 3) > -0.2;
+        });
       if (diff <= 0.08 && !ob.done) {
         ob.done = true;
         const inLane = Math.abs(this.lane - ob.lane) < 0.43;
         if (!inLane) continue;
+        const at = new T.Vector3(ob.lane * 2.75, 1, 0.2);
         if (ob.kind === "coin") {
           this.coins++;
           this.hit(25, "NICE LINE");
+          this.world.sparks.emit(at, PT.gold, 26, 4, 0.5);
         } else if (ob.kind === "shield") {
           this.shield = 8;
           this.hit(50, "SECOND WIND");
+          this.world.sparks.emit(at, PT.cyan, 40, 5, 0.6);
         } else {
           const clear =
             ob.kind === "hurdle"
@@ -182,7 +151,10 @@ export class KineticRush extends KineticSession {
               : ob.kind === "bar"
                 ? this.duck
                 : false;
-          if (clear) this.hit(100, "CLEAN CLEAR");
+          if (clear) {
+            this.hit(100, "CLEAN CLEAR");
+            this.world.sparks.emit(at, PT.magenta, 24, 4, 0.45);
+          }
           else if (this.shield > 0) {
             this.shield = 0;
             this.judge("SAVED BY SECOND WIND");
@@ -223,6 +195,7 @@ export class KineticRush extends KineticSession {
   }
   stop() {
     this.runner.dispose();
+    this.ghostRunner?.dispose();
     super.stop();
   }
 }

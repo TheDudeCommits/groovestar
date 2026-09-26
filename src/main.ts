@@ -9,12 +9,17 @@ import '@fontsource/barlow-condensed/latin-600.css';
 import '@fontsource/barlow-condensed/latin-700.css';
 import '@fontsource/barlow-condensed/latin-800.css';
 import '@fontsource/barlow-condensed/latin-600-italic.css';
+import '@fontsource/barlow-condensed/latin-700-italic.css';
+import '@fontsource/barlow-condensed/latin-800-italic.css';
+import '@fontsource/barlow-condensed/latin-900.css';
+import '@fontsource/barlow-condensed/latin-900-italic.css';
 import '@fontsource/manrope/latin-400.css';
 import '@fontsource/manrope/latin-600.css';
 import '@fontsource/manrope/latin-700.css';
 import '@fontsource/ibm-plex-mono/latin-400.css';
 import '@fontsource/ibm-plex-mono/latin-500.css';
 import './kinetic/kinetic.css';
+import './kinetic/primetime.css';
 import {renderHome,renderGameHome,renderResult,openCast,stopKineticPreview,decorateDanceHome} from './kinetic/ui';
 import {prepareSession} from './kinetic/setup';
 import {CanvasControls} from './kinetic/core/canvas-controls';
@@ -470,7 +475,9 @@ function showDanceHome() {
     drawCharacter(ctx, 'menu', pose, castStyle, W() / 2, H() * 0.99, H() * 0.34, { alpha: 0.45, beat: t * 2 });
     raf = requestAnimationFrame(loop);
   };
-  loop();
+  // The Primetime dance home is opaque; only the classic renderer shows this canvas.
+  if (kineticSettings().renderer === 'classic') loop();
+  else ctx.clearRect(0, 0, W(), H());
 }
 
 function drawFruitCover(cv: HTMLCanvasElement) {
@@ -1767,7 +1774,7 @@ function play(song: Song, playerName: string, opts: PlayOpts) {
   app.appendChild(countdown);
   let manualPause=false,trackingPause=false;
   const pauseAudio=()=>{const hold=manualPause||trackingPause;if(yt){if(hold)yt.pause();else yt.play();}else{const ac=(clock as unknown as {ctx?:AudioContext}).ctx;if(ac){if(hold)void ac.suspend();else void ac.resume();}}};
-  if(!opts.room){opts.lostHint=div('k-dance-tracking');opts.lostHint.textContent='Step back into frame · your dance is paused';opts.lostHint.hidden=true;app.appendChild(opts.lostHint);
+  if(!opts.room){opts.lostHint=div('k-dance-tracking');opts.lostHint.textContent='Step back into the frame · the dance is paused';opts.lostHint.hidden=true;app.appendChild(opts.lostHint);
    const cleanup=()=>{clock.stop();opts.yt?.destroy();opts.mic?.stop();opts.controls?.dispose();opts.lostHint?.remove();dancePresentation?.dispose();dancePresentation=null;hud.destroy();preview?.remove();cancelAnimationFrame(raf);};
    opts.controls=new CanvasControls(v=>{manualPause=v;pauseAudio();},()=>{cleanup();opts.onAgain();},()=>{cleanup();showDanceHome();});}
   const playStart = performance.now();
@@ -1839,7 +1846,8 @@ function play(song: Song, playerName: string, opts: PlayOpts) {
     const sx = kineticSettings().reducedMotion?0:(Math.random() - 0.5) * fx.shake, sy = kineticSettings().reducedMotion?0:(Math.random() - 0.5) * fx.shake;
     ctx.save();
     ctx.translate(sx, sy);
-    if(dancePresentation?.ready && !yt && broadcastFloor)broadcastFloor(ctx,W(),H(),Math.max(0,beat));
+    // The Primetime stage renders underneath; this canvas only carries the move cards.
+    if(dancePresentation?.ready)ctx.clearRect(-60,-60,W()+120,H()+120);
     else drawScene({ ctx, w: W(), h: H(), beat: Math.max(0, beat), section, song, goldBurst: fx.goldBurst });
 
     // stage color pair: graded to the music video, easing between its acts
@@ -1847,7 +1855,8 @@ function play(song: Song, playerName: string, opts: PlayOpts) {
 
     // YouTube backdrop: the video becomes the upper half of the stage
     stageLight = null;
-    if (yt) drawVideoStage(yt, Math.max(0, beat), fx.goldBurst, stageCols);
+    if (yt && dancePresentation?.ready) { const r = dancePresentation.screenRect(); yt.setBounds(r.x, r.y, r.w, r.h); }
+    else if (yt) drawVideoStage(yt, Math.max(0, beat), fx.goldBurst, stageCols);
 
     // floor tiles that lit up under last frame's footsteps
     // the 3D presentation stands on its own floor; legacy tiles would float as pink boxes
@@ -1923,7 +1932,7 @@ function play(song: Song, playerName: string, opts: PlayOpts) {
         gloveFlash: fx.gloveFlash, goldHold: goldHold && fx.goldBurst > 0.2, beat: Math.max(0, beat),
       });
     }
-    dancePresentation?.update(cam(),coachPose,cameraOk);
+    dancePresentation?.update(cam(),coachPose,cameraOk,beat);
     if (!inFs) drawPictograms(ctx, song, beat, W(), H());
     ctx.restore();
     drawPreview(preview);
@@ -1933,6 +1942,7 @@ function play(song: Song, playerName: string, opts: PlayOpts) {
 
   function applyEvent(ev: JudgmentEvent) {
     avatar.react(ev.judgment); // the dancer's rim color IS the judgment feedback
+    dancePresentation?.judge(ev.judgment);
     if (ev.judgment !== 'X') fx.gloveFlash = 1;
     if (ev.judgment === 'YEAH') {
       fx.goldBurst = 1;

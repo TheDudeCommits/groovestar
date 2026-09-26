@@ -1,4 +1,6 @@
-import { Stage } from "../render/stage";
+import { Stage, type PrimetimeLook } from "../render/stage";
+import { ShowDirector } from "../render/pt/show";
+import { HYPE_LEVELS } from "../render/pt/palette";
 import { MotionInput, type MotionState } from "./input";
 import { settings, announce } from "./settings";
 import { gameDef, type GameId } from "./catalog";
@@ -28,6 +30,8 @@ export abstract class KineticSession implements Game {
   readonly config = settings();
   readonly seed: string;
   readonly music: SessionMusic;
+  /** Drives every venue: beat pulse, hype level, palette and big moments. */
+  readonly show: ShowDirector;
   protected preparation: Promise<unknown> = Promise.resolve();
   protected elapsed = 0;
   private activeSeconds = 0;
@@ -50,36 +54,60 @@ export abstract class KineticSession implements Game {
   private judgeEl: HTMLElement;
   private statusEl: HTMLElement;
   private judgeTimer = 0;
+  private bannerEl: HTMLElement;
+  private bannerTimer = 0;
+  private shownScore = 0;
   private started = false;
   private pausedByUser = false;
   constructor(
     readonly options: KineticOpts,
-    dark = false,
+    look: PrimetimeLook = {},
   ) {
     this.seed = options.seed ?? dailySeed(options.id);
-    this.host.className = `kinetic-game ${dark ? "is-dark" : ""}`;
+    this.host.className = "kinetic-game is-dark pt-game";
+    this.host.dataset.game = options.id;
     document.getElementById("app")!.appendChild(this.host);
-    this.stage = new Stage(this.host, { dark, bloom: dark });
-    this.input = new MotionInput(options.tracker, this.config.lowImpact);
+    this.stage = new Stage(this.host, { primetime: look });
+    this.show = new ShowDirector(this.config.reducedMotion);
+    this.input = new MotionInput(
+      options.tracker,
+      this.config.lowImpact,
+      gameDef(options.id).required.includes(23),
+    );
     this.music = new SessionMusic(TRACKS[options.track ?? 0]);
     this.hud = document.createElement("div");
-    this.hud.className = "k-hud";
-    this.hud.innerHTML = `<div><span class="k-eyebrow">${gameDef(options.id).title} ${options.cameraOk ? "" : "· DEMO"}</span><strong data-score>0</strong><span data-detail>FIND YOUR RHYTHM</span></div><div class="k-hud-right"><button data-pause aria-label="Pause game">Ⅱ</button><strong data-time>90</strong><span data-combo>READY</span></div>`;
+    this.hud.className = "pt-hud";
+    this.hud.innerHTML = `<div class="pt-hud-panel pt-hud-score"><span class="pt-hud-game">${gameDef(options.id).title.toUpperCase()}${options.cameraOk ? "" : " · DEMO"}</span><strong data-score>0</strong><span data-detail>0 CLEAN · 0 MISSED</span><div class="pt-hype" data-level="0"><div class="pt-hype-bar"><i data-hype></i></div><span data-level-name>${HYPE_LEVELS[0].name}</span></div></div><div class="pt-hud-panel pt-hud-right"><button data-pause aria-label="Pause game"><span></span><span></span></button><strong data-time>90</strong><span data-time-label>SECONDS</span></div><div class="pt-combo" data-combo-wrap><strong data-combo>0</strong><span>COMBO</span></div>`;
     this.host.appendChild(this.hud);
     this.judgeEl = document.createElement("div");
-    this.judgeEl.className = "k-judgment";
+    this.judgeEl.className = "pt-judgment";
     this.judgeEl.setAttribute("aria-live", "polite");
     this.host.appendChild(this.judgeEl);
+    this.bannerEl = document.createElement("div");
+    this.bannerEl.className = "pt-level-banner";
+    this.bannerEl.setAttribute("aria-live", "polite");
+    this.host.appendChild(this.bannerEl);
+    this.show.onLevel((level, up) => {
+      if (!up) return;
+      this.bannerEl.innerHTML = `<small>HYPE LEVEL ${level + 1}</small><b>${HYPE_LEVELS[level].name}!</b>`;
+      this.bannerEl.classList.remove("show");
+      void this.bannerEl.offsetWidth;
+      this.bannerEl.classList.add("show");
+      clearTimeout(this.bannerTimer);
+      this.bannerTimer = window.setTimeout(() => this.bannerEl.classList.remove("show"), 1900);
+      sfx.hit(1);
+    });
     this.statusEl = document.createElement("div");
-    this.statusEl.className = "k-game-status";
+    this.statusEl.className = "pt-status";
     this.host.appendChild(this.statusEl);
     this.pauseLayer = document.createElement("div");
     this.pauseLayer.className = "k-pause";
     this.pauseLayer.hidden = true;
     this.pauseLayer.setAttribute("role", "dialog");
     this.pauseLayer.setAttribute("aria-label", "Pause session");
+    this.pauseLayer.className = "pt-pause";
     this.pauseLayer.innerHTML =
-      '<span class="k-eyebrow">TAKE A BREATH</span><h2>In your own time.</h2><p>Stand in your play area when you are ready.</p><button data-resume class="k-primary">Resume ↗</button><button data-recalibrate>Recalibrate position</button><button data-restart>Restart session</button><button data-quit>Back to game</button>';
+      '<div class="pt-pause-card"><span class="pt-eyebrow">PAUSED</span><h2>Catch your breath.</h2><p>Step back into your play area when you are ready.</p><button data-resume class="pt-btn pt-btn-gold">Resume</button><button data-recalibrate class="pt-btn">Recalibrate position</button><button data-restart class="pt-btn">Restart session</button><button data-quit class="pt-btn pt-btn-ghost">Back to game</button></div>';
     this.host.appendChild(this.pauseLayer);
     this.pauseLayer
       .querySelector("[data-restart]")!
@@ -158,6 +186,7 @@ export abstract class KineticSession implements Game {
       else if (!this.paused) this.music.resume();
     }
     if (!this.paused && !lost && !this.stage.contextLost) {
+      this.show.update(dt, this.music.beat(this.elapsed));
       this.elapsed += dt;
       if (this.options.cameraOk && input.energy > 0.15)
         this.activeSeconds += dt;
@@ -172,12 +201,16 @@ export abstract class KineticSession implements Game {
     }
     if (this.stopped) return;
     this.statusEl.textContent = lost
-      ? "Step back into frame · your round is paused"
+      ? "Show your shoulders and hands to the camera · the round is paused"
       : this.paused
         ? ""
         : this.hint();
+    this.statusEl.classList.toggle("is-alert", lost);
     this.updateHud();
+    this.stage.post(now / 1000, this.show);
     this.stage.render();
+    if ((import.meta as unknown as { env?: { DEV?: boolean } }).env?.DEV)
+      (window as unknown as { gsStage: unknown }).gsStage = this.stage;
     (window as unknown as { gsKinetic: unknown }).gsKinetic = {
       id: this.options.id,
       demo: !this.options.cameraOk,
@@ -233,34 +266,53 @@ export abstract class KineticSession implements Game {
     };
   }
   protected updateHud() {
-    (this.hud.querySelector("[data-score]") as HTMLElement).textContent =
-      String(this.score);
-    (this.hud.querySelector("[data-time]") as HTMLElement).textContent = this
-      .options.endless
+    const q = <E extends HTMLElement>(sel: string) => this.hud.querySelector(sel) as E;
+    // Count the score up instead of jumping, like an arcade cabinet.
+    this.shownScore += (this.score - this.shownScore) * 0.25;
+    if (Math.abs(this.score - this.shownScore) < 1) this.shownScore = this.score;
+    q("[data-score]").textContent = Math.round(this.shownScore).toLocaleString();
+    q("[data-time]").textContent = this.options.endless
       ? String(Math.floor(this.elapsed))
       : Number.isFinite(this.duration)
         ? String(Math.max(0, Math.ceil(this.duration - this.elapsed)))
-        : "PLAY";
-    (this.hud.querySelector("[data-combo]") as HTMLElement).textContent =
-      this.combo > 1 ? `${this.combo} COMBO` : "FIND YOUR FLOW";
-    (this.hud.querySelector("[data-detail]") as HTMLElement).textContent =
-      `${this.hits} CLEAN · ${this.misses} MISSED`;
+        : "∞";
+    const comboWrap = q("[data-combo-wrap]");
+    comboWrap.classList.toggle("on", this.combo > 2);
+    const comboEl = q("[data-combo]");
+    if (comboEl.textContent !== String(this.combo)) {
+      comboEl.textContent = String(this.combo);
+      comboWrap.classList.remove("bump");
+      void comboWrap.offsetWidth;
+      comboWrap.classList.add("bump");
+    }
+    q("[data-detail]").textContent = `${this.hits} CLEAN · ${this.misses} MISSED`;
+    const hype = q("[data-hype]");
+    hype.style.setProperty("--hype", String(this.show.hype));
+    const meter = q(".pt-hype");
+    if (meter.dataset.level !== String(this.show.level)) {
+      meter.dataset.level = String(this.show.level);
+      q("[data-level-name]").textContent = this.show.levelName;
+    }
   }
   protected hit(points = 100, text = "ON POINT") {
     this.hits++;
     this.combo++;
     this.bestCombo = Math.max(this.combo, this.bestCombo);
     this.score += points + Math.min(this.combo, 20) * 5;
-    this.judge(text);
+    const quality = Math.max(0, Math.min(1, points / 100));
+    this.show.hit(quality);
+    this.judge(text, true, quality >= 0.95 ? "perfect" : quality >= 0.6 ? "great" : "good");
     sfx.hit(0.7);
   }
   protected miss(text = "KEEP MOVING") {
     this.misses++;
     this.combo = 0;
+    this.show.miss();
     this.judge(text, false);
   }
-  protected judge(text: string, good = true) {
+  protected judge(text: string, good = true, tier: "perfect" | "great" | "good" = "great") {
     this.judgeEl.textContent = text;
+    this.judgeEl.dataset.tier = good ? tier : "miss";
     this.judgeEl.classList.toggle("is-miss", !good);
     this.judgeEl.classList.remove("show");
     void this.judgeEl.offsetWidth;
@@ -318,6 +370,7 @@ export abstract class KineticSession implements Game {
     this.stopped = true;
     cancelAnimationFrame(this.raf);
     clearTimeout(this.judgeTimer);
+    clearTimeout(this.bannerTimer);
     window.removeEventListener("keydown", this.key);
     document.removeEventListener("visibilitychange", this.visibility);
     this.music.stop();

@@ -32,6 +32,8 @@ export class MotionInput {
   constructor(
     readonly tracker: TrackerLike,
     public lowImpact = false,
+    /** Full-body games need the hips in frame; arm games only the shoulders. */
+    readonly requireHips = true,
   ) {}
   reset() {
     this.center = null;
@@ -53,7 +55,9 @@ export class MotionInput {
     const tracked =
       !!lms &&
       age < 240 &&
-      [11, 12, 23, 24].every((i) => (lms[i]?.visibility ?? 0) > 0.45);
+      (this.requireHips ? [11, 12, 23, 24] : [11, 12]).every(
+        (i) => (lms[i]?.visibility ?? 0) > 0.45,
+      );
     this.state = {
       ...this.state,
       tracked,
