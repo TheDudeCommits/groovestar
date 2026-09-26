@@ -44,11 +44,11 @@ try {
     note: "Missing title validation reached; no paid generation called",
   });
   await page.locator('[data-game="dance"]').click();
-  await page.waitForSelector(".classic-tile");
-  report.checks.push({
-    view: "Dance Classics",
-    count: await page.locator(".classic-tile").count(),
-  });
+  await page.waitForTimeout(1500);
+  const classics = await page.locator(".classic-tile").count();
+  // Routines extracted from third-party game footage must not ship publicly.
+  assert.equal(classics, 0, "Dance Classics must not appear in the public build");
+  report.checks.push({ view: "Dance Classics", count: classics, note: "Removed from the public build" });
   assert.equal(report.errors.length, 0, report.errors.join("\n"));
 } finally {
   await browser.close();
