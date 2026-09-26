@@ -11,6 +11,9 @@ Prepared 5 September 2026. This register covers assets introduced or replaced by
 | 34 `public/sfx/*.mp3` | Original synthesized impulses, tones, sweeps and noise rendered by the same audio script | Every inherited borrowed one-shot has been replaced; filenames retained for compatibility |
 | Barlow Condensed, Manrope, IBM Plex Mono | Versioned `@fontsource` npm packages; local font delivery | SIL Open Font License 1.1, complete notices shipped in `public/licenses/` |
 | Three.js and bundled meshopt decoder | Versioned npm dependency; GLTFLoader / SkeletonUtils / rendering | Three.js MIT notice shipped in `public/licenses/Three-MIT.txt`; decoder's embedded notice retained in its module |
+| `tests/fixtures/motion/*.mp4` (added 27 September 2026) | Five 12-second clips generated with Higgsfield (Kling 3.0), center-cropped to 4:3 and encoded at 640×480 | AI-generated people, not real individuals. QA input for `npm run qa:realmotion` only; not shipped with the game |
+
+Removed 27 September 2026: `public/routines/*.json` (44 indexed Dance Classics plus 2 unindexed files). They were pose-extracted from third-party Just Dance gameplay videos, so they are not distributable. They are archived outside the repository as local test data, and `src/routines.ts` reads `public/routines/` only in development builds. Git history before that date still contains them.
 
 `asset-manifest.json` records current file sizes and SHA-256 hashes for the cast, new music/art, effects and license notices. To regenerate: `node tools/kinetic/asset-manifest.mjs`.
 

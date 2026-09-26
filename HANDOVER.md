@@ -1,3 +1,49 @@
+# GrooveStar · Primetime Phase 0 handover
+
+Updated 27 September 2026. The owner approved the Primetime direction and all six plan decisions, then asked for Phase 0. The work is on branch `primetime/phase-0` (from `main` at `1a88042`). The plan, decisions and phase gates are in [docs/PRIMETIME.md](docs/PRIMETIME.md). The Kinetic Broadcast handover below still describes the Production release.
+
+## What Phase 0 changed
+
+| Area | Change | Files |
+| --- | --- | --- |
+| IP cleanup | The 44 routines extracted from Just Dance gameplay videos (plus 2 unindexed files) were removed from the repository and archived outside it as local test data. `public/routines/` is gitignored, and the loader reads it only in development builds. The Dance Classics rows hide themselves when no index is found. | `src/routines.ts`, `.gitignore`, `tools/extract_jd/README.md`, `docs/ASSET_PROVENANCE.md` |
+| Pose inference | MediaPipe runs in a module Web Worker; the page transfers one `ImageBitmap` per new camera frame. The old main-thread path remains as an automatic fallback, including mid-session. `localStorage['gs-pose-main']='1'` forces the old path for A/B checks. The WASM is now pinned to the installed tasks-vision 0.10.35; before, it loaded 0.10.14 WASM under 0.10.35 JS. | `src/pose/pose-worker.ts`, `src/pose/engine.ts`, `src/pose/pose-protocol.ts`, `src/pose/tracker.ts`, `vite.config.ts` |
+| Model preload | The pose model downloads and compiles in the background about a second after the home screen loads (skipped on demo and capture routes). Setup shows real download progress. | `src/main.ts`, `src/kinetic/setup.ts` |
+| Setup | The 4 to 7 step practice checklist is replaced by one calibration pose: step into the frame, raise both hands. A hand raised past the top edge counts when its elbow is up. "Start anyway" appears after 5 seconds. `MotionInput` already recalibrates on each round's first tracked frame, so nothing functional was lost. Game tips replace the practice steps. | `src/kinetic/setup.ts`, `src/kinetic/core/setup-pose.ts`, `src/kinetic/kinetic.css` |
+| Dance | No legacy disco tiles under the 3D dancer. The painted slogan and "01" that collided with lyrics and the star meter are gone. The coach is larger. Pictograms in the 3D renderer are 30% larger, on cards, with the strip moved clear of the dancer. Untracked limbs hold for 350 ms, then ease into a relaxed stance instead of the bind pose, and the avatar stays on stage through short tracking gaps. | `src/main.ts`, `src/kinetic/render/dance.ts`, `src/kinetic/render/character.ts`, `src/ui/hud.ts` |
+| Beat Blade | 1-pixel line trails replaced by tapered ribbon trails that restart after a tracking jump. The decorative light strips that crossed the note corridor now sit outside the arches. | `src/kinetic/render/trail.ts`, `src/kinetic/games/blade.ts`, `src/kinetic/render/worlds.ts` |
+| Draw calls | Pins are one vertex-colored mesh each; alley, court and racket set dressing is batched with shared materials. Demo draw calls: Bowling 228 to 42, Tennis 202 to 38. | `src/kinetic/render/sports.ts` |
+| Audio | Pausing after the soundtrack stopped no longer throws "Cannot suspend a closed AudioContext". The real-motion suite surfaced this in Rush. | `src/kinetic/core/music.ts` |
+| Any Song search | One retry, an 8-second timeout, a consent cookie for EU regions, logging of the network error cause, and a friendlier 502 message. Production search already returned 200 when checked on 26 September at 18:42 UTC, so the handover's 502s were transient. | `api/search.ts` |
+| Real-motion QA | `npm run qa:realmotion` plays every game with a recorded body: five fixture clips are served to Chrome as the webcam. It checks setup pose recognition, tracking share, worker inference, frame pacing and page errors, and writes `docs/qa/realmotion-report.json`. Needs local Chrome, ffmpeg and the dev server on port 5179. | `tools/kinetic/realmotion.mjs`, `tests/fixtures/motion/`, `package.json` |
+| Tests and diagnostics | Six new unit tests (setup pose, ribbon reset, routine gate, pin draw call). `window.gsKinetic.inference` reports the inference mode and cost. | `tests/phase0.test.ts`, `src/kinetic/core/session.ts` |
+
+## Phase 0 verification
+
+Run on 27 September 2026 on an M1 Pro MacBook shared with other simulator sessions (load average 9 to 25 during the runs; far higher earlier in the day).
+
+- `npm test`: 28 of 28 pass (22 existing, 6 new).
+- `npm run build`: TypeScript and Vite pass. The worker ships as its own ES module chunk (`pose-worker-*.js`); the existing chunk-size warnings remain.
+- `npm run qa:kinetic`: the seven-game smoke passes. Demo draw calls: Blade 81, Boxing 40, Rush 80, Tennis 44, Bowling 44. All at 16.7 to 16.8 ms frame p95.
+- `npm run qa:recovery`: passes. Camera denial still waits for an explicit demo choice.
+- `npm run qa:realmotion` on the dev server: 7 of 7 games pass. The camera went live 1.6 to 4.7 s after pressing Play, with the model preloaded on the home screen. Inference ran in the worker at 16 to 21 ms per frame, and frame p95 was 16.7 to 16.8 ms in every 3D game. The setup pose was recognized 1.2 to 8 s after the camera went live; the longer waits happen when a clip's pose had already passed and the 12-second clip had to loop. Warnings: the Blade and Tennis fixtures scored no hits, since their movement is not choreographed to the charts. Report: `docs/qa/realmotion-report.json`.
+- Production build (`vite preview`): Dance and Boxing real-motion runs pass, with Boxing in worker mode.
+- Worker versus main thread, Beat Blade with the same fixture, frames over 20 ms: at full CPU speed, 0.9% (worker) and 0.3% (main), both 60 fps. With Chrome CPU throttling at 3×, standing in for a slower laptop, 0.3% (worker, p99 16.8 ms) and 21.7% (main, p99 50 ms).
+
+## Still open after Phase 0
+
+- Physical webcam and phone acceptance. The fixtures are generated video; a real player on real hardware has not played this branch.
+- The worker path was exercised in Chrome only. Safari and Firefox fall back to the main thread automatically if module workers or OffscreenCanvas fail, but neither was tested.
+- `qa:realmotion` is not in CI (the repository has no CI). It needs Chrome, ffmpeg and a dev server.
+- Git history before 27 September 2026 still contains the extracted routines. Removing them from history needs a force-push, which the owner has not requested.
+- Phase 1 (Dance Main Stage) is next; see [docs/PRIMETIME.md](docs/PRIMETIME.md).
+
+## Continuing
+
+Read this section and [docs/PRIMETIME.md](docs/PRIMETIME.md). Continue from `primetime/phase-0`, or from `main` once it is merged. Phase 1 builds the Dance Main Stage slice: the Primetime render kit, Show Director, Hype levels, Nova 2.0 from the Meshy model, better retargeting, venue kit and feedback effects. Keep `npm test`, `npm run qa:kinetic` and `npm run qa:realmotion` green, and never reintroduce extracted third-party routines into `public/`. Pushes to `main` deploy Production; use branch previews for review.
+
+---
+
 # GrooveStar · Kinetic Broadcast handover
 
 Updated 27 September 2026 (Asia/Bangkok). The owner selected **Kinetic Broadcast**, authorized the overhaul, and explicitly requested pushing and deploying all latest changes. The overhaul is now merged into `main` and deployed to Production. Physical camera, real-network and owner visual/music acceptance remain open; deployment does not establish those checks.

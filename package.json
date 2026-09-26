@@ -14,7 +14,8 @@
     "assets:art": "node tools/kinetic/capture-artwork.mjs",
     "qa:motion": "node tools/kinetic/motion-check.mjs",
     "qa:rounds": "node tools/kinetic/rounds.mjs",
-    "qa:recovery": "node tools/kinetic/recovery.mjs"
+    "qa:recovery": "node tools/kinetic/recovery.mjs",
+    "qa:realmotion": "node tools/kinetic/realmotion.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.120.0",
