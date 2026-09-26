@@ -60,9 +60,9 @@ export class DancePresentation {
       this.stage.key.target.position.set(0, 1, 0);
     }
     this.stage.scene.add(this.player.group, this.coach.group);
-    this.coach.group.scale.setScalar(0.82);
-    this.coach.group.position.set(2.75, 0.12, -0.9);
-    this.coach.groundY = 0.12;
+    this.coach.group.scale.setScalar(0.95);
+    this.coach.group.position.set(3.7, 0.67, -3.3);
+    this.coach.groundY = 0.67;
     this.judgeEl.className = "pt-judgment pt-dance-judgment";
     this.bannerEl.className = "pt-level-banner";
     this.host.append(this.judgeEl, this.bannerEl);

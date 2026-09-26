@@ -114,10 +114,10 @@ export function danceVenue(stage: Stage, show: ShowDirector, o: { crowdFront?: b
 
   // Hologram pedestal for the coach, stage right.
   const pedestal = new T.Group();
-  pedestal.position.set(2.75, 0, -0.9);
+  pedestal.position.set(3.7, 0.55, -3.3);
   root.add(pedestal);
-  const pedTop = new T.Mesh(new T.CylinderGeometry(0.62, 0.7, 0.12, 48), new T.MeshStandardMaterial({ color: 0x0e1030, roughness: 0.3, metalness: 0.8 }));
-  pedTop.position.y = 0.06;
+  const pedTop = new T.Mesh(new T.CylinderGeometry(0.62, 0.8, 0.12 + 0.55, 48), new T.MeshStandardMaterial({ color: 0x0e1030, roughness: 0.3, metalness: 0.8 }));
+  pedTop.position.y = 0.06 - 0.275;
   pedestal.add(pedTop);
   const pedRing = new T.Mesh(new T.TorusGeometry(0.64, 0.02, 8, 64), neon(PT.cyan, 2.4));
   pedRing.rotation.x = -Math.PI / 2;

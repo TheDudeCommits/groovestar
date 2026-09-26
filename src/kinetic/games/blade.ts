@@ -132,7 +132,7 @@ export class KineticBlade extends KineticSession {
       const flare = new T.PointLight(col, 2.2, 3);
       flare.position.y = 0.5;
       g.add(flare);
-      const trail = new RibbonTrail(col.clone().multiplyScalar(1.5), 18);
+      const trail = new RibbonTrail(col.clone().multiplyScalar(0.85), 13);
       this.stage.scene.add(trail.mesh);
       return { g, previous: null, trail, glow, tip };
     };

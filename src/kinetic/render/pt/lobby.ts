@@ -13,7 +13,7 @@ export type LobbyShot = "home" | "result" | "cast";
  * lights, lasers and confetti keep the menu alive.
  */
 export function lobbyScene(host: HTMLElement, shot: LobbyShot = "home") {
-  const stage = new Stage(host, { primetime: { fog: 0x120826, fogDensity: 0.022, bloom: 0.6, bloomThreshold: 0.84, vignette: 0.62 } });
+  const stage = new Stage(host, { primetime: { fog: 0x120826, fogDensity: 0.022, bloom: 0.55, bloomThreshold: 0.9, vignette: 0.62, key: 1.7 } });
   const reduced = settings().reducedMotion;
   const show = new ShowDirector(reduced);
   const venue = danceVenue(stage, show, { crowdFront: false });
@@ -35,8 +35,8 @@ export function lobbyScene(host: HTMLElement, shot: LobbyShot = "home") {
       cam.position.set(narrow() ? 0 : 2.2, 1.5, 5.8);
       cam.lookAt(narrow() ? 0 : 1.55, 1.35, 0);
     } else {
-      cam.position.set(0, 1.12, 3.4);
-      cam.lookAt(0, 1.0, 0);
+      cam.position.set(0, 1.0, 2.7);
+      cam.lookAt(0, 0.95, 0);
     }
   };
   frame();
