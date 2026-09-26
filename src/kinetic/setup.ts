@@ -35,8 +35,9 @@ export async function prepareSession(
       ? "Step left and right to change lanes, raise a knee or reach up to clear hurdles, dip slightly under bars."
       : TIPS[id];
   const panel = document.createElement("div");
-  panel.className = "overlay k-setup";
-  panel.innerHTML = `<button data-back>← BACK TO ${gameDef(id).title.toUpperCase()}</button><div class="k-setup-layout"><div><span class="k-eyebrow">MAKE ROOM FOR YOURSELF</span><h1>Strike your<br><em>star pose.</em></h1><p>Place your camera at about chest height. Step back until your ${id === "rush" ? "whole body fits" : "hips and hands fit"} the frame, then raise both hands above your head.</p><ol><li data-step="0">Step into the frame</li><li data-step="1">Raise both hands</li></ol><p class="k-setup-tip"><b>HOW TO PLAY</b>${tip}</p><p data-status aria-live="polite">Loading motion tracking…</p><div class="k-setup-progress" data-progress><i></i></div><div class="k-setup-actions"><button data-anyway class="k-secondary" hidden>START ANYWAY ↗</button></div><div data-fail hidden><button data-demo class="k-primary">WATCH DEMO ↗</button><p>Camera access is needed to track your movement.</p></div></div><div class="k-camera-frame"><canvas width="640" height="480"></canvas><div class="k-framing-outline"></div><span>YOUR CAMERA · YOUR MOVEMENT</span></div></div>`;
+  const title = gameDef(id).title;
+  panel.className = "overlay pt-setup";
+  panel.innerHTML = `<div class="pt-setup-bg" aria-hidden="true"><img src="/kinetic/pt/card-${id}.webp" alt=""></div><button data-back class="pt-back">← BACK TO ${title.toUpperCase()}</button><div class="pt-setup-layout"><div class="pt-setup-copy"><span class="pt-eyebrow">GET READY · ${title.toUpperCase()}</span><h1 class="pt-title">STRIKE YOUR<br>STAR POSE</h1><p>Place your camera at about chest height. Step back until your ${id === "rush" ? "whole body fits" : id === "dance" || id === "bowl" ? "hips and hands fit" : "shoulders and hands fit"} the frame, then raise both hands above your head.</p><ol class="pt-steps"><li data-step="0"><b>1</b><span>Step into the frame</span></li><li data-step="1"><b>2</b><span>Raise both hands</span></li></ol><div class="pt-howto"><span class="pt-eyebrow">HOW TO PLAY</span><p>${tip}</p></div><p data-status class="pt-setup-status" aria-live="polite">Loading motion tracking…</p><div class="pt-progress" data-progress><i></i></div><div class="pt-setup-actions"><button data-anyway class="pt-btn" hidden><span>START ANYWAY</span></button></div><div data-fail class="pt-setup-fail" hidden><button data-demo class="pt-btn pt-btn-gold"><span>WATCH DEMO</span></button><p>Camera access is needed to track your movement.</p></div></div><div class="pt-camera"><canvas width="640" height="480"></canvas><div class="pt-camera-guide" aria-hidden="true"></div><span class="pt-camera-tag"><i></i>LIVE CAMERA</span></div></div>`;
   document.getElementById("app")!.appendChild(panel);
   const status = panel.querySelector("[data-status]")!;
   const progress = panel.querySelector<HTMLElement>("[data-progress]")!;
@@ -151,8 +152,11 @@ export async function prepareSession(
     } catch {}
     ctx.restore();
     if (lms) {
-      ctx.strokeStyle = "#d7ef70";
-      ctx.lineWidth = 3;
+      ctx.strokeStyle = "#3fe0ff";
+      ctx.shadowColor = "#3fe0ff";
+      ctx.shadowBlur = 12;
+      ctx.lineCap = "round";
+      ctx.lineWidth = 5;
       for (const [a, b] of [
         [11, 13],
         [13, 15],
@@ -174,6 +178,14 @@ export async function prepareSession(
         ctx.lineTo((1 - lms[b].x) * cw, lms[b].y * ch);
         ctx.stroke();
       }
+      ctx.shadowBlur = 0;
+      ctx.fillStyle = "#ff3fb4";
+      for (const i of [15, 16]) {
+        if ((lms[i]?.visibility ?? 0) < 0.5) continue;
+        ctx.beginPath();
+        ctx.arc((1 - lms[i].x) * cw, lms[i].y * ch, 9, 0, Math.PI * 2);
+        ctx.fill();
+      }
     }
     if (!state.tracked || !lms) {
       status.textContent = "Step into the frame.";
@@ -182,7 +194,7 @@ export async function prepareSession(
     }
     const visible = bodyInFrame(lms, gameDef(id).required);
     if (!visible) {
-      status.textContent = `Step back so your ${id === "rush" ? "feet, hips and hands" : "hips and hands"} are in frame.`;
+      status.textContent = `Step back so your ${id === "rush" ? "feet, hips and hands" : id === "dance" || id === "bowl" ? "hips and hands" : "shoulders and hands"} are in frame.`;
       held = 0;
       return;
     }
@@ -198,6 +210,7 @@ export async function prepareSession(
     }
     const pose = starPose(lms);
     status.textContent = pose ? "Hold it…" : "Raise both hands above your head.";
+    panel.classList.toggle("is-posing", pose);
     held = pose ? held + Math.max(dt, 25) : 0;
     if (held > 350) begin();
   };

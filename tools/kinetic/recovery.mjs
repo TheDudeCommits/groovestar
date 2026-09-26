@@ -81,7 +81,7 @@ try {
   await page.waitForSelector(".k-canvas-controls", { timeout: 15000 });
   await page.getByRole("button", { name: "Pause game" }).click();
   await page.getByRole("button", { name: "Back to game", exact: true }).click();
-  await page.waitForSelector(".k-detail");
+  await page.waitForSelector(".pt-detail");
   checks.push(
     "Classic renderer uses cover fallback; Fruit pause exit returns to game home",
   );

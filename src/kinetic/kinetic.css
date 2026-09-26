@@ -804,57 +804,57 @@ button {
   margin-top: 25px;
 }
 /* Integrate existing Dance, lobbies and phone-camera surfaces into the approved identity. */
-.overlay.menu:not(.k-shell) {
+.overlay.menu:not(.k-shell):not(.pt-shell) {
   background: var(--paper);
   color: var(--ink);
   padding: 45px 6%;
   align-items: flex-start;
   gap: 26px;
 }
-.overlay.menu:not(.k-shell) .logo {
+.overlay.menu:not(.k-shell):not(.pt-shell) .logo {
   font: 800 65px var(--display);
   color: var(--ink);
   text-shadow: none;
   transform: none;
 }
-.overlay.menu:not(.k-shell) .logo span {
+.overlay.menu:not(.k-shell):not(.pt-shell) .logo span {
   color: var(--coral);
 }
-.overlay.menu:not(.k-shell) .yt-title {
+.overlay.menu:not(.k-shell):not(.pt-shell) .yt-title {
   color: var(--ink);
   font: 11px var(--mono);
 }
-.overlay.menu:not(.k-shell) .song-title {
+.overlay.menu:not(.k-shell):not(.pt-shell) .song-title {
   color: var(--ink);
   font: 600 22px var(--display);
 }
-.overlay.menu:not(.k-shell) .song-artist,
-.overlay.menu:not(.k-shell) .song-diff {
+.overlay.menu:not(.k-shell):not(.pt-shell) .song-artist,
+.overlay.menu:not(.k-shell):not(.pt-shell) .song-diff {
   color: #676b60;
 }
-.overlay.menu:not(.k-shell) button {
+.overlay.menu:not(.k-shell):not(.pt-shell) button {
   color: var(--ink);
 }
-.overlay.menu:not(.k-shell) input {
+.overlay.menu:not(.k-shell):not(.pt-shell) input {
   color: var(--ink);
   border-color: var(--line);
 }
-.overlay.menu:not(.k-shell) .calib-btn {
+.overlay.menu:not(.k-shell):not(.pt-shell) .calib-btn {
   background: #dfdfd5;
   color: var(--ink);
   border-radius: 0;
 }
-.overlay.menu:not(.k-shell) .yt-panel {
+.overlay.menu:not(.k-shell):not(.pt-shell) .yt-panel {
   margin: 0;
   width: 100%;
 }
-.overlay.menu:not(.k-shell) .classics-panel {
+.overlay.menu:not(.k-shell):not(.pt-shell) .classics-panel {
   width: 100%;
 }
-.overlay.menu:not(.k-shell) .classics-row {
+.overlay.menu:not(.k-shell):not(.pt-shell) .classics-row {
   scrollbar-color: #9c9e90 transparent;
 }
-.overlay.menu:not(.k-shell) .menu-foot {
+.overlay.menu:not(.k-shell):not(.pt-shell) .menu-foot {
   margin: 0;
 }
 .lobby,
@@ -1169,10 +1169,10 @@ button {
   .k-pause h2 {
     font-size: 40px;
   }
-  .overlay.menu:not(.k-shell) {
+  .overlay.menu:not(.k-shell):not(.pt-shell) {
     padding: 25px 6%;
   }
-  .overlay.menu:not(.k-shell) .logo {
+  .overlay.menu:not(.k-shell):not(.pt-shell) .logo {
     font-size: 48px;
   }
 }

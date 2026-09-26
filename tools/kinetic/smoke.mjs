@@ -17,16 +17,16 @@ try {
       JSON.parse(await readFile(process.env.GROOVESTAR_QA_SHARE_FILE, "utf8")),
     );
   await page.goto(origin);
-  await page.waitForSelector(".k-game-tile");
+  await page.waitForSelector(".pt-card");
   await page.waitForLoadState("networkidle");
-  assert.equal(await page.locator(".k-game-tile").count(), 7);
+  assert.equal(await page.locator(".pt-card").count(), 7);
   await page.screenshot({
     path: "output/playwright/home-desktop.png",
     fullPage: true,
   });
   await page.getByRole("button", { name: "THE CREW", exact: true }).click();
   await page.waitForFunction(() =>
-    Array.from(document.querySelectorAll(".k-cast-grid img")).every(
+    Array.from(document.querySelectorAll(".pt-cast-grid img")).every(
       (i) => i.complete && i.naturalWidth > 0,
     ),
   );
@@ -66,7 +66,7 @@ try {
     await page
       .getByRole("button", { name: "Back to game", exact: true })
       .click();
-    await page.waitForSelector(".k-detail");
+    await page.waitForSelector(".pt-detail");
     assert.equal(await page.locator(".kinetic-game").count(), 0);
     console.log(
       "Smoke",
@@ -83,7 +83,7 @@ try {
   await page.screenshot({ path: "output/playwright/game-dance.png" });
   await page.getByRole("button", { name: "Pause game" }).click();
   await page.getByRole("button", { name: "Back to game", exact: true }).click();
-  await page.waitForSelector(".k-dance-intro");
+  await page.waitForSelector(".pt-dance-hero");
   await page.screenshot({
     path: "output/playwright/dance-home.png",
     fullPage: true,
@@ -103,12 +103,12 @@ try {
   });
   assert.ok(
     await page.evaluate(
-      () => document.querySelector(".k-shell").scrollWidth <= innerWidth + 1,
+      () => document.querySelector(".pt-shell").scrollWidth <= innerWidth + 1,
     ),
   );
   await page.getByRole("button", { name: "THE CREW", exact: true }).click();
   await page.waitForFunction(() =>
-    Array.from(document.querySelectorAll(".k-cast-grid img")).every(
+    Array.from(document.querySelectorAll(".pt-cast-grid img")).every(
       (i) => i.complete && i.naturalWidth > 0,
     ),
   );

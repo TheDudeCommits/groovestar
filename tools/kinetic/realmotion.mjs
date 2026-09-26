@@ -71,7 +71,7 @@ async function runCase(c) {
     page.on("pageerror", (e) => errors.push(e.message));
     if (shareUrl) await page.goto(shareUrl, { waitUntil: "domcontentloaded", timeout: 120_000 });
     await page.goto(origin, { waitUntil: "domcontentloaded", timeout: 120_000 });
-    await page.waitForSelector(".k-game-tile");
+    await page.waitForSelector(".pt-card");
     await page.locator(`[data-game="${c.game}"]`).first().click();
     if (c.game === "dance") await page.getByRole("button", { name: /PLAY AN ORIGINAL ROUTINE/i }).click();
     else await page.locator("[data-play]").first().click();
@@ -82,7 +82,7 @@ async function runCase(c) {
       last = "";
     const statuses = [];
     for (;;) {
-      const status = await page.evaluate(() => document.querySelector(".k-setup [data-status]")?.textContent ?? null);
+      const status = await page.evaluate(() => document.querySelector(".pt-setup [data-status]")?.textContent ?? null);
       if (status === null) break;
       if (status !== last) {
         statuses.push([Date.now() - t0, status]);
@@ -106,7 +106,7 @@ async function runCase(c) {
       result.errors = errors;
       return result;
     }
-    await page.waitForFunction(() => !document.querySelector(".k-setup"), null, { timeout: 10_000 });
+    await page.waitForFunction(() => !document.querySelector(".pt-setup"), null, { timeout: 10_000 });
 
     await page.evaluate(() => {
       const w = window;

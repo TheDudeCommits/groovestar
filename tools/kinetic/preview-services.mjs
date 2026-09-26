@@ -15,7 +15,7 @@ try {
       JSON.parse(await readFile(process.env.GROOVESTAR_QA_SHARE_FILE, "utf8")),
     );
   await page.goto(origin);
-  await page.waitForSelector(".k-game-tile");
+  await page.waitForSelector(".pt-card");
   const ice = await page.evaluate(async () => {
     const r = await fetch("/api/ice");
     const d = await r.json();
