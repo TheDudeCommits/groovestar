@@ -3,7 +3,25 @@ import { settings, announce } from "./core/settings";
 import { MotionInput } from "./core/input";
 import type { TrackerLike } from "../games/shared";
 import { saveBodyScale } from "../pose/rig";
-/** Framing and game-specific movement practice. No timeout grants a scored start. */
+import { poseEngine } from "../pose/engine";
+import { bodyInFrame, starPose } from "./core/setup-pose";
+
+const TIPS: Record<GameId, string> = {
+  dance: "Mirror the dancer on stage. Big, confident moves score best.",
+  blade: "Swing through each block in the direction of its arrow. Left hand blue, right hand coral.",
+  box: "Keep your guard up. Punch toward the camera when a pad lights, then return to guard.",
+  rush: "Step left and right to change lanes, rise to clear hurdles and duck under bars.",
+  fruit: "Slice the fruit with fast hand sweeps. Leave the bombs alone.",
+  tennis: "Swing a hand through the ball as it reaches you.",
+  bowl: "Lower your bowling hand, then swing forward and up to release.",
+};
+
+/**
+ * Camera framing and one calibration pose: step into the frame, raise both
+ * hands. MotionInput recalibrates lanes, rise and duck on the first tracked
+ * frame of every round, so nothing else needs practice here. Only the
+ * player's explicit "Start anyway" skips the pose; no timeout starts a round.
+ */
 export async function prepareSession(
   id: GameId,
   demo: boolean,
@@ -12,49 +30,36 @@ export async function prepareSession(
 ): Promise<boolean | null> {
   if (demo) return false;
   const config = settings();
-  const practice =
-    id === "rush"
-      ? [
-          "Step to each side",
-          config.lowImpact
-            ? "Raise a knee or reach upward"
-            : "Rise to clear a hurdle",
-          "Make a comfortable duck",
-        ]
-      : id === "box"
-        ? [
-            "Bring both hands to guard",
-            "Punch left toward the camera",
-            "Return to guard",
-            "Punch right toward the camera",
-          ]
-        : id === "bowl"
-          ? ["Lower your bowling hand", "Swing forward and upward"]
-          : id === "blade"
-            ? [
-                "Reach both hands apart",
-                "Sweep a hand sideways",
-                "Sweep a hand downward",
-              ]
-            : ["Reach both hands comfortably apart"];
-  const labels = [
-    "Find your standing position",
-    "Raise your left hand",
-    "Raise your right hand",
-    ...practice,
-  ];
+  const tip =
+    id === "rush" && config.lowImpact
+      ? "Step left and right to change lanes, raise a knee or reach up to clear hurdles, dip slightly under bars."
+      : TIPS[id];
   const panel = document.createElement("div");
   panel.className = "overlay k-setup";
-  panel.innerHTML = `<button data-back>← BACK TO ${gameDef(id).title.toUpperCase()}</button><div class="k-setup-layout"><div><span class="k-eyebrow">MAKE ROOM FOR YOURSELF</span><h1>Let’s find<br><em>your frame.</em></h1><p>Place your camera at about chest height.<br>Keep your movement comfortable and your ${id === "rush" ? "whole body" : "hips and hands"} in view.</p><ol>${labels.map((label, i) => `<li data-step="${i}">${label}</li>`).join("")}</ol><p data-status aria-live="polite">Connecting your camera…</p><div data-fail hidden><button data-demo class="k-primary">WATCH DEMO ↗</button><p>Camera access is needed to track your movement.</p></div></div><div class="k-camera-frame"><canvas width="640" height="480"></canvas><div class="k-framing-outline"></div><span>YOUR CAMERA · YOUR MOVEMENT</span></div></div>`;
+  panel.innerHTML = `<button data-back>← BACK TO ${gameDef(id).title.toUpperCase()}</button><div class="k-setup-layout"><div><span class="k-eyebrow">MAKE ROOM FOR YOURSELF</span><h1>Strike your<br><em>star pose.</em></h1><p>Place your camera at about chest height. Step back until your ${id === "rush" ? "whole body fits" : "hips and hands fit"} the frame, then raise both hands above your head.</p><ol><li data-step="0">Step into the frame</li><li data-step="1">Raise both hands</li></ol><p class="k-setup-tip"><b>HOW TO PLAY</b>${tip}</p><p data-status aria-live="polite">Loading motion tracking…</p><div class="k-setup-progress" data-progress><i></i></div><div class="k-setup-actions"><button data-anyway class="k-secondary" hidden>START ANYWAY ↗</button></div><div data-fail hidden><button data-demo class="k-primary">WATCH DEMO ↗</button><p>Camera access is needed to track your movement.</p></div></div><div class="k-camera-frame"><canvas width="640" height="480"></canvas><div class="k-framing-outline"></div><span>YOUR CAMERA · YOUR MOVEMENT</span></div></div>`;
   document.getElementById("app")!.appendChild(panel);
   const status = panel.querySelector("[data-status]")!;
+  const progress = panel.querySelector<HTMLElement>("[data-progress]")!;
+  const anyway = panel.querySelector<HTMLButtonElement>("[data-anyway]")!;
   let alive = true,
     raf = 0,
+    counting = false,
     resolve!: (v: boolean | null) => void;
   const result = new Promise<boolean | null>((r) => (resolve = r));
+  const unsubscribe = poseEngine.subscribe((s) => {
+    if (!alive || counting) return;
+    if (s.stage === "download") {
+      status.textContent = `Loading motion tracking · ${Math.round(s.progress * 100)}%`;
+      progress.style.setProperty("--p", String(s.progress));
+    } else if (s.stage === "compile") {
+      status.textContent = "Preparing motion tracking…";
+      progress.style.setProperty("--p", "1");
+    }
+  });
   const done = (v: boolean | null) => {
     if (!alive) return;
     alive = false;
+    unsubscribe();
     cancelAnimationFrame(raf);
     panel.remove();
     resolve(v);
@@ -70,31 +75,40 @@ export async function prepareSession(
     ok = await init();
   } catch {}
   if (!alive) return result;
+  progress.hidden = true;
   if (!ok) {
     status.textContent = "We could not start the camera.";
     (panel.querySelector("[data-fail]") as HTMLElement).hidden = false;
     return result;
   }
+  status.textContent = "Step into the frame.";
+  announce("Step into the frame, then raise both hands.");
   const tr = tracker(),
     motion = new MotionInput(tr, config.lowImpact),
     rig = motion.rig,
     cv = panel.querySelector("canvas")!,
     ctx = cv.getContext("2d")!;
+  const cameraReady = performance.now();
   let step = 0,
     held = 0,
-    last = performance.now(),
-    seenL = false,
-    seenR = false;
-  let center: number | null = null;
-  const advance = () => {
-    step++;
+    last = performance.now();
+  const setStep = (n: number) => {
+    step = n;
     held = 0;
-    if (step < labels.length) {
-      announce(labels[step]);
-      return;
-    }
-    saveBodyScale({ shoulderW: rig.shoulderW, torso: rig.torso });
+    panel.querySelectorAll("[data-step]").forEach((el, i) => {
+      el.classList.toggle("done", i < step);
+      el.classList.toggle("active", i === step);
+    });
+  };
+  setStep(0);
+  const begin = () => {
+    if (counting || !alive) return;
+    counting = true;
+    anyway.hidden = true;
+    if (rig.shoulderW > 0 && rig.torso > 0)
+      saveBodyScale({ shoulderW: rig.shoulderW, torso: rig.torso });
     cancelAnimationFrame(raf);
+    setStep(2);
     status.textContent = "READY. 3";
     announce("Ready. Three, two, one.");
     let count = 3;
@@ -111,8 +125,9 @@ export async function prepareSession(
       }
     }, 700);
   };
+  anyway.addEventListener("click", begin);
   const loop = () => {
-    if (!alive) return;
+    if (!alive || counting) return;
     if (!panel.isConnected) {
       done(null);
       return;
@@ -121,6 +136,7 @@ export async function prepareSession(
     const now = performance.now(),
       dt = Math.min(80, now - last);
     last = now;
+    if (now - cameraReady > 5000) anyway.hidden = false;
     const state = motion.update(now),
       lms = tr.latestLandmarks;
     const cw = 640,
@@ -159,81 +175,31 @@ export async function prepareSession(
         ctx.stroke();
       }
     }
-    const visible =
-      state.tracked &&
-      !!lms &&
-      gameDef(id).required.every(
-        (i) =>
-          (lms[i]?.visibility ?? 0) > 0.5 &&
-          lms[i].x > 0.025 &&
-          lms[i].x < 0.975 &&
-          lms[i].y > 0.01 &&
-          lms[i].y < 0.98,
-      );
+    if (!state.tracked || !lms) {
+      status.textContent = "Step into the frame.";
+      held = 0;
+      return;
+    }
+    const visible = bodyInFrame(lms, gameDef(id).required);
     if (!visible) {
       status.textContent = `Step back so your ${id === "rush" ? "feet, hips and hands" : "hips and hands"} are in frame.`;
       held = 0;
       return;
     }
     if (!state.fresh) return;
-    const hip = rig.hips()!,
-      l = rig.hand("L")!,
-      r = rig.hand("R")!,
-      sl = rig.joint("shL")!,
-      sr = rig.joint("shR")!;
-    center ??= hip.x;
-    const raisedL = l.y < sl.y - rig.torso * 0.28,
-      raisedR = r.y < sr.y - rig.torso * 0.28,
-      spread =
-        Math.abs(l.x - r.x) * (tr.aspect ?? 4 / 3) > rig.shoulderW * 1.65;
-    const displacement =
-      ((hip.x - center) * (tr.aspect ?? 4 / 3)) / Math.max(0.06, rig.shoulderW);
-    seenL ||= displacement < -0.28;
-    seenR ||= displacement > 0.28;
-    const guard =
-      l.y < hip.y - rig.torso * 0.25 &&
-      r.y < hip.y - rig.torso * 0.25 &&
-      l.rel < 1 &&
-      r.rel < 1;
-    const punch = (h: typeof l) =>
-      h.zVel !== null ? h.zVel > 0.25 : h.rel > 1.6;
-    let valid =
-        step === 0 ? true : step === 1 ? raisedL : step === 2 ? raisedR : false,
-      instant = false;
-    if (step >= 3) {
-      const index = step - 3;
-      if (id === "rush") {
-        valid =
-          index === 0 ? seenL && seenR : index === 1 ? state.rise : state.duck;
-        instant = index === 1;
-      } else if (id === "box") {
-        valid = index === 0 || index === 2 ? guard : punch(index === 1 ? l : r);
-        instant = index === 1 || index === 3;
-      } else if (id === "bowl") {
-        valid =
-          index === 0
-            ? l.y > hip.y || r.y > hip.y
-            : [l, r].some((h) => h.vy < -0.06 && h.rel > 1.2);
-        instant = index === 1;
-      } else if (id === "blade") {
-        valid =
-          index === 0
-            ? spread
-            : index === 1
-              ? [l, r].some(
-                  (h) => Math.abs(h.vx) > Math.abs(h.vy) && h.rel > 1.2,
-                )
-              : [l, r].some((h) => h.vy > Math.abs(h.vx) * 0.5 && h.rel > 1.2);
-        instant = index > 0;
-      } else valid = spread;
+    if (step === 0) {
+      held += Math.max(dt, 25);
+      status.textContent = "Step into the frame.";
+      if (held > 300) {
+        setStep(1);
+        announce("Raise both hands.");
+      }
+      return;
     }
-    status.textContent = labels[step] + ".";
-    panel.querySelectorAll("[data-step]").forEach((el, i) => {
-      el.classList.toggle("done", i < step);
-      el.classList.toggle("active", i === step);
-    });
-    held = valid ? held + Math.max(dt, 25) : 0;
-    if (valid && (instant || held > 500)) advance();
+    const pose = starPose(lms);
+    status.textContent = pose ? "Hold it…" : "Raise both hands above your head.";
+    held = pose ? held + Math.max(dt, 25) : 0;
+    if (held > 350) begin();
   };
   loop();
   return result;
