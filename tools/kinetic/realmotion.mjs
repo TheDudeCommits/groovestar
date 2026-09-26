@@ -6,15 +6,21 @@
 //   npm run qa:realmotion                      # all games
 //   GROOVESTAR_QA_GAMES=blade,box npm run qa:realmotion
 //
+// For a protected Vercel preview, set GROOVESTAR_QA_URL to the deployment and
+// GROOVESTAR_QA_SHARE_FILE to a JSON file holding a share link (as smoke.mjs).
+//
 // Needs local Chrome and ffmpeg (fixtures are converted to .y4m once, in the
 // OS temp folder). Fixture clips: tests/fixtures/motion/README.md.
 import { chromium } from "playwright-core";
-import { mkdir, writeFile, stat } from "node:fs/promises";
+import { mkdir, writeFile, stat, readFile } from "node:fs/promises";
 import { execFileSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 const origin = process.env.GROOVESTAR_QA_URL ?? "http://127.0.0.1:5179";
+const shareUrl = process.env.GROOVESTAR_QA_SHARE_FILE
+  ? JSON.parse(await readFile(process.env.GROOVESTAR_QA_SHARE_FILE, "utf8"))
+  : null;
 const only = process.env.GROOVESTAR_QA_GAMES?.split(",").map((s) => s.trim());
 const CASES = [
   { game: "dance", clip: "dance", seconds: 20 },
@@ -63,6 +69,7 @@ async function runCase(c) {
     const page = await context.newPage();
     const errors = [];
     page.on("pageerror", (e) => errors.push(e.message));
+    if (shareUrl) await page.goto(shareUrl, { waitUntil: "domcontentloaded", timeout: 120_000 });
     await page.goto(origin, { waitUntil: "domcontentloaded", timeout: 120_000 });
     await page.waitForSelector(".k-game-tile");
     await page.locator(`[data-game="${c.game}"]`).first().click();
