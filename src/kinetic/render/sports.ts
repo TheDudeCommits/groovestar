@@ -1,5 +1,7 @@
 import * as T from "three";
 import { Stage, block, material, mesh, textPlane, COLORS } from "./stage";
+import { batchStatic } from "./batch";
+import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
 export function racket(color = COLORS.coral) {
   const g = new T.Group();
   const frame = mesh(
@@ -18,6 +20,7 @@ export function racket(color = COLORS.coral) {
     block(g, length * 0.54, 0.009, 0.008, 0, 0.28 + i * 0.086, 0, string);
   }
   block(g, 0.055, 0.36, 0.06, 0, -0.29, 0, material(COLORS.ink));
+  batchStatic(g);
   return g;
 }
 export function court(stage: Stage) {
@@ -30,23 +33,27 @@ export function court(stage: Stage) {
   for (const z of [2, -7, -16]) block(g, 9, 0.01, 0.035, 0, 0.045, z, chalk);
   for (const z of [-2, -12]) block(g, 7, 0.01, 0.035, 0, 0.045, z, chalk);
   block(g, 0.035, 0.01, 10, 0, 0.045, -7, chalk);
-  for (const x of [-4.7, 4.7])
-    block(g, 0.07, 1.1, 0.07, x, 0.55, -7, material(COLORS.ink));
+  const ink = material(COLORS.ink),
+    net = material(0x353c31);
+  for (const x of [-4.7, 4.7]) block(g, 0.07, 1.1, 0.07, x, 0.55, -7, ink);
   for (let i = 0; i < 38; i++)
-    block(g, 0.01, 0.82, 0.02, -4.6 + i * 0.25, 0.45, -7, material(0x353c31));
+    block(g, 0.01, 0.82, 0.02, -4.6 + i * 0.25, 0.45, -7, net);
   for (let i = 0; i < 7; i++)
-    block(g, 9.4, 0.009, 0.02, 0, 0.12 + i * 0.13, -7, material(0x353c31));
+    block(g, 9.4, 0.009, 0.02, 0, 0.12 + i * 0.13, -7, net);
   block(g, 9.4, 0.045, 0.025, 0, 0.89, -7, chalk);
   const panel = block(g, 20, 5, 0.2, 0, 2.5, -21, material(COLORS.blue));
   const tx = textPlane("GOOD THINGS / IN MOTION", "#eeeae1", 1.4);
   tx.position.set(0, 3, -20.85);
   g.add(tx);
   for (const x of [-8, 8]) {
-    block(g, 0.15, 8, 0.15, x, 4, -11, material(COLORS.ink));
+    block(g, 0.15, 8, 0.15, x, 4, -11, ink);
     block(g, 2, 0.2, 0.4, x, 8, -11, chalk);
   }
+  batchStatic(g);
   return g;
 }
+let pinMaterial: T.MeshStandardMaterial | null = null;
+/** One draw call per pin: body and stripes merged with vertex colors. */
 export function pin() {
   const profile: [number, number][] = [
     [0.11, 0],
@@ -60,24 +67,36 @@ export function pin() {
     [0.07, 0.94],
     [0, 0.97],
   ];
-  const g = new T.Group();
-  mesh(
-    new T.LatheGeometry(
-      profile.map(([x, y]) => new T.Vector2(x, y)),
-      24,
+  const tint = (geometry: T.BufferGeometry, color: number) => {
+    const c = new T.Color(color);
+    const n = geometry.attributes.position.count;
+    const colors = new Float32Array(n * 3);
+    for (let i = 0; i < n; i++) colors.set([c.r, c.g, c.b], i * 3);
+    geometry.setAttribute("color", new T.BufferAttribute(colors, 3));
+    return geometry;
+  };
+  const parts = [
+    tint(
+      new T.LatheGeometry(
+        profile.map(([x, y]) => new T.Vector2(x, y)),
+        24,
+      ).toNonIndexed(),
+      COLORS.paper,
     ),
-    material(COLORS.paper, 0.25),
-    g,
-  );
-  for (const y of [0.59, 0.66])
-    mesh(
-      new T.CylinderGeometry(0.076, 0.08, 0.034, 24),
-      material(COLORS.coral),
-      g,
-      0,
-      y,
-      0,
-    );
+    ...[0.59, 0.66].map((y) =>
+      tint(
+        new T.CylinderGeometry(0.076, 0.08, 0.034, 24)
+          .translate(0, y, 0)
+          .toNonIndexed(),
+        COLORS.coral,
+      ),
+    ),
+  ];
+  const geometry = mergeGeometries(parts, false)!;
+  parts.forEach((part) => part.dispose());
+  pinMaterial ??= new T.MeshStandardMaterial({ vertexColors: true, roughness: 0.25 });
+  const g = new T.Group();
+  mesh(geometry, pinMaterial, g);
   return g;
 }
 export function alley(stage: Stage) {
@@ -87,18 +106,20 @@ export function alley(stage: Stage) {
   const wood = material(0xcaae7a, 0.24),
     dark = material(0x252c25),
     chalk = material(COLORS.paper);
+  const board = material(0xb89a65),
+    ink = material(COLORS.ink);
   for (const lane of [-1, 0, 1]) {
     const x = lane * 4.8;
     block(g, 3.55, 0.1, 25, x, -0.025, -10, wood);
     for (let i = -5; i <= 5; i++)
-      block(g, 0.012, 0.01, 25, x + i * 0.29, 0.032, -10, material(0xb89a65));
+      block(g, 0.012, 0.01, 25, x + i * 0.29, 0.032, -10, board);
     for (const s of [-1, 1])
       block(g, 0.38, 0.1, 25, x + s * 1.96, -0.05, -10, dark);
     for (const dz of [-1.5, -3])
       for (let i = -2; i <= 2; i++)
         mesh(
           new T.ConeGeometry(0.045, 0.012, 3),
-          material(COLORS.ink),
+          ink,
           g,
           x + i * 0.45,
           0.043,
@@ -118,6 +139,7 @@ export function alley(stage: Stage) {
     block(g, 18, 0.15, 0.2, 0, 6, -i * 5, dark);
     block(g, 13, 0.05, 0.2, 0, 5.84, -i * 5, chalk);
   }
+  batchStatic(g);
   return g;
 }
 export function fruitSculpture() {

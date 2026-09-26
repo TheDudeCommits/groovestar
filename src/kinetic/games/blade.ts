@@ -7,6 +7,7 @@ import { block, material, COLORS } from "../render/stage";
 import { chart, type BladeNote } from "./charts";
 import { sfx } from "../../games/sfx";
 import { equippedSaber } from "../core/equipment";
+import { RibbonTrail } from "../render/trail";
 interface Note extends BladeNote {
   object: T.Group;
   state: number;
@@ -21,8 +22,7 @@ export class KineticBlade extends KineticSession {
     {
       g: T.Group;
       previous: { x: number; y: number } | null;
-      trail: T.Line;
-      points: T.Vector3[];
+      trail: RibbonTrail;
     }
   >;
   private beat = 0;
@@ -89,19 +89,9 @@ export class KineticBlade extends KineticSession {
       const flare = new T.PointLight(cols[side], 1.3, 2);
       flare.position.y = 0.14;
       g.add(flare);
-      const geometry = new T.BufferGeometry().setFromPoints(
-        Array.from({ length: 12 }, () => new T.Vector3()),
-      );
-      const trail = new T.Line(
-        geometry,
-        new T.LineBasicMaterial({
-          color: cols[side],
-          transparent: true,
-          opacity: 0.6,
-        }),
-      );
-      this.stage.scene.add(trail);
-      return { g, previous: null, trail, points: [] };
+      const trail = new RibbonTrail(cols[side]);
+      this.stage.scene.add(trail.mesh);
+      return { g, previous: null, trail };
     };
     this.hands = { L: createHand("L"), R: createHand("R") };
     const materials = {
@@ -168,7 +158,8 @@ export class KineticBlade extends KineticSession {
         y = 0.6;
       if (this.options.cameraOk) {
         h.g.visible = !!sample && sample.vis > 0.5;
-        h.trail.visible = h.g.visible;
+        h.trail.mesh.visible = h.g.visible;
+        if (!h.g.visible) h.trail.clear();
         if (sample) {
           x = sample.x;
           y = sample.y;
@@ -195,13 +186,11 @@ export class KineticBlade extends KineticSession {
           ? Math.atan2(sample.vy, sample.vx)
           : Math.sin(t * 5) * 0.5;
       h.g.rotation.z = -angle * 0.3 + (side === "L" ? 0.17 : -0.17);
-      h.points.unshift(v.clone().add(new T.Vector3(0, 0.82, 0)));
-      h.points = h.points.slice(0, 12);
-      h.trail.geometry.setFromPoints(h.points.length > 1 ? h.points : [v, v]);
       h.g.updateWorldMatrix(true, true);
-      const tip = this.stage.project(
-        h.g.localToWorld(new T.Vector3(0, 0.85, 0)),
-      );
+      const tipWorld = h.g.localToWorld(new T.Vector3(0, 0.85, 0)),
+        baseWorld = h.g.localToWorld(new T.Vector3(0, 0.3, 0));
+      if (h.g.visible) h.trail.push(baseWorld, tipWorld);
+      const tip = this.stage.project(tipWorld);
       const base = this.stage.project(
         h.g.localToWorld(new T.Vector3(0, 0.12, 0)),
       );

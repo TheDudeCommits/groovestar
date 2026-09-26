@@ -165,18 +165,20 @@ export function bladeWorld(stage: Stage) {
     set.add(wash);
   }
   const strips: T.Object3D[] = [];
+  // light strips stay outside the ribs so they never cross the note corridor
+  const stripTilt = (i: number) => (i % 2 ? 1 : -1) * (0.12 + (i % 3) * 0.07);
   for (let i = 0; i < 12; i++) {
     const line = block(
       set,
       0.045,
       10,
       0.045,
-      Math.sin(i) * 12,
+      (i % 2 ? 1 : -1) * (8.2 + (i % 3) * 1.6),
       5,
       -20 - i * 3,
       light,
     );
-    line.rotation.z = (i - 6) * 0.18;
+    line.rotation.z = stripTilt(i);
     strips.push(line);
   }
   const architecture = new T.Group();
@@ -209,7 +211,7 @@ export function bladeWorld(stage: Stage) {
         portal.rotation.z = beat * 0.025;
         for (let i = 0; i < strips.length; i++)
           strips[i].rotation.z =
-            (i - 6) * 0.18 + Math.sin((beat / 16) * Math.PI) * 0.08;
+            stripTilt(i) + Math.sin((beat / 16) * Math.PI) * 0.06;
       }
     },
   };
