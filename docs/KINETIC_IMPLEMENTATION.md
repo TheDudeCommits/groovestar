@@ -1,6 +1,6 @@
 # Kinetic Broadcast implementation and acceptance
 
-Owner selection: 5 September 2026. Isolated worktree `/Users/amir/Claude/groovestar-kinetic`, branch `codex/kinetic-broadcast`, baseline `b3437593582044b335d52fc116dfeb5c1f7efeda`. Source main and the unrelated `/Users/amir/Codex-ThreeJS` checkout were not edited.
+Owner selection: 5 September 2026. Implemented in isolated worktree `/Users/amir/Claude/groovestar-kinetic`, branch `codex/kinetic-broadcast`, from baseline `b3437593582044b335d52fc116dfeb5c1f7efeda`. On 27 September 2026 (Asia/Bangkok), the owner requested pushing and deploying all latest changes; PR #1 was merged into `main` and released to Production. The unrelated `/Users/amir/Codex-ThreeJS` checkout was not edited.
 
 ## Implemented
 
@@ -33,11 +33,17 @@ Owner selection: 5 September 2026. Isolated worktree `/Users/amir/Claude/grooves
 
 Application commit `5f1dc0fb985a8217359e12d2968eb375fe3be97d` is deployed as READY preview `dpl_4F36BGr4eP2qVbahKVeDT7jDntyT`: https://groovestar-kxffincn8-amirs-projects-d9680079.vercel.app. The deployed desktop/mobile and all-seven-game smoke passed. Service checks confirmed `/api/ice` 200 with TURN, `/api/search` 200 with eight results, configured music-analysis request validation, and 44 Dance Classics. This is not a live peer connection or paid AI-generation test.
 
-Existing server secret target lists were extended to Preview while retaining Production and unchanged values. Deployment authentication is unchanged. `docs/qa/preview-*.json` and images capture the evidence. Production remains the baseline release; see HANDOVER.md for its exact rollback ID.
+Existing server secret target lists were extended to Preview while retaining Production and unchanged values. Deployment authentication is unchanged. `docs/qa/preview-*.json` and images capture the historical preview evidence.
+
+## Production release, 27 September 2026
+
+PR #1 merged as `8d17957ff2d18d3b6bff37a2adcd99ed1cf51286`. Vercel deployed it as `dpl_FCRXJqDSf8SXgveY4gbNsfWY2Ngx`, READY, target Production, with the canonical https://groovestar.vercel.app alias. The release reran all 22 targeted tests and the TypeScript/Vite build successfully. The subsequent handover/evidence commit contains no application changes. See root `HANDOVER.md` for the deployment record, current continuation instructions and preserved rollback.
+
+Deployed desktop/mobile smoke passed for all seven games with no page errors or demo progress writes. TURN configuration, music-analysis validation and 44 Dance Classics were confirmed. The Production YouTube search proxy returned 502 (`fetch failed`) repeatedly; its handler is unchanged from the baseline and the upstream failure remains unresolved. `docs/qa/production-*.json` records this mixed service outcome explicitly. All browsers were closed after checks.
 
 ## Explicitly outstanding acceptance and later expansion
 
-The implementation is a broad playable preview. The accepted plan's physical/device gates remain open:
+The implementation is released to Production at the owner's request. The accepted plan's physical/device checks remain open:
 
 1. Real webcam and phone left/right, reach, cross-body, squat/rise, low-impact, occlusion and reacquisition. Measure target reachability and input-to-feedback latency before treating the current thresholds as accepted.
 2. Sustained camera-inference performance at normal/low quality on the target laptop and phone. Compare Classic/3D with the same recorded physical input; current demo benchmarks are not that comparison. Profile worker-based inference only if measured blocking warrants it.
@@ -49,4 +55,4 @@ Classic Any Song and friend flows retain more legacy presentation than the seven
 
 Bowling uses explicit arcade scores (strike 15, spare 12, otherwise pinfall), not regulation ten-pin scoring or a rigid-body engine. The personal Rush ghost is a translucent progress marker; it replays the recorded lane/jump/duck values. Endless ghost recordings retain the first 900 samples, about 90 seconds. New challenges are asynchronous URLs, not live multiplayer.
 
-No Production promotion should be described as accepted until the relevant owner/device gates are recorded. See root `HANDOVER.md` for exact commit and deployment evidence.
+Production deployment is confirmed separately from physical/device and owner visual/music acceptance. Do not describe those checks as passed until evidence is recorded. See root `HANDOVER.md` for exact commit and deployment evidence.

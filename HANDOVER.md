@@ -1,24 +1,27 @@
 # GrooveStar · Kinetic Broadcast handover
 
-Updated 5 September 2026. The owner selected **Kinetic Broadcast** and authorized implementation of the visual overhaul and game expansion recommendations. This branch is the resulting playable preview; physical camera, real-network and owner acceptance remain distinct open gates.
+Updated 27 September 2026 (Asia/Bangkok). The owner selected **Kinetic Broadcast**, authorized the overhaul, and explicitly requested pushing and deploying all latest changes. The overhaul is now merged into `main` and deployed to Production. Physical camera, real-network and owner visual/music acceptance remain open; deployment does not establish those checks.
 
 ## Source and release
 
 - Repository: https://github.com/TheDudeCommits/groovestar
-- Implementation branch: `codex/kinetic-broadcast`
-- Worktree: `/Users/amir/Claude/groovestar-kinetic`
+- Release branch: `main`; implementation branch `codex/kinetic-broadcast` was merged through [PR #1](https://github.com/TheDudeCommits/groovestar/pull/1).
+- Release worktree: `/Users/amir/Claude/groovestar-kinetic`, local branch `codex/production-handover` tracking `origin/main`.
 - Original source checkout: `/Users/amir/Claude/groovestar`; baseline main `b3437593582044b335d52fc116dfeb5c1f7efeda`.
 - The task started in `/Users/amir/Codex-ThreeJS`, an unrelated project. It was not changed or reused.
 - Production: https://groovestar.vercel.app
 - Verified rollback deployment: `dpl_H3p18giKRphkamZCKTsiq5TmGJ1x`, READY, `groovestar-54esks1w6-amirs-projects-d9680079.vercel.app`.
 - Vercel project `prj_9LPZCjCKgtcapicr4yJrof7g5OaT`, team `team_9UHUI9xdsOl7LAy5xl8hUIV6`, framework Vite, Node 24.x.
-- Vercel API verified `link.productionBranch = main`. Explicit CLI `--target=preview` establishes preview routing on this existing project. Preview deployments retain the project's existing Vercel authentication protection.
+- Git pushes to `main` deploy to Production. Use a separate branch or explicit CLI `--target=preview` for previews on this existing project. Preview deployments retain the project's existing Vercel authentication protection.
 - Application commit: `5f1dc0fb985a8217359e12d2968eb375fe3be97d`.
+- Production application release commit: `8d17957ff2d18d3b6bff37a2adcd99ed1cf51286` (PR #1 merge).
+- Verified Production application deployment: `dpl_FCRXJqDSf8SXgveY4gbNsfWY2Ngx`, **READY**, target Production, source Git; https://groovestar-mxoie6yxz-amirs-projects-d9680079.vercel.app. The canonical alias `groovestar.vercel.app` was verified on this deployment, serving the expected `index-BKqgQ5Zq.js` application bundle with HTTP 200.
+- This handover/evidence follow-up changes documentation only. Its push to `main` triggers another Production build of the same application; the deployment above identifies the application release tested below. Resolve the canonical alias in Vercel when continuing to find the newest documentation build.
 - Verified preview: https://groovestar-kxffincn8-amirs-projects-d9680079.vercel.app
 - Preview deployment: `dpl_4F36BGr4eP2qVbahKVeDT7jDntyT`, **READY**, target Preview (`target: null` in the Vercel API), source CLI, exact application commit above.
 - The first preview `dpl_8zMx5qMEc42c2b9XcSqHTFpBvPQn` was superseded after enabling the existing server services for Preview. `ANTHROPIC_API_KEY`, `METERED_DOMAIN` and `METERED_API_KEY` now target Production + Preview, with existing secret values preserved and no secret values read or written to the repository. Vercel authentication remains enabled.
 - Deployed desktop/mobile and all-seven-game smoke passed with zero browser errors. Evidence: `docs/qa/preview-smoke-report.json` and `preview-*.png`.
-- Production has not been promoted. The canonical Production alias still points to the recorded rollback deployment. A following documentation/QA commit records this release; application source/assets are identical to the deployed application commit.
+- The original baseline deployment above is retained as a rollback. No application code or asset changes were needed for this release.
 
 The original handover is preserved verbatim in `docs/HANDOVER_BASELINE.md`. Its comments about missing Three.js, 15Hz image-only phone packets, borrowed sound effects and every push being Production describe the baseline, not this branch. Original planning document: `VISUAL_OVERHAUL_PLAN.md`.
 
@@ -74,6 +77,8 @@ Backquote opens the inherited input debug view. `window.gsKinetic` adds current 
 
 ## Verification at handover
 
+- Production release check, 27 September: all 22 targeted tests, TypeScript/Vite build and whitespace check passed again. The canonical live site passed the seven-game desktop/mobile smoke with zero page errors and no demo progress writes. Screenshots were reviewed and browser processes closed. Evidence: `docs/qa/production-smoke-report.json` and `production-home-*.png`.
+- Production service checks confirmed TURN configuration (`/api/ice` 200), music-analysis input validation (`/api/songmeta` 400 for missing title, no paid generation), and 44 Dance Classics. **YouTube search is currently failing**: `/api/search` returned 502 with `fetch failed` across repeated requests and two queries. Vercel request logs confirm the 502s; `api/search.ts` is unchanged from the baseline. The exact upstream connection failure remains undiagnosed. Track this separately from the successful game smoke; do not reuse the older passing Preview search result as current evidence. See `docs/qa/production-services-report.json`.
 - 22 targeted tests passed, production build passed and diff whitespace clean.
 - Desktop/mobile catalog and crew, all seven launch flows, 3D pause/resume/restart/exit, Dance/Fruit pause and Classic fallback checked with no page errors.
 - All six arcade games completed actual-clock demo rounds with records/rewards disabled. Additional full Dance and two-player Bowling rounds passed.
@@ -93,12 +98,14 @@ Backquote opens the inherited input debug view. `window.gsKinetic` adds current 
 - Every scene and browser must be closed/disposed after use. Preserve Classic fallback and original Dance/YouTube/multiplayer behavior while iterating.
 - Preserve original art, audio and animation source/provenance. All 34 inherited borrowed one-shots were replaced. This does not relicense inherited third-party YouTube content.
 
-## Remaining gates
+## Outstanding acceptance and follow-up
 
-Real-camera threshold/latency tuning, sustained inference performance, low-impact body tests, different body/camera/lighting conditions, two-device different-network/relay tests and owner visual/music acceptance are **not passed**. Do these before Production promotion and before expanding precision demands. The full list and conditional later features are in `docs/KINETIC_IMPLEMENTATION.md`.
+Real-camera threshold/latency tuning, sustained inference performance, low-impact body tests, different body/camera/lighting conditions, two-device different-network/relay tests and owner visual/music acceptance are **not passed**. The owner explicitly authorized Production deployment on 27 September despite these previously documented open checks. Complete them before claiming physical/network acceptance or expanding precision demands. The full list and conditional later features are in `docs/KINETIC_IMPLEMENTATION.md`.
+
+Immediate service follow-up: diagnose the Production YouTube search proxy's upstream `fetch failed` response. The release does not change that handler. Record a successful same-origin search with nonempty results before marking it resolved.
 
 Notable limits: new solo 3D Dance suppresses the legacy backup crew; remote Dance avatars and some friends/Any Song presentation remain on the established Canvas path. Legacy aura/tattoo cosmetics remain stored for Classic. Rush ghosts are translucent markers and only retain the first ~90 seconds. Bowling is five-frame arcade scoring with simplified pin response. Three-round Boxing, sparring, extra biomes, denser crossover/dodge patterns and richer facial/secondary animation follow the accepted physical-play gates.
 
 ## Copy-paste continuation
 
-Read this HANDOVER.md, docs/KINETIC_IMPLEMENTATION.md and docs/KINETIC_ART_BIBLE.md in TheDudeCommits/groovestar. Continue from codex/kinetic-broadcast in /Users/amir/Claude/groovestar-kinetic. Verify GitHub head and the latest preview/Production deployment before edits. The owner selected Kinetic Broadcast and authorized the overhaul. The suite implementation is playable; now conduct real-camera motion/latency and target-device tests, verify phone pairing and two-device relayed friend sessions, and apply owner visual/music feedback. Preserve Dance scoring/routines, existing saved progress, subject-left mapping, explicit demo isolation and opt-in friend video. Do not claim physical/network acceptance from synthetic/demo tests. Keep the recorded Production rollback available and close all browsers immediately after use.
+Read this HANDOVER.md, docs/KINETIC_IMPLEMENTATION.md and docs/KINETIC_ART_BIBLE.md in TheDudeCommits/groovestar. Continue from the latest origin/main; /Users/amir/Claude/groovestar-kinetic is the release worktree. Verify GitHub head and the canonical Production deployment before edits. The owner selected Kinetic Broadcast and authorized its Production release on 27 September 2026. Conduct real-camera motion/latency and target-device tests, verify phone pairing and two-device relayed friend sessions, and apply owner visual/music feedback. Preserve Dance scoring/routines, existing saved progress, subject-left mapping, explicit demo isolation and opt-in friend video. Do not claim physical/network acceptance from synthetic/demo tests. Keep the recorded Production rollback available and close all browsers immediately after use.

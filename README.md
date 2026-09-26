@@ -11,7 +11,7 @@ npm test
 npm run build
 ```
 
-Camera processing runs in the browser. Explicit demos preview all games without earning progress. Physical webcam/phone tuning and real-network acceptance are still required for the Kinetic preview. The older documentation below explains retained baseline systems; the handover takes precedence where behavior changed.
+Camera processing runs in the browser. Explicit demos preview all games without earning progress. Kinetic Broadcast is deployed at [groovestar.vercel.app](https://groovestar.vercel.app). Physical webcam/phone tuning and real-network acceptance remain open. The older documentation below explains retained baseline systems; the handover takes precedence where behavior changed.
 
 ---
 
