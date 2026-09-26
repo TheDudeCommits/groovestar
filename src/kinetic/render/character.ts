@@ -8,6 +8,31 @@ import { forward } from "../../moves";
 import { outfit } from "../core/equipment";
 import type { StyleProfile } from "../../appearance";
 const cache = new Map<string, Promise<GLTF>>();
+type RigJointName = Parameters<HandRig["joint"]>[0];
+/** Bones driven by tracking, with the viewer-space joints that aim them. */
+const TRACK_SEGMENTS: [string, RigJointName, RigJointName][] = [
+  ["UpperArmR", "shL", "elL"],
+  ["LowerArmR", "elL", "wrL"],
+  ["UpperArmL", "shR", "elR"],
+  ["LowerArmL", "elR", "wrR"],
+  ["ThighR", "hipL", "kneeL"],
+  ["ShinR", "kneeL", "ankleL"],
+  ["ThighL", "hipR", "kneeR"],
+  ["ShinL", "kneeR", "ankleR"],
+];
+/** Relaxed standing pose used when tracking drops, instead of the bind pose. */
+const IDLE: Partial<Record<RigJointName, [number, number, number]>> = {
+  shL: [-0.2, 1.47, 0], elL: [-0.25, 1.21, 0.03], wrL: [-0.27, 0.96, 0.08],
+  shR: [0.2, 1.47, 0], elR: [0.25, 1.21, 0.03], wrR: [0.27, 0.96, 0.08],
+  hipL: [-0.1, 1.01, 0], kneeL: [-0.11, 0.58, 0.02], ankleL: [-0.12, 0.16, 0],
+  hipR: [0.1, 1.01, 0], kneeR: [0.11, 0.58, 0.02], ankleR: [0.12, 0.16, 0],
+};
+const idle = (name: RigJointName) => {
+  const v = IDLE[name] ?? [0, 1, 0];
+  return new T.Vector3(v[0], v[1], v[2]);
+};
+/** How long an untracked limb holds its last pose before relaxing (ms). */
+const HOLD_MS = 350;
 export class Character {
   readonly group = new T.Group();
   private model?: T.Object3D;
@@ -20,6 +45,7 @@ export class Character {
   groundY = 0;
   private standingY: number | null = null;
   private footRest = new Map<string, T.Quaternion>();
+  private segSeen = new Map<string, number>();
   ready = false;
   async load(id = "nova") {
     this.ready = false;
@@ -166,29 +192,17 @@ export class Character {
           )
         : null;
     };
-    const segments: [
-      string,
-      Parameters<HandRig["joint"]>[0],
-      Parameters<HandRig["joint"]>[0],
-    ][] = [
-      ["UpperArmR", "shL", "elL"],
-      ["LowerArmR", "elL", "wrL"],
-      ["UpperArmL", "shR", "elR"],
-      ["LowerArmL", "elR", "wrR"],
-      ["ThighR", "hipL", "kneeL"],
-      ["ShinR", "kneeL", "ankleL"],
-      ["ThighL", "hipR", "kneeR"],
-      ["ShinL", "kneeR", "ankleR"],
-    ];
-    for (const [bn, a, b] of segments) {
+    const now = performance.now();
+    for (const [bn, a, b] of TRACK_SEGMENTS) {
       const pa = p(a),
         pb = p(b);
-      if (pa && pb) this.pointBone(bn, pa, pb, 0.65);
-      else {
-        const bone = this.bones.get(bn),
-          rest = this.rest.get(bn);
-        if (bone && rest) bone.quaternion.slerp(rest, 0.08);
+      if (pa && pb) {
+        this.pointBone(bn, pa, pb, 0.65);
+        this.segSeen.set(bn, now);
+      } else if (now - (this.segSeen.get(bn) ?? -1e9) > HOLD_MS) {
+        this.pointBone(bn, idle(a), idle(b), 0.08);
       }
+      // otherwise the limb holds its last tracked orientation
     }
     this.plantFeet();
     this.standingY ??= h.y;
@@ -215,6 +229,16 @@ export class Character {
           0.1,
         );
     }
+  }
+  /** Tracking lost entirely: hold briefly, then ease into a relaxed stance. */
+  relax(sinceMs: number) {
+    if (!this.ready || sinceMs < HOLD_MS) return;
+    this.mixer?.stopAllAction();
+    this.current = "";
+    this.group.updateWorldMatrix(true, true);
+    for (const [bn, a, b] of TRACK_SEGMENTS)
+      this.pointBone(bn, idle(a), idle(b), 0.06);
+    this.plantFeet();
   }
   private plantFeet() {
     this.group.updateWorldMatrix(true, true);

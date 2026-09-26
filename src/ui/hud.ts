@@ -161,10 +161,12 @@ export function drawPictograms(
   ctx: CanvasRenderingContext2D,
   song: Song, beat: number, w: number, h: number,
 ) {
-  const stripY = h * 0.87;                  // baseline
-  const nowX = w * 0.66;                    // "now" slot
-  const spacing = Math.min(150, w * 0.12);  // px per upcoming beat-step
-  const size = Math.min(110, h * 0.16);
+  // the 3D stage reads from across the room: bigger figures on cards
+  const carded = settings().renderer === '3d';
+  const stripY = h * (carded ? 0.84 : 0.87);          // baseline
+  const nowX = w * (carded ? 0.7 : 0.66);             // "now" slot, clear of the dancer
+  const spacing = carded ? Math.min(190, w * 0.135) : Math.min(150, w * 0.12); // px per upcoming beat-step
+  const size = carded ? Math.min(150, h * 0.2) : Math.min(110, h * 0.16);
   const speed = spacing / 2;                // 2 beats between moves
 
   ctx.save();
@@ -176,7 +178,7 @@ export function drawPictograms(
     let alpha = 1, scale = 1;
     if (d < 0) { alpha = 1 + d / 0.6; scale = 1 + (-d) * 0.45; } // arrival pop & fade
     else if (d > 5.4) alpha = (7 - d) / 1.6;                     // ease in from the right
-    drawPicto(ctx, m.move, !!m.gold, x, stripY, size * scale, alpha, song.accent);
+    drawPicto(ctx, m.move, !!m.gold, x, stripY, size * scale, alpha, song.accent, carded, Math.abs(d) < 0.5);
   }
   ctx.restore();
 }
@@ -185,6 +187,7 @@ function drawPicto(
   ctx: CanvasRenderingContext2D,
   moveId: string, gold: boolean,
   x: number, y: number, size: number, alpha: number, accent: string,
+  carded = false, now = false,
 ) {
   let pose: Pose | null = MOVES[moveId]?.pose ?? null;
   if (!pose && CLIPS[moveId]) pose = clipPeakPose(CLIPS[moveId]);
@@ -196,6 +199,21 @@ function drawPicto(
 
   ctx.save();
   ctx.globalAlpha = Math.max(0, alpha);
+  if (carded) {
+    // card behind the figure, sized from the figure's own extent
+    const pts = Object.values(sk as unknown as Record<string, [number, number]>).map(P);
+    const xs = pts.map((q) => q[0]), ys = pts.map((q) => q[1]);
+    const pad = s * 0.45;
+    const x0 = Math.min(...xs) - pad, x1 = Math.max(...xs) + pad;
+    const y0 = Math.min(...ys) - pad - s * 0.2, y1 = Math.max(...ys) + pad;
+    ctx.fillStyle = 'rgba(238,234,225,0.9)';
+    ctx.strokeStyle = gold ? '#f35d42' : now ? '#171917' : 'rgba(23,25,23,0.35)';
+    ctx.lineWidth = now || gold ? 3 : 1.5;
+    ctx.beginPath();
+    ctx.roundRect(x0, y0, x1 - x0, y1 - y0, 8);
+    ctx.fill();
+    ctx.stroke();
+  }
   // card glow for gold
   if (gold) {
     ctx.shadowColor = '#ffd23e';

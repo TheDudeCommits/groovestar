@@ -15,6 +15,7 @@ export class DancePresentation {
   private rig = new HandRig();
   private alive = true;
   private last = performance.now();
+  private lastPoseAt = -1e9;
   ready = false;
   constructor(parent: HTMLElement, style: StyleProfile | null) {
     this.host.className = "kinetic-dance-layer";
@@ -26,7 +27,7 @@ export class DancePresentation {
     this.stage.camera.fov = 31.64;
     this.stage.camera.updateProjectionMatrix();
     this.stage.scene.add(this.player.group, this.coach.group);
-    this.coach.group.scale.setScalar(0.375);
+    this.coach.group.scale.setScalar(0.52);
     void Promise.all([
       this.player.load(characterId()),
       this.coach.load("luna"),
@@ -48,11 +49,15 @@ export class DancePresentation {
       now,
       tracker.aspect ?? 4 / 3,
     );
-    this.player.group.visible = !camera || this.rig.hasPose;
-    if (camera) this.player.tracked(this.rig);
-    else this.player.choreo(pose);
+    // Brief tracking gaps keep the dancer on stage: hold the last pose, then
+    // relax into an idle stance instead of vanishing or snapping to the rig.
+    if (this.rig.hasPose) this.lastPoseAt = now;
+    this.player.group.visible = !camera || now - this.lastPoseAt < 4000;
+    if (!camera) this.player.choreo(pose);
+    else if (this.rig.hasPose) this.player.tracked(this.rig);
+    else this.player.relax(now - this.lastPoseAt);
     this.coach.group.visible = camera;
-    this.coach.group.position.copy(this.stage.unproject(0.865, 0.65, 0));
+    this.coach.group.position.copy(this.stage.unproject(0.86, 0.63, 0));
     this.coach.groundY = this.coach.group.position.y;
     this.coach.choreo(pose);
     this.stage.render();
@@ -76,14 +81,6 @@ export function broadcastFloor(
   ctx.fillRect(0, 0, w, h);
   ctx.fillStyle = "#365ff5";
   ctx.fillRect(w * 0.17, 0, w * 0.66, h * 0.52);
-  ctx.fillStyle = "#171917";
-  ctx.font = `800 ${h * 0.16}px "Barlow Condensed"`;
-  ctx.textAlign = "left";
-  ctx.fillText("01", w * 0.035, h * 0.44);
-  ctx.fillStyle = "#eeeae1";
-  ctx.font = `700 ${h * 0.08}px "Barlow Condensed"`;
-  ctx.textAlign = "center";
-  ctx.fillText("MAKE YOUR MOVE", w * 0.5, h * 0.12);
   ctx.fillStyle = "#dbd8ce";
   ctx.fillRect(0, h * 0.52, w, h * 0.48);
   ctx.strokeStyle = "#171917";

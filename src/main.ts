@@ -1850,7 +1850,8 @@ function play(song: Song, playerName: string, opts: PlayOpts) {
     if (yt) drawVideoStage(yt, Math.max(0, beat), fx.goldBurst, stageCols);
 
     // floor tiles that lit up under last frame's footsteps
-    drawFloorTiles(tiles, avatar.feet, stageCols);
+    // the 3D presentation stands on its own floor; legacy tiles would float as pink boxes
+    if (!dancePresentation?.ready) drawFloorTiles(tiles, avatar.feet, stageCols);
 
     // freestyle windows: banner + combo chip live on the HUD
     const fsWins = opts.freestyle ?? [];
