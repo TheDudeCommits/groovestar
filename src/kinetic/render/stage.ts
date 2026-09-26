@@ -3,7 +3,23 @@ import { EffectComposer } from "three/addons/postprocessing/EffectComposer.js";
 import { RenderPass } from "three/addons/postprocessing/RenderPass.js";
 import { UnrealBloomPass } from "three/addons/postprocessing/UnrealBloomPass.js";
 import { OutputPass } from "three/addons/postprocessing/OutputPass.js";
+import type { ShaderPass } from "three/addons/postprocessing/ShaderPass.js";
 import { settings } from "../core/settings";
+import { gradePass } from "./pt/post";
+import type { ShowDirector } from "./pt/show";
+
+/** Look of a Primetime venue: night fog, bloom and grade. */
+export interface PrimetimeLook {
+  fog?: number;
+  fogDensity?: number;
+  background?: number;
+  exposure?: number;
+  bloom?: number;
+  bloomRadius?: number;
+  bloomThreshold?: number;
+  key?: number;
+  vignette?: number;
+}
 export const COLORS = {
   paper: 0xeeeae1,
   ink: 0x171917,
@@ -73,8 +89,12 @@ export class Stage {
   readonly renderer: T.WebGLRenderer;
   readonly canvas: HTMLCanvasElement;
   private composer?: EffectComposer;
-  private bloom?: UnrealBloomPass;
-  private resizeObserver: ResizeObserver;
+  bloom?: UnrealBloomPass;
+  grade?: ShaderPass;
+  readonly primetime: boolean;
+  /** Primetime key light: follows the hero so toon shading reads. */
+  key?: T.DirectionalLight;
+  private resizeObserver!: ResizeObserver;
   private disposed = false;
   private width = 0;
   private height = 0;
@@ -83,8 +103,10 @@ export class Stage {
   contextLost = false;
   constructor(
     readonly host: HTMLElement,
-    opts: { dark?: boolean; alpha?: boolean; bloom?: boolean } = {},
+    opts: { dark?: boolean; alpha?: boolean; bloom?: boolean; primetime?: boolean | PrimetimeLook } = {},
   ) {
+    this.primetime = !!opts.primetime;
+    const look: PrimetimeLook = typeof opts.primetime === "object" ? opts.primetime : {};
     this.renderer = new T.WebGLRenderer({
       antialias: settings().quality !== "low",
       alpha: !!opts.alpha,
@@ -102,10 +124,59 @@ export class Stage {
     this.renderer.shadowMap.type = T.PCFShadowMap;
     this.renderer.toneMapping = T.ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = 1.02;
-    if (!opts.alpha) {
+    const low = settings().quality === "low";
+    if (this.primetime) {
+      this.renderer.toneMapping = T.ACESFilmicToneMapping;
+      this.renderer.toneMappingExposure = look.exposure ?? 1.0;
+      this.renderer.shadowMap.type = T.PCFSoftShadowMap;
+      if (!opts.alpha) {
+        this.scene.background = new T.Color(look.background ?? 0x07040f);
+        this.scene.fog = new T.FogExp2(look.fog ?? 0x120826, look.fogDensity ?? 0.018);
+      }
+      this.scene.add(new T.HemisphereLight(0x6a5cff, 0x12051f, 0.75));
+      const key = new T.DirectionalLight(0xfff1e6, look.key ?? 2.1);
+      key.position.set(-2.5, 6, 6);
+      key.castShadow = !low;
+      key.shadow.mapSize.set(1024, 1024);
+      key.shadow.camera.left = -4;
+      key.shadow.camera.right = 4;
+      key.shadow.camera.top = 4;
+      key.shadow.camera.bottom = -4;
+      key.shadow.bias = -0.0005;
+      key.shadow.normalBias = 0.02;
+      this.scene.add(key, key.target);
+      this.key = key;
+      const fillL = new T.DirectionalLight(0x3fe0ff, 1.0);
+      fillL.position.set(-6, 2, -2);
+      const fillR = new T.DirectionalLight(0xff3fb4, 1.1);
+      fillR.position.set(6, 2, -2);
+      this.scene.add(fillL, fillR);
+    } else if (!opts.alpha) {
       this.scene.background = new T.Color(opts.dark ? 0x090d17 : 0xe5e1d7);
       this.scene.fog = new T.Fog(opts.dark ? 0x090d17 : 0xe5e1d7, 25, 100);
     }
+    if (!this.primetime) this.classicLights(!!opts.dark);
+    this.camera.position.set(0, 1.6, 6);
+    this.camera.lookAt(0, 1, 0);
+    if (this.primetime && !low) {
+      this.composer = new EffectComposer(this.renderer);
+      this.composer.addPass(new RenderPass(this.scene, this.camera));
+      this.bloom = new UnrealBloomPass(
+        new T.Vector2(640, 360),
+        (look.bloom ?? 0.72) * (settings().reducedMotion ? 0.6 : 1),
+        look.bloomRadius ?? 0.55,
+        look.bloomThreshold ?? 0.82,
+      );
+      this.composer.addPass(this.bloom);
+      this.grade = gradePass();
+      this.grade.uniforms.uVignette.value = look.vignette ?? 0.5;
+      this.composer.addPass(this.grade);
+      this.composer.addPass(new OutputPass());
+    }
+    this.finishSetup(opts);
+  }
+  private classicLights(dark: boolean) {
+    const opts = { dark };
     const hemi = new T.HemisphereLight(
       opts.dark ? 0x7890bf : 0xf9f2df,
       0x343d36,
@@ -125,9 +196,9 @@ export class Stage {
     const rim = new T.DirectionalLight(opts.dark ? 0x557cff : 0xcbd5ff, 2.4);
     rim.position.set(4, 4, -4);
     this.scene.add(rim);
-    this.camera.position.set(0, 1.6, 6);
-    this.camera.lookAt(0, 1, 0);
-    if (opts.bloom && settings().quality !== "low") {
+  }
+  private finishSetup(opts: { bloom?: boolean }) {
+    if (!this.primetime && opts.bloom && settings().quality !== "low") {
       this.composer = new EffectComposer(this.renderer);
       this.composer.addPass(new RenderPass(this.scene, this.camera));
       this.bloom = new UnrealBloomPass(
@@ -139,6 +210,7 @@ export class Stage {
       this.composer.addPass(this.bloom);
       this.composer.addPass(new OutputPass());
     }
+    const host = this.host;
     this.resizeObserver = new ResizeObserver(() => this.resize());
     this.resizeObserver.observe(host);
     this.resize();
@@ -197,6 +269,20 @@ export class Stage {
       this.renderer.shadowMap.enabled = false;
       this.resize();
     }
+  }
+  /** Feed the show into the grade: beat kick, hit flash and grain time. */
+  post(t: number, show?: ShowDirector) {
+    const g = this.grade?.uniforms;
+    if (!g) return;
+    g.uTime.value = t;
+    if (!show || settings().reducedMotion) {
+      g.uKick.value = 0;
+      g.uFlash.value = 0;
+      return;
+    }
+    g.uKick.value = show.pulse * (0.15 + show.hype * 0.35);
+    g.uFlash.value = show.flash * 0.35;
+    (g.uFlashColor.value as T.Color).copy(show.colorA).lerp(new T.Color(1, 1, 1), 0.5);
   }
   project(v: T.Vector3) {
     const q = v.clone().project(this.camera);
