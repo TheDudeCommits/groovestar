@@ -122,14 +122,18 @@ export class SessionMusic {
   }
   pause() {
     this.paused = true;
+    if (this.stopped) return;
     this.audio?.pause();
-    void this.engine?.ctx.suspend();
+    // a closed context rejects suspend(); tracking loss can arrive after stop()
+    if (this.engine && this.engine.ctx.state !== "closed")
+      this.engine.ctx.suspend().catch(() => {});
   }
   resume() {
     if (this.stopped) return;
     this.paused = false;
     void this.audio?.play().catch(() => {});
-    void this.engine?.ctx.resume();
+    if (this.engine && this.engine.ctx.state !== "closed")
+      this.engine.ctx.resume().catch(() => {});
   }
   energy(value: number) {
     if (this.engine) {
@@ -145,6 +149,7 @@ export class SessionMusic {
       this.audio.load();
     }
     this.engine?.stop();
-    void this.engine?.ctx.close();
+    if (this.engine && this.engine.ctx.state !== "closed")
+      this.engine.ctx.close().catch(() => {});
   }
 }
