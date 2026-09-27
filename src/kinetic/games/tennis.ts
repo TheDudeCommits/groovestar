@@ -163,6 +163,8 @@ export class KineticTennis extends KineticSession {
   private lunaReactAt = 0;
   private plan: Plan | null = null;
   private racketHand: "L" | "R" = "R";
+  /** which hand you really play with, learned from your swings */
+  private handScore = { L: 0, R: 1 };
   private watches = { L: new SwingWatch("L"), R: new SwingWatch("R") };
   private swingAnim = { t: -9, fore: true, power: 0 };
   private youMoves = false;
@@ -497,6 +499,15 @@ export class KineticTennis extends KineticSession {
     r.position.copy(hb).addScaledVector(up, 0.17);
   }
 
+  /** The racket stays in your playing hand; the other hand moving along doesn't steal it. */
+  private learnHand(h: "L" | "R") {
+    this.handScore.L *= 0.9;
+    this.handScore.R *= 0.9;
+    this.handScore[h] += 1;
+    const other = this.racketHand === "L" ? "R" : "L";
+    if (this.handScore[other] > this.handScore[this.racketHand] + 2) this.racketHand = other;
+  }
+
   private onSwing(sw: Swing, t: number) {
     const real = sw.t - (this.options.cameraOk ? LAG : 0);
     const b = this.ball;
@@ -509,7 +520,7 @@ export class KineticTennis extends KineticSession {
       const yAt = 1.1 + 5.4 * ts - 0.5 * G * ts * ts,
         vyAt = 5.4 - G * ts;
       if (yAt < 1.4) return;
-      this.racketHand = sw.hand;
+      this.learnHand(sw.hand);
       this.swingAnim = { t, fore: true, power: Math.min(1, sw.rel / 10) };
       const right = this.servingFromRight;
       const box: [number, number, number, number] = right ? [-HALF_W, 0, FAR_SERVICE, NET_Z] : [0, HALF_W, FAR_SERVICE, NET_Z];
@@ -553,7 +564,7 @@ export class KineticTennis extends KineticSession {
       return;
     }
     if (d > win) return;
-    this.racketHand = sw.hand;
+    this.learnHand(sw.hand);
     this.hitBall(sw, d, win, t);
   }
 

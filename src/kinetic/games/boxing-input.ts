@@ -55,15 +55,24 @@ class FistWatch {
    * elbow sweeping in is a hook, a fist driving up is an uppercut.
    */
   feed(w: Joint3, el: Joint3, sh: Joint3, rel2d: number, t: number, minSpeed: number): Punch | null {
-    if (t - this.last < 0.2) return null;
+    if (t - this.last < 0.25) return null;
     const s = this.hand === "L" ? -1 : 1; // screen side of this fist
     const vx = w.vx - sh.vx,
       vy = w.vy - sh.vy,
       vz = w.vz - sh.vz;
     const speed = Math.hypot(vx, vy, vz);
+    // how fast the fist is leaving the shoulder: punches extend, pulling the
+    // hand back to the guard doesn't count as another punch
+    const rx = w.x - sh.x,
+      ry = w.y - sh.y,
+      rz = w.z - sh.z;
+    const reach = Math.hypot(rx, ry, rz) || 1;
+    const extending = (rx * vx + ry * vy + rz * vz) / reach;
+    const across0 = -s * vx;
+    const outward = extending > 0.35 || (across0 > 0.55 * speed && extending > -0.5) || (vy > 0.62 * speed && extending > -0.5);
     // a punch shows as 3D speed, 2D speed, or both; depth is the camera's
     // weak axis, so either strong cue alone also counts
-    const moving = (speed > minSpeed && rel2d > 2.0) || speed > minSpeed * 1.3 || rel2d > 5.5;
+    const moving = outward && ((speed > minSpeed && rel2d > 2.0) || speed > minSpeed * 1.3 || rel2d > 5.5);
     if (moving) {
       if (this.armed < 0) {
         this.armed = t;

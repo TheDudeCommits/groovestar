@@ -22,14 +22,16 @@ const shareUrl = process.env.GROOVESTAR_QA_SHARE_FILE
   ? JSON.parse(await readFile(process.env.GROOVESTAR_QA_SHARE_FILE, "utf8"))
   : null;
 const only = process.env.GROOVESTAR_QA_GAMES?.split(",").map((s) => s.trim());
+// Each game must visibly respond to the recorded body, not just keep running:
+// `expect` reads the game's own diagnostics at the end of the run.
 const CASES = [
-  { game: "dance", clip: "dance", seconds: 20 },
-  { game: "blade", clip: "slash", seconds: 25 },
-  { game: "box", clip: "box", seconds: 25 },
-  { game: "rush", clip: "rush", seconds: 25 },
+  { game: "dance", clip: "dance", seconds: 20, expect: (k) => (k.hits ?? 0) >= 1 || "no dance move scored above a miss" },
+  { game: "blade", clip: "slash", seconds: 25, expect: (k) => (k.hits ?? 0) >= 2 || `only ${k.hits ?? 0} cuts from real slashing` },
+  { game: "box", clip: "boxing-real", seconds: 25, expect: (k) => (k.thrown ?? 0) >= 3 || `only ${k.thrown ?? 0} punches read from real shadowboxing` },
+  { game: "rush", clip: "rush", seconds: 25, expect: (k) => (k.hits ?? 0) + (k.misses ?? 0) >= 1 || "no obstacles reached the runner" },
   { game: "fruit", clip: "slash", seconds: 20 },
-  { game: "tennis", clip: "swing", seconds: 20 },
-  { game: "bowl", clip: "swing", seconds: 20 },
+  { game: "tennis", clip: "tennis-real", seconds: 22, expect: (k) => (k.swings?.length ?? 0) >= 3 || `only ${k.swings?.length ?? 0} swings read from real strokes` },
+  { game: "bowl", clip: "bowl-real", seconds: 30, expect: (k) => (k.throws?.length ?? 0) >= 1 || "no throw from a real bowling swing" },
 ].filter((c) => !only || only.includes(c.game));
 const KINETIC = new Set(["blade", "box", "rush", "tennis", "bowl"]);
 const LOAD_LIMIT_MS = 120_000; // model download and compile on a cold cache
@@ -128,7 +130,7 @@ async function runCase(c) {
       samples.push(
         await page.evaluate(() => {
           const k = window.gsKinetic;
-          return k ? { poseAge: k.poseAge, inference: k.inference, frameP95: k.frameP95, hits: k.hits, misses: k.misses, score: k.score, paused: k.paused } : null;
+          return k ? JSON.parse(JSON.stringify(k)) : null;
         }),
       );
     }
@@ -151,13 +153,16 @@ async function runCase(c) {
       score: lastSample?.score ?? null,
     });
     if (errors.length) result.checks.push(`${errors.length} page error(s)`);
+    if (c.expect && lastSample) {
+      const ok = c.expect(lastSample);
+      if (ok !== true) result.checks.push(ok);
+    }
     if (KINETIC.has(c.game)) {
       if (!k.length) result.checks.push("no session diagnostics");
       if ((result.trackedShare ?? 0) < 0.5) result.checks.push(`tracked in only ${Math.round((result.trackedShare ?? 0) * 100)}% of samples`);
       if (result.inference?.mode !== "worker") result.checks.push(`inference ran on the ${result.inference?.mode ?? "unknown"} thread`);
       if ((result.frameP95 ?? 0) > 20) result.warnings.push(`frame p95 ${result.frameP95} ms`);
-      if ((result.hits ?? 0) + (result.misses ?? 0) === 0) result.warnings.push("no targets reached the player");
-      else if (!result.hits) result.warnings.push("no hits from the fixture movement");
+
     }
     if ((result.jank?.droppedPct ?? 0) > 5) result.warnings.push(`${result.jank.droppedPct}% frames over 20 ms`);
     return result;

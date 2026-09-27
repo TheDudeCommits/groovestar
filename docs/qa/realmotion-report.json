@@ -1,6 +1,6 @@
 {
   "origin": "http://127.0.0.1:5179",
-  "date": "2026-09-27T12:06:01.659Z",
+  "date": "2026-09-27T16:51:26.887Z",
   "passed": true,
   "results": [
     {
@@ -10,8 +10,8 @@
       "warnings": [],
       "setup": {
         "passed": true,
-        "cameraReadyMs": 10597,
-        "poseMs": 2228,
+        "cameraReadyMs": 3375,
+        "poseMs": 407,
         "statuses": [
           [
             1,
@@ -22,83 +22,141 @@
             "0%"
           ],
           [
-            1220,
-            "2%"
+            1022,
+            "19%"
           ],
           [
-            1423,
-            "30%"
+            1226,
+            "61%"
           ],
           [
-            1625,
-            "57%"
+            1428,
+            "84%"
           ],
           [
-            1827,
-            "78%"
-          ],
-          [
-            2030,
+            1631,
             "…"
           ],
           [
-            2639,
+            2525,
             "STEP IN"
           ],
           [
-            10597,
-            "HANDS UP"
-          ],
-          [
-            11004,
-            "STEP BACK"
-          ],
-          [
-            11207,
-            "HANDS UP"
-          ],
-          [
-            12219,
+            3375,
             "HOLD IT"
           ],
           [
-            12825,
+            3782,
             "READY. 3"
           ],
           [
-            13434,
+            4608,
             "READY. 2"
           ],
           [
-            14245,
+            5226,
             "READY. 1"
           ]
         ]
       },
       "jank": {
-        "frames": 1163,
-        "droppedPct": 0.3,
+        "frames": 1190,
+        "droppedPct": 0.2,
         "p99": 16.8
       },
       "errors": [],
-      "trackedShare": null,
+      "trackedShare": 0,
       "inference": null,
-      "frameP95": null,
-      "hits": null,
-      "misses": null,
-      "score": null
+      "frameP95": 0,
+      "hits": 7,
+      "misses": 2,
+      "score": 112
     },
     {
       "game": "blade",
       "clip": "slash",
       "checks": [],
-      "warnings": [
-        "no hits from the fixture movement"
-      ],
+      "warnings": [],
       "setup": {
         "passed": true,
-        "cameraReadyMs": 56224,
-        "poseMs": 4792,
+        "cameraReadyMs": 3913,
+        "poseMs": 406,
+        "statuses": [
+          [
+            0,
+            "…"
+          ],
+          [
+            203,
+            "0%"
+          ],
+          [
+            1017,
+            "12%"
+          ],
+          [
+            1219,
+            "38%"
+          ],
+          [
+            1420,
+            "68%"
+          ],
+          [
+            1624,
+            "92%"
+          ],
+          [
+            1828,
+            "…"
+          ],
+          [
+            3049,
+            "STEP IN"
+          ],
+          [
+            3913,
+            "HOLD IT"
+          ],
+          [
+            4319,
+            "READY. 3"
+          ],
+          [
+            5132,
+            "READY. 2"
+          ],
+          [
+            5739,
+            "READY. 1"
+          ]
+        ]
+      },
+      "jank": {
+        "frames": 1506,
+        "droppedPct": 0,
+        "p99": 16.8
+      },
+      "errors": [],
+      "trackedShare": 1,
+      "inference": {
+        "mode": "worker",
+        "ms": 17.9
+      },
+      "frameP95": 16.7,
+      "hits": 6,
+      "misses": 32,
+      "score": 739
+    },
+    {
+      "game": "box",
+      "clip": "boxing-real",
+      "checks": [],
+      "warnings": [],
+      "setup": {
+        "passed": true,
+        "cameraReadyMs": 11136,
+        "poseMs": 1827,
         "statuses": [
           [
             1,
@@ -109,79 +167,127 @@
             "0%"
           ],
           [
-            1425,
-            "1%"
+            1020,
+            "14%"
           ],
           [
-            1833,
-            "2%"
+            1222,
+            "54%"
           ],
           [
-            2036,
-            "5%"
+            1426,
+            "85%"
           ],
           [
-            2237,
-            "10%"
-          ],
-          [
-            2440,
-            "20%"
-          ],
-          [
-            2642,
-            "41%"
-          ],
-          [
-            2843,
-            "77%"
-          ],
-          [
-            3047,
-            "98%"
-          ],
-          [
-            3249,
+            1630,
             "…"
           ],
           [
-            55408,
+            10106,
             "STEP IN"
           ],
           [
-            56224,
+            11136,
             "HANDS UP"
           ],
           [
-            57128,
+            12558,
             "HOLD IT"
           ],
           [
-            57331,
-            "HANDS UP"
-          ],
-          [
-            59598,
-            "HOLD IT"
-          ],
-          [
-            59801,
-            "HANDS UP"
-          ],
-          [
-            60612,
-            "HOLD IT"
-          ],
-          [
-            61016,
+            12963,
             "READY. 3"
           ],
           [
-            61827,
+            13786,
             "READY. 2"
           ],
           [
-            62436,
+            14402,
+            "READY. 1"
+          ]
+        ]
+      },
+      "jank": {
+        "frames": 1487,
+        "droppedPct": 0.2,
+        "p99": 16.8
+      },
+      "errors": [],
+      "trackedShare": 1,
+      "inference": {
+        "mode": "worker",
+        "ms": 18.1
+      },
+      "frameP95": 16.8,
+      "hits": 29,
+      "misses": 0,
+      "score": 1381
+    },
+    {
+      "game": "rush",
+      "clip": "rush",
+      "checks": [],
+      "warnings": [],
+      "setup": {
+        "passed": true,
+        "cameraReadyMs": 3873,
+        "poseMs": 4666,
+        "statuses": [
+          [
+            0,
+            "…"
+          ],
+          [
+            203,
+            "0%"
+          ],
+          [
+            407,
+            "7%"
+          ],
+          [
+            609,
+            "24%"
+          ],
+          [
+            811,
+            "41%"
+          ],
+          [
+            1015,
+            "59%"
+          ],
+          [
+            1218,
+            "78%"
+          ],
+          [
+            1420,
+            "…"
+          ],
+          [
+            3045,
+            "STEP IN"
+          ],
+          [
+            3873,
+            "HANDS UP"
+          ],
+          [
+            8134,
+            "HOLD IT"
+          ],
+          [
+            8539,
+            "READY. 3"
+          ],
+          [
+            9157,
+            "READY. 2"
+          ],
+          [
+            9979,
             "READY. 1"
           ]
         ]
@@ -195,179 +301,7 @@
       "trackedShare": 1,
       "inference": {
         "mode": "worker",
-        "ms": 15.6
-      },
-      "frameP95": 16.8,
-      "hits": 0,
-      "misses": 19,
-      "score": 0
-    },
-    {
-      "game": "box",
-      "clip": "box",
-      "checks": [],
-      "warnings": [],
-      "setup": {
-        "passed": true,
-        "cameraReadyMs": 6542,
-        "poseMs": 6105,
-        "statuses": [
-          [
-            1,
-            "…"
-          ],
-          [
-            203,
-            "0%"
-          ],
-          [
-            3277,
-            "1%"
-          ],
-          [
-            3479,
-            "2%"
-          ],
-          [
-            3683,
-            "4%"
-          ],
-          [
-            3885,
-            "8%"
-          ],
-          [
-            4087,
-            "15%"
-          ],
-          [
-            4289,
-            "22%"
-          ],
-          [
-            4491,
-            "46%"
-          ],
-          [
-            4692,
-            "84%"
-          ],
-          [
-            4895,
-            "…"
-          ],
-          [
-            5731,
-            "STEP IN"
-          ],
-          [
-            6542,
-            "HANDS UP"
-          ],
-          [
-            12240,
-            "HOLD IT"
-          ],
-          [
-            12647,
-            "READY. 3"
-          ],
-          [
-            13459,
-            "READY. 2"
-          ],
-          [
-            14068,
-            "READY. 1"
-          ]
-        ]
-      },
-      "jank": {
-        "frames": 1505,
-        "droppedPct": 0,
-        "p99": 16.8
-      },
-      "errors": [],
-      "trackedShare": 1,
-      "inference": {
-        "mode": "worker",
-        "ms": 12.7
-      },
-      "frameP95": 16.7,
-      "hits": 2,
-      "misses": 10,
-      "score": 150
-    },
-    {
-      "game": "rush",
-      "clip": "rush",
-      "checks": [],
-      "warnings": [],
-      "setup": {
-        "passed": true,
-        "cameraReadyMs": 3089,
-        "poseMs": 5486,
-        "statuses": [
-          [
-            3,
-            "…"
-          ],
-          [
-            210,
-            "0%"
-          ],
-          [
-            817,
-            "1%"
-          ],
-          [
-            1018,
-            "40%"
-          ],
-          [
-            1219,
-            "83%"
-          ],
-          [
-            1422,
-            "…"
-          ],
-          [
-            2277,
-            "STEP IN"
-          ],
-          [
-            3089,
-            "HANDS UP"
-          ],
-          [
-            7967,
-            "HOLD IT"
-          ],
-          [
-            8575,
-            "READY. 3"
-          ],
-          [
-            9184,
-            "READY. 2"
-          ],
-          [
-            9994,
-            "READY. 1"
-          ]
-        ]
-      },
-      "jank": {
-        "frames": 1507,
-        "droppedPct": 0,
-        "p99": 16.8
-      },
-      "errors": [],
-      "trackedShare": 1,
-      "inference": {
-        "mode": "worker",
-        "ms": 20.1
+        "ms": 22.4
       },
       "frameP95": 16.8,
       "hits": 3,
@@ -381,51 +315,75 @@
       "warnings": [],
       "setup": {
         "passed": true,
-        "cameraReadyMs": 4591,
-        "poseMs": 406,
+        "cameraReadyMs": 7469,
+        "poseMs": 5285,
         "statuses": [
           [
             1,
             "…"
           ],
           [
-            204,
+            203,
             "0%"
           ],
           [
-            2240,
-            "5%"
+            815,
+            "1%"
           ],
           [
-            2442,
-            "41%"
+            1017,
+            "19%"
           ],
           [
-            2644,
-            "74%"
+            1219,
+            "51%"
           ],
           [
-            2847,
+            1420,
+            "88%"
+          ],
+          [
+            1625,
             "…"
           ],
           [
-            3778,
+            6607,
             "STEP IN"
           ],
           [
-            4591,
+            7469,
+            "HANDS UP"
+          ],
+          [
+            8889,
             "HOLD IT"
           ],
           [
-            4997,
+            9093,
+            "HANDS UP"
+          ],
+          [
+            11329,
+            "HOLD IT"
+          ],
+          [
+            11531,
+            "HANDS UP"
+          ],
+          [
+            12344,
+            "HOLD IT"
+          ],
+          [
+            12754,
             "READY. 3"
           ],
           [
-            5809,
+            13575,
             "READY. 2"
           ],
           [
-            6423,
+            14189,
             "READY. 1"
           ]
         ]
@@ -445,13 +403,13 @@
     },
     {
       "game": "tennis",
-      "clip": "swing",
+      "clip": "tennis-real",
       "checks": [],
       "warnings": [],
       "setup": {
         "passed": true,
-        "cameraReadyMs": 5137,
-        "poseMs": 406,
+        "cameraReadyMs": 4220,
+        "poseMs": 9129,
         "statuses": [
           [
             0,
@@ -462,57 +420,93 @@
             "0%"
           ],
           [
-            2226,
-            "1%"
+            1019,
+            "16%"
           ],
           [
-            2428,
-            "10%"
+            1223,
+            "25%"
           ],
           [
-            2630,
-            "28%"
+            1428,
+            "36%"
           ],
           [
-            2832,
-            "43%"
+            1631,
+            "48%"
           ],
           [
-            3035,
-            "71%"
+            1834,
+            "61%"
           ],
           [
-            3239,
-            "90%"
+            2037,
+            "94%"
           ],
           [
-            3441,
+            2241,
             "…"
           ],
           [
-            4323,
+            3378,
             "STEP IN"
           ],
           [
-            5137,
+            4220,
+            "HANDS UP"
+          ],
+          [
+            6651,
+            "STEP BACK"
+          ],
+          [
+            7870,
+            "HANDS UP"
+          ],
+          [
+            8682,
+            "STEP BACK"
+          ],
+          [
+            9497,
+            "HANDS UP"
+          ],
+          [
+            10713,
+            "STEP BACK"
+          ],
+          [
+            11524,
+            "HANDS UP"
+          ],
+          [
+            12134,
+            "STEP BACK"
+          ],
+          [
+            12337,
+            "HANDS UP"
+          ],
+          [
+            12743,
             "HOLD IT"
           ],
           [
-            5543,
+            13349,
             "READY. 3"
           ],
           [
-            6354,
+            13965,
             "READY. 2"
           ],
           [
-            6963,
+            14783,
             "READY. 1"
           ]
         ]
       },
       "jank": {
-        "frames": 1208,
+        "frames": 1304,
         "droppedPct": 0.2,
         "p99": 16.8
       },
@@ -520,92 +514,84 @@
       "trackedShare": 1,
       "inference": {
         "mode": "worker",
-        "ms": 20.9
+        "ms": 19.6
       },
       "frameP95": 16.7,
-      "hits": 1,
-      "misses": 2,
-      "score": 65
+      "hits": 4,
+      "misses": 0,
+      "score": 424
     },
     {
       "game": "bowl",
-      "clip": "swing",
+      "clip": "bowl-real",
       "checks": [],
       "warnings": [],
       "setup": {
         "passed": true,
-        "cameraReadyMs": 67168,
-        "poseMs": 3655,
+        "cameraReadyMs": 3760,
+        "poseMs": 405,
         "statuses": [
           [
             1,
             "…"
           ],
           [
-            412,
+            204,
             "0%"
           ],
           [
-            2308,
-            "4%"
+            1020,
+            "16%"
           ],
           [
-            2517,
-            "23%"
+            1221,
+            "34%"
           ],
           [
-            2722,
-            "58%"
+            1423,
+            "68%"
           ],
           [
-            2927,
-            "84%"
-          ],
-          [
-            3130,
+            1626,
             "…"
           ],
           [
-            66353,
+            2875,
             "STEP IN"
           ],
           [
-            67168,
-            "HANDS UP"
-          ],
-          [
-            70214,
+            3760,
             "HOLD IT"
           ],
           [
-            70823,
+            4165,
             "READY. 3"
           ],
           [
-            71435,
+            4774,
             "READY. 2"
           ],
           [
-            72253,
+            5586,
             "READY. 1"
           ]
         ]
       },
       "jank": {
-        "frames": 1203,
-        "droppedPct": 0,
+        "frames": 1787,
+        "droppedPct": 0.1,
         "p99": 16.8
       },
       "errors": [],
       "trackedShare": 1,
       "inference": {
         "mode": "worker",
-        "ms": 19.2
+        "ms": 19.7
       },
       "frameP95": 16.7,
-      "hits": 1,
+      "hits": 3,
       "misses": 0,
-      "score": 0
+      "score": 8
     }
   ]
 }
