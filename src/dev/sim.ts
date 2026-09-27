@@ -272,11 +272,79 @@ function bowlBot(): Bot {
   };
 }
 
+// ---- Boxing ------------------------------------------------------------
+
+/** Guard up, jab-cross when she's open, and read her tells to defend. */
+function boxBot(): Bot {
+  let punchAt = -1,
+    punchHand: "L" | "R" = "L",
+    kind: "straight" | "hook" = "straight",
+    defendUntil = -1,
+    defense: "guard" | "slipL" | "slipR" | "duck" = "guard",
+    lastImpact = -1,
+    nextPunch = 0;
+  return ({ t, body, view, skill, rand }) => {
+    idle(body, t);
+    body.leanSide = 0;
+    body.crouch = 0.03;
+    // guard: fists at the chin
+    const guard = () => {
+      body.hand.L = body.chestPoint(0.12, 0.08, 0.22);
+      body.hand.R = body.chestPoint(-0.12, 0.08, 0.22);
+    };
+    guard();
+    if (!view.live) return;
+    // down: punch like mad to beat the count
+    if (view.down === "you") {
+      const k = Math.sin(t / 60);
+      body.hand.L = body.chestPoint(0.1, 0.05, 0.2 + Math.max(0, k) * 0.45);
+      body.hand.R = body.chestPoint(-0.1, 0.05, 0.2 + Math.max(0, -k) * 0.45);
+      return;
+    }
+    // defend: react to her tell
+    if (view.attack?.impactAt && view.attack.impactAt !== lastImpact) {
+      lastImpact = view.attack.impactAt;
+      if (rand() < skill) {
+        const a = view.attack;
+        const r = rand();
+        defense = a.kind === "straight" ? (r < 0.5 ? "guard" : r < 0.75 ? "slipL" : "slipR") : a.kind === "hook" ? (r < 0.5 ? "duck" : a.from > 0 ? "slipL" : "slipR") : r < 0.5 ? "guard" : "slipR";
+        defendUntil = a.impactAt + 260;
+        punchAt = -1;
+      }
+    }
+    if (t < defendUntil && t > lastImpact - 420) {
+      if (defense === "slipL") body.leanSide = 0.34; // player's left is screen left: lean toward +X
+      if (defense === "slipR") body.leanSide = -0.34;
+      if (defense === "duck") body.crouch = 0.34;
+      guard();
+      return;
+    }
+    // offense: punches, faster when she's open
+    if (punchAt < 0 && t > nextPunch) {
+      punchAt = t;
+      punchHand = rand() < 0.5 ? "L" : "R";
+      kind = rand() < 0.75 ? "straight" : "hook";
+      nextPunch = t + (view.open ? 300 : 900 + rand() * 900);
+    }
+    if (punchAt > 0) {
+      const k = (t - punchAt) / 240;
+      if (k > 1) punchAt = -1;
+      else {
+        const e = Math.sin(Math.min(1, k) * Math.PI);
+        const s = punchHand === "L" ? 1 : -1;
+        // a real jab also travels in toward the centerline, not only at the camera
+        body.hand[punchHand] = kind === "straight" ? body.chestPoint(s * (0.14 - e * 0.14), 0.06 + e * 0.04, 0.22 + e * 0.45) : body.chestPoint(s * (0.42 - e * 0.5), 0.05, 0.25 + e * 0.12);
+      }
+    }
+  };
+}
+
 const BOTS: Record<string, () => Bot> = {
   idle: () => ({ t, body }) => idle(body, t),
   blade: bladeBot,
   tennis: tennisBot,
   bowl: bowlBot,
+  box: boxBot,
   dance: () => danceBot("copy"),
   dancestill: () => danceBot("still"),
   dancerandom: () => danceBot("random"),

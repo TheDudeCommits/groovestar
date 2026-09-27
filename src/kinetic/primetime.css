@@ -2902,3 +2902,181 @@ dialog.pt-dialog .pt-gear small {
   .bw-m i { width: 11px; font-size: 11px; }
   .bw-f b { font-size: 14px; }
 }
+
+/* ---- Boxing: fight HUD ---- */
+.pt-game[data-game="box"] .pt-hud-score,
+.pt-game[data-game="box"] .pt-combo {
+  display: none;
+}
+.bx-ui {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 5;
+}
+.bx-bars {
+  position: absolute;
+  left: 26px;
+  right: 110px;
+  top: 22px;
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  gap: 18px;
+  align-items: start;
+}
+.bx-bar b {
+  display: block;
+  font: italic 900 20px/1 var(--pt-display);
+  letter-spacing: 0.14em;
+  color: #fff;
+  margin-bottom: 6px;
+}
+.bx-blaze b {
+  text-align: right;
+  color: #ffb07a;
+}
+.bx-hp {
+  position: relative;
+  height: 20px;
+  background: rgba(8, 4, 22, 0.7);
+  border: 2px solid rgba(255, 255, 255, 0.25);
+  transform: skewX(-12deg);
+  overflow: hidden;
+}
+.bx-hp i {
+  position: absolute;
+  inset: 0;
+  transform-origin: 0 50%;
+}
+.bx-blaze .bx-hp i {
+  transform-origin: 100% 50%;
+}
+.bx-hp i[data-trail] {
+  background: rgba(255, 255, 255, 0.85);
+}
+.bx-you .bx-hp i[data-hp] {
+  background: linear-gradient(90deg, #2f7bff, #3fe0ff);
+  box-shadow: 0 0 14px rgba(63, 224, 255, 0.7);
+}
+.bx-blaze .bx-hp i[data-hp] {
+  background: linear-gradient(90deg, #ffb03a, #ff4a2a);
+  box-shadow: 0 0 14px rgba(255, 106, 60, 0.7);
+}
+.bx-st {
+  margin-top: 5px;
+  height: 6px;
+  width: 70%;
+  background: rgba(255, 255, 255, 0.12);
+  transform: skewX(-12deg);
+  overflow: hidden;
+}
+.bx-st i {
+  display: block;
+  height: 100%;
+  background: #d7ef70;
+  transform-origin: 0 50%;
+  transition: transform 0.15s linear;
+}
+.bx-clock {
+  padding: 6px 14px 4px;
+  font: italic 900 26px/1 var(--pt-display);
+  letter-spacing: 0.06em;
+  color: #fff;
+  background: rgba(8, 4, 22, 0.7);
+  border-bottom: 3px solid var(--pt-gold);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.bx-call {
+  position: absolute;
+  left: 50%;
+  top: 30%;
+  transform: translate(-50%, -50%) skewX(-8deg);
+  font: italic 900 clamp(34px, 5.2vw, 76px) / 1 var(--pt-display);
+  color: #fff;
+  white-space: nowrap;
+  opacity: 0;
+  text-shadow: 0 4px 0 #12063a, 0 0 22px rgba(63, 224, 255, 0.7);
+}
+.bx-call.show {
+  animation: tn-pop 0.9s cubic-bezier(0.2, 1.4, 0.4, 1) forwards;
+}
+.bx-call[data-kind="good"] {
+  color: #fff4b0;
+  text-shadow: 0 4px 0 #4a1a00, 0 0 26px rgba(255, 190, 40, 0.85);
+}
+.bx-call[data-kind="bad"] {
+  color: #ffc2c2;
+  text-shadow: 0 4px 0 #3a0610, 0 0 22px rgba(255, 40, 60, 0.8);
+}
+.bx-call[data-kind="big"] {
+  font-size: clamp(48px, 8vw, 120px);
+  color: #fff;
+  text-shadow: 0 5px 0 #2a0f60, 0 0 30px rgba(255, 63, 180, 0.8);
+}
+.bx-call[data-kind="info"] {
+  font-size: clamp(26px, 3.4vw, 46px);
+}
+.bx-warn {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 22%;
+  opacity: 0;
+}
+.bx-warn[data-side="left"] {
+  left: 0;
+  background: linear-gradient(90deg, rgba(255, 40, 60, 0.55), transparent);
+}
+.bx-warn[data-side="right"] {
+  right: 0;
+  background: linear-gradient(270deg, rgba(255, 40, 60, 0.55), transparent);
+}
+.bx-warn[data-side="low"] {
+  left: 20%;
+  right: 20%;
+  width: auto;
+  top: auto;
+  height: 30%;
+  background: linear-gradient(0deg, rgba(255, 40, 60, 0.5), transparent);
+}
+.bx-warn.show {
+  animation: bx-warn 0.8s ease-out forwards;
+}
+@keyframes bx-warn {
+  0% { opacity: 0; }
+  20% { opacity: 1; }
+  100% { opacity: 0; }
+}
+.bx-hurt {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  background: radial-gradient(ellipse at center, transparent 42%, rgba(200, 0, 20, 0.55) 100%);
+}
+.bx-count {
+  position: absolute;
+  left: 50%;
+  top: 48%;
+  transform: translate(-50%, -50%);
+  font: italic 900 clamp(90px, 14vw, 200px) / 1 var(--pt-display);
+  color: #fff;
+  text-shadow: 0 6px 0 #2a0f60, 0 0 40px rgba(255, 63, 180, 0.8);
+}
+.bx-count.show {
+  animation: bx-count 0.85s ease-out;
+}
+.bx-count[data-hint]:not([data-hint=""])::after {
+  content: attr(data-hint);
+  display: block;
+  margin-top: 10px;
+  font-size: clamp(22px, 2.6vw, 36px);
+  letter-spacing: 0.12em;
+  color: var(--pt-gold);
+  text-align: center;
+}
+@keyframes bx-count {
+  0% { transform: translate(-50%, -50%) scale(1.5); opacity: 0; }
+  25% { transform: translate(-50%, -50%) scale(1); opacity: 1; }
+  100% { transform: translate(-50%, -50%) scale(0.96); opacity: 1; }
+}
