@@ -1,6 +1,6 @@
 {
   "origin": "http://127.0.0.1:5179",
-  "date": "2026-09-26T21:55:41.135Z",
+  "date": "2026-09-27T12:06:01.659Z",
   "passed": true,
   "results": [
     {
@@ -10,46 +10,74 @@
       "warnings": [],
       "setup": {
         "passed": true,
-        "cameraReadyMs": 2068,
-        "poseMs": 1310,
+        "cameraReadyMs": 10597,
+        "poseMs": 2228,
         "statuses": [
           [
             1,
-            "Loading motion tracking…"
+            "…"
           ],
           [
-            204,
-            "Loading motion tracking · 0%"
+            205,
+            "0%"
           ],
           [
-            1021,
-            "Preparing motion tracking…"
+            1220,
+            "2%"
           ],
           [
-            2068,
-            "Step into the frame."
+            1423,
+            "30%"
           ],
           [
-            2763,
-            "Hold it…"
+            1625,
+            "57%"
           ],
           [
-            3378,
+            1827,
+            "78%"
+          ],
+          [
+            2030,
+            "…"
+          ],
+          [
+            2639,
+            "STEP IN"
+          ],
+          [
+            10597,
+            "HANDS UP"
+          ],
+          [
+            11004,
+            "STEP BACK"
+          ],
+          [
+            11207,
+            "HANDS UP"
+          ],
+          [
+            12219,
+            "HOLD IT"
+          ],
+          [
+            12825,
             "READY. 3"
           ],
           [
-            3988,
+            13434,
             "READY. 2"
           ],
           [
-            4733,
+            14245,
             "READY. 1"
           ]
         ]
       },
       "jank": {
-        "frames": 1206,
-        "droppedPct": 0,
+        "frames": 1163,
+        "droppedPct": 0.3,
         "p99": 16.8
       },
       "errors": [],
@@ -64,139 +92,211 @@
       "game": "blade",
       "clip": "slash",
       "checks": [],
-      "warnings": [],
+      "warnings": [
+        "no hits from the fixture movement"
+      ],
       "setup": {
         "passed": true,
-        "cameraReadyMs": 1529,
-        "poseMs": 1374,
+        "cameraReadyMs": 56224,
+        "poseMs": 4792,
         "statuses": [
           [
             1,
-            "Loading motion tracking…"
+            "…"
           ],
           [
-            416,
-            "Loading motion tracking · 0%"
+            204,
+            "0%"
           ],
           [
-            1051,
-            "Loading motion tracking · 76%"
+            1425,
+            "1%"
           ],
           [
-            1284,
-            "Preparing motion tracking…"
+            1833,
+            "2%"
           ],
           [
-            1529,
-            "Step into the frame."
+            2036,
+            "5%"
           ],
           [
-            2415,
-            "Hold it…"
+            2237,
+            "10%"
           ],
           [
-            2903,
+            2440,
+            "20%"
+          ],
+          [
+            2642,
+            "41%"
+          ],
+          [
+            2843,
+            "77%"
+          ],
+          [
+            3047,
+            "98%"
+          ],
+          [
+            3249,
+            "…"
+          ],
+          [
+            55408,
+            "STEP IN"
+          ],
+          [
+            56224,
+            "HANDS UP"
+          ],
+          [
+            57128,
+            "HOLD IT"
+          ],
+          [
+            57331,
+            "HANDS UP"
+          ],
+          [
+            59598,
+            "HOLD IT"
+          ],
+          [
+            59801,
+            "HANDS UP"
+          ],
+          [
+            60612,
+            "HOLD IT"
+          ],
+          [
+            61016,
             "READY. 3"
           ],
           [
-            3729,
+            61827,
             "READY. 2"
           ],
           [
-            4362,
+            62436,
             "READY. 1"
           ]
         ]
       },
       "jank": {
-        "frames": 1552,
-        "droppedPct": 0.3,
+        "frames": 1505,
+        "droppedPct": 0.1,
         "p99": 16.8
       },
       "errors": [],
       "trackedShare": 1,
       "inference": {
         "mode": "worker",
-        "ms": 18.2
+        "ms": 15.6
       },
-      "frameP95": 16.7,
-      "hits": 2,
-      "misses": 16,
-      "score": 150
+      "frameP95": 16.8,
+      "hits": 0,
+      "misses": 19,
+      "score": 0
     },
     {
       "game": "box",
       "clip": "box",
       "checks": [],
-      "warnings": [
-        "no hits from the fixture movement"
-      ],
+      "warnings": [],
       "setup": {
         "passed": true,
-        "cameraReadyMs": 2116,
-        "poseMs": 10633,
+        "cameraReadyMs": 6542,
+        "poseMs": 6105,
         "statuses": [
           [
-            6,
-            "Loading motion tracking…"
+            1,
+            "…"
           ],
           [
-            418,
-            "Loading motion tracking · 0%"
+            203,
+            "0%"
           ],
           [
-            1021,
-            "Loading motion tracking · 100%"
+            3277,
+            "1%"
           ],
           [
-            1225,
-            "Preparing motion tracking…"
+            3479,
+            "2%"
           ],
           [
-            2116,
-            "Step into the frame."
+            3683,
+            "4%"
           ],
           [
-            2981,
-            "Hold it…"
+            3885,
+            "8%"
           ],
           [
-            3193,
-            "Raise both hands above your head."
+            4087,
+            "15%"
           ],
           [
-            12336,
-            "Hold it…"
+            4289,
+            "22%"
           ],
           [
-            12749,
+            4491,
+            "46%"
+          ],
+          [
+            4692,
+            "84%"
+          ],
+          [
+            4895,
+            "…"
+          ],
+          [
+            5731,
+            "STEP IN"
+          ],
+          [
+            6542,
+            "HANDS UP"
+          ],
+          [
+            12240,
+            "HOLD IT"
+          ],
+          [
+            12647,
             "READY. 3"
           ],
           [
-            13616,
+            13459,
             "READY. 2"
           ],
           [
-            14253,
+            14068,
             "READY. 1"
           ]
         ]
       },
       "jank": {
-        "frames": 1472,
-        "droppedPct": 0.3,
+        "frames": 1505,
+        "droppedPct": 0,
         "p99": 16.8
       },
       "errors": [],
-      "trackedShare": 0.96,
+      "trackedShare": 1,
       "inference": {
         "mode": "worker",
-        "ms": 20.8
+        "ms": 12.7
       },
       "frameP95": 16.7,
-      "hits": 0,
-      "misses": 12,
-      "score": 0
+      "hits": 2,
+      "misses": 10,
+      "score": 150
     },
     {
       "game": "rush",
@@ -205,66 +305,74 @@
       "warnings": [],
       "setup": {
         "passed": true,
-        "cameraReadyMs": 2346,
-        "poseMs": 6262,
+        "cameraReadyMs": 3089,
+        "poseMs": 5486,
         "statuses": [
           [
-            1,
-            "Loading motion tracking…"
+            3,
+            "…"
           ],
           [
-            413,
-            "Loading motion tracking · 0%"
+            210,
+            "0%"
           ],
           [
-            1232,
-            "Loading motion tracking · 81%"
+            817,
+            "1%"
           ],
           [
-            1437,
-            "Preparing motion tracking…"
+            1018,
+            "40%"
           ],
           [
-            2346,
-            "Step into the frame."
+            1219,
+            "83%"
           ],
           [
-            3228,
-            "Raise both hands above your head."
+            1422,
+            "…"
           ],
           [
-            8198,
-            "Hold it…"
+            2277,
+            "STEP IN"
           ],
           [
-            8608,
+            3089,
+            "HANDS UP"
+          ],
+          [
+            7967,
+            "HOLD IT"
+          ],
+          [
+            8575,
             "READY. 3"
           ],
           [
-            9433,
+            9184,
             "READY. 2"
           ],
           [
-            10047,
+            9994,
             "READY. 1"
           ]
         ]
       },
       "jank": {
-        "frames": 1561,
-        "droppedPct": 0.6,
+        "frames": 1507,
+        "droppedPct": 0,
         "p99": 16.8
       },
       "errors": [],
       "trackedShare": 1,
       "inference": {
         "mode": "worker",
-        "ms": 31
+        "ms": 20.1
       },
-      "frameP95": 16.7,
-      "hits": 2,
-      "misses": 2,
-      "score": 135
+      "frameP95": 16.8,
+      "hits": 3,
+      "misses": 0,
+      "score": 155
     },
     {
       "game": "fruit",
@@ -273,50 +381,58 @@
       "warnings": [],
       "setup": {
         "passed": true,
-        "cameraReadyMs": 2146,
-        "poseMs": 1413,
+        "cameraReadyMs": 4591,
+        "poseMs": 406,
         "statuses": [
           [
-            4,
-            "Loading motion tracking…"
+            1,
+            "…"
           ],
           [
-            495,
-            "Loading motion tracking · 0%"
+            204,
+            "0%"
           ],
           [
-            1133,
-            "Loading motion tracking · 13%"
+            2240,
+            "5%"
           ],
           [
-            1340,
-            "Preparing motion tracking…"
+            2442,
+            "41%"
           ],
           [
-            2146,
-            "Step into the frame."
+            2644,
+            "74%"
           ],
           [
-            2858,
-            "Hold it…"
+            2847,
+            "…"
           ],
           [
-            3559,
+            3778,
+            "STEP IN"
+          ],
+          [
+            4591,
+            "HOLD IT"
+          ],
+          [
+            4997,
             "READY. 3"
           ],
           [
-            4253,
+            5809,
             "READY. 2"
           ],
           [
-            4867,
+            6423,
             "READY. 1"
           ]
         ]
       },
       "jank": {
-        "frames": 1213,
-        "droppedPct": 0.2,
+        "frames": 1204,
+        "droppedPct": 0,
         "p99": 16.8
       },
       "errors": [],
@@ -331,63 +447,85 @@
       "game": "tennis",
       "clip": "swing",
       "checks": [],
-      "warnings": [
-        "no hits from the fixture movement"
-      ],
+      "warnings": [],
       "setup": {
         "passed": true,
-        "cameraReadyMs": 1258,
-        "poseMs": 1228,
+        "cameraReadyMs": 5137,
+        "poseMs": 406,
         "statuses": [
           [
-            1,
-            "Loading motion tracking…"
+            0,
+            "…"
           ],
           [
-            416,
-            "Loading motion tracking · 10%"
+            203,
+            "0%"
           ],
           [
-            619,
-            "Preparing motion tracking…"
+            2226,
+            "1%"
           ],
           [
-            1258,
-            "Step into the frame."
+            2428,
+            "10%"
           ],
           [
-            2079,
-            "Hold it…"
+            2630,
+            "28%"
           ],
           [
-            2486,
+            2832,
+            "43%"
+          ],
+          [
+            3035,
+            "71%"
+          ],
+          [
+            3239,
+            "90%"
+          ],
+          [
+            3441,
+            "…"
+          ],
+          [
+            4323,
+            "STEP IN"
+          ],
+          [
+            5137,
+            "HOLD IT"
+          ],
+          [
+            5543,
             "READY. 3"
           ],
           [
-            3298,
+            6354,
             "READY. 2"
           ],
           [
-            3907,
+            6963,
             "READY. 1"
           ]
         ]
       },
       "jank": {
-        "frames": 1220,
-        "droppedPct": 0,
+        "frames": 1208,
+        "droppedPct": 0.2,
         "p99": 16.8
       },
       "errors": [],
       "trackedShare": 1,
       "inference": {
         "mode": "worker",
-        "ms": 23.9
+        "ms": 20.9
       },
-      "frameP95": 16.8,
-      "hits": 0,
-      "misses": 4,
-      "score": 0
+      "frameP95": 16.7,
+      "hits": 1,
+      "misses": 2,
+      "score": 65
     },
     {
       "game": "bowl",
@@ -396,62 +534,78 @@
       "warnings": [],
       "setup": {
         "passed": true,
-        "cameraReadyMs": 2113,
-        "poseMs": 1175,
+        "cameraReadyMs": 67168,
+        "poseMs": 3655,
         "statuses": [
           [
-            0,
-            "Loading motion tracking…"
+            1,
+            "…"
           ],
           [
-            404,
-            "Loading motion tracking · 0%"
+            412,
+            "0%"
           ],
           [
-            806,
-            "Loading motion tracking · 1%"
+            2308,
+            "4%"
           ],
           [
-            1009,
-            "Preparing motion tracking…"
+            2517,
+            "23%"
           ],
           [
-            2113,
-            "Step into the frame."
+            2722,
+            "58%"
           ],
           [
-            2789,
-            "Hold it…"
+            2927,
+            "84%"
           ],
           [
-            3288,
+            3130,
+            "…"
+          ],
+          [
+            66353,
+            "STEP IN"
+          ],
+          [
+            67168,
+            "HANDS UP"
+          ],
+          [
+            70214,
+            "HOLD IT"
+          ],
+          [
+            70823,
             "READY. 3"
           ],
           [
-            3947,
+            71435,
             "READY. 2"
           ],
           [
-            4685,
+            72253,
             "READY. 1"
           ]
         ]
       },
       "jank": {
-        "frames": 1089,
-        "droppedPct": 0.3,
+        "frames": 1203,
+        "droppedPct": 0,
         "p99": 16.8
       },
       "errors": [],
-      "trackedShare": 0.9,
+      "trackedShare": 1,
       "inference": {
         "mode": "worker",
-        "ms": 18.8
+        "ms": 19.2
       },
       "frameP95": 16.7,
-      "hits": 2,
+      "hits": 1,
       "misses": 0,
-      "score": 5
+      "score": 0
     }
   ]
 }
