@@ -33,22 +33,30 @@ interface FruitKind {
   hits?: number;           // multi-hit shells (coconut cracks before it splits)
 }
 
+// Fruit read big and juicy from across the room, like the Kinect original.
+const SZ = 1.42;
 const KINDS: FruitKind[] = [
-  { name: 'melon', r: 0.062, body: '#ff5d73', rind: '#39b356', seeds: '#28203a', points: 3, weight: 3 },
-  { name: 'orange', r: 0.046, body: '#ffa63e', rind: '#e8842a', points: 2, weight: 3 },
-  { name: 'apple', r: 0.044, body: '#f8f4d8', rind: '#e8342e', seeds: '#3a2c20', points: 2, weight: 3 },
-  { name: 'lime', r: 0.04, body: '#d6f78e', rind: '#57d95a', points: 2, weight: 3 },
-  { name: 'berry', r: 0.034, body: '#b39dff', rind: '#7a3df0', points: 4, weight: 2 },
-  { name: 'pineapple', r: 0.056, body: '#ffe9a3', rind: '#e8a52a', seeds: '#8a6a1a', points: 3, weight: 2 },
-  { name: 'dragon', r: 0.05, body: '#f8f4ff', rind: '#ff6ac1', seeds: '#28203a', points: 5, weight: 1.2 },
-  { name: 'star', r: 0.044, body: '#ffe9a3', rind: '#ffd23e', points: 6, weight: 0.7 },
-  { name: 'coconut', r: 0.048, body: '#f8f4d8', rind: '#6b4e35', points: 6, weight: 1.4, hits: 2 },
+  { name: 'melon', r: 0.062 * SZ, body: '#ff5d73', rind: '#39b356', seeds: '#28203a', points: 3, weight: 3 },
+  { name: 'orange', r: 0.046 * SZ, body: '#ffa63e', rind: '#e8842a', points: 2, weight: 3 },
+  { name: 'apple', r: 0.044 * SZ, body: '#f8f4d8', rind: '#e8342e', seeds: '#3a2c20', points: 2, weight: 3 },
+  { name: 'lime', r: 0.04 * SZ, body: '#d6f78e', rind: '#57d95a', points: 2, weight: 3 },
+  { name: 'berry', r: 0.034 * SZ, body: '#b39dff', rind: '#7a3df0', points: 4, weight: 2 },
+  { name: 'pineapple', r: 0.056 * SZ, body: '#ffe9a3', rind: '#e8a52a', seeds: '#8a6a1a', points: 3, weight: 2 },
+  { name: 'dragon', r: 0.05 * SZ, body: '#f8f4ff', rind: '#ff6ac1', seeds: '#28203a', points: 5, weight: 1.2 },
+  { name: 'star', r: 0.044 * SZ, body: '#ffe9a3', rind: '#ffd23e', points: 6, weight: 0.7 },
+  { name: 'coconut', r: 0.048 * SZ, body: '#f8f4d8', rind: '#6b4e35', points: 6, weight: 1.4, hits: 2 },
 ];
 const KIND_WEIGHT = KINDS.reduce((a, k) => a + k.weight, 0);
-const GOLD: FruitKind = { name: 'gold', r: 0.048, body: '#ffe9a3', rind: '#ffd23e', points: 15, weight: 0 };
-const ICE: FruitKind = { name: 'ice', r: 0.046, body: '#dff4ff', rind: '#6ee7ff', points: 5, weight: 0 };
-const BOMB: FruitKind = { name: 'bomb', r: 0.048, body: '#2c2837', rind: '#43404d', points: 0, weight: 0 };
-const BOSS: FruitKind = { name: 'boss', r: 0.088, body: '#ff5d73', rind: '#8a2444', seeds: '#ffd23e', points: 25, weight: 0 };
+/** Juice stain colors on the dojo wall. */
+const JUICE: Record<string, string> = {
+  melon: '#e3163c', orange: '#ff8a00', apple: '#f2c230', lime: '#69c81e', berry: '#7c2ee0',
+  pineapple: '#ffbf14', dragon: '#f0208f', star: '#ffc61a', coconut: '#efe7d2', gold: '#ffc61a',
+  ice: '#7fe6ff', boss: '#e3163c',
+};
+const GOLD: FruitKind = { name: 'gold', r: 0.048 * SZ, body: '#ffe9a3', rind: '#ffd23e', points: 15, weight: 0 };
+const ICE: FruitKind = { name: 'ice', r: 0.046 * SZ, body: '#dff4ff', rind: '#6ee7ff', points: 5, weight: 0 };
+const BOMB: FruitKind = { name: 'bomb', r: 0.048 * SZ, body: '#2c2837', rind: '#43404d', points: 0, weight: 0 };
+const BOSS: FruitKind = { name: 'boss', r: 0.088 * SZ, body: '#ff5d73', rind: '#8a2444', seeds: '#ffd23e', points: 25, weight: 0 };
 const BOSS_HP = 8;
 
 interface Fruit {
@@ -651,20 +659,41 @@ export class FruitGame implements Game {
   private stampSplat(f: Fruit, angle: number) {
     const c = this.splatCtx;
     const r = f.kind.r * this.H;
+    const col = JUICE[f.kind.name] ?? f.kind.body;
     c.save();
     c.translate(f.x, f.y);
     c.rotate(angle);
-    c.fillStyle = f.kind.body;
-    c.globalAlpha = 0.26;
-    c.beginPath();
-    c.ellipse(0, 0, r * 1.3, r * 0.42, 0, 0, Math.PI * 2);
-    c.fill();
-    c.globalAlpha = 0.2;
-    for (let i = 0; i < 4; i++) {
-      const a = Math.random() * Math.PI * 2;
-      const d = r * (0.7 + Math.random() * 0.9);
+    c.fillStyle = col;
+    // the splash: overlapping blobs along the cut, droplets flung past it
+    c.globalAlpha = 0.42;
+    for (let i = 0; i < 5; i++) {
       c.beginPath();
-      c.arc(Math.cos(a) * d, Math.sin(a) * d * 0.5, r * (0.1 + Math.random() * 0.16), 0, Math.PI * 2);
+      c.ellipse((Math.random() - 0.5) * r * 1.3, (Math.random() - 0.5) * r * 0.45, r * (0.45 + Math.random() * 0.55), r * (0.22 + Math.random() * 0.22), Math.random() * 0.6 - 0.3, 0, Math.PI * 2);
+      c.fill();
+    }
+    c.globalAlpha = 0.6;
+    for (let i = 0; i < 16; i++) {
+      const side = Math.random() < 0.5 ? -1 : 1;
+      const d = r * (1 + Math.random() * 1.7);
+      const a = (Math.random() - 0.5) * 0.9;
+      c.beginPath();
+      c.arc(side * d * Math.cos(a), d * Math.sin(a) * 0.8, r * (0.035 + Math.random() * 0.09), 0, Math.PI * 2);
+      c.fill();
+    }
+    c.restore();
+    // drips run down the wall
+    c.save();
+    c.fillStyle = col;
+    c.globalAlpha = 0.38;
+    for (let i = 0; i < 3; i++) {
+      const x = f.x + (Math.random() - 0.5) * r * 1.4;
+      const len = r * (0.5 + Math.random() * 1.5);
+      const wd = r * (0.06 + Math.random() * 0.06);
+      c.beginPath();
+      c.roundRect(x - wd / 2, f.y, wd, len, wd / 2);
+      c.fill();
+      c.beginPath();
+      c.arc(x, f.y + len, wd * 0.85, 0, Math.PI * 2);
       c.fill();
     }
     c.restore();
@@ -690,7 +719,7 @@ export class FruitGame implements Game {
     if (this.splat.width) {
       this.splatCtx.save();
       this.splatCtx.globalCompositeOperation = 'destination-out';
-      this.splatCtx.globalAlpha = 0.035;
+      this.splatCtx.globalAlpha = 0.009;
       this.splatCtx.fillRect(0, 0, this.splat.width, this.splat.height);
       this.splatCtx.restore();
     }
