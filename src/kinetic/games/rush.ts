@@ -13,6 +13,11 @@ interface Obstacle extends CourseObstacle {
 }
 export class KineticRush extends KineticSession {
   private runner = new Character();
+  private moves = false;
+  private runT = 0;
+  private jumpW = 0;
+  private slideW = 0;
+  private slideT = 0.25;
   private world;
   private obstacles: Obstacle[];
   private lane = 0;
@@ -37,7 +42,11 @@ export class KineticRush extends KineticSession {
       this.stage.key.position.set(-2, 6, 7);
       this.stage.key.target.position.set(0, 1, 0);
     }
-    this.preparation = this.runner.load(characterId()).then(() => this.runner.play("Run"));
+    this.preparation = this.runner.load(characterId()).then(async () => {
+      this.runner.play("Run");
+      await this.runner.loadMoves();
+      this.moves = true;
+    });
     this.ghost = bestGhost("rush", this.seed, this.config.difficulty, this.config.lowImpact, !!o.endless);
     if (this.ghost) {
       const ghost = new Character({ style: "hologram", color: PT.cyan });
@@ -107,11 +116,29 @@ export class KineticRush extends KineticSession {
     this.jump = Math.max(0, this.jump - dt);
     this.shield = Math.max(0, this.shield - dt);
     this.runner.group.position.x = this.lane * 2.75;
-    this.runner.group.position.y =
-      this.jump > 0 ? Math.sin((this.jump / 0.95) * Math.PI) * 0.8 : 0;
-    this.runner.group.scale.y = this.duck ? 0.62 : 1;
     this.runner.group.rotation.z = -(this.targetLane - this.lane) * 0.15;
-    this.runner.update(dt * (this.jump > 0 ? 0.3 : 1) * (1 + this.show.level * 0.06));
+    if (this.moves) {
+      // Motion-captured run, jump and slide, blended on one timeline. The
+      // jump clip is airborne from 0.45 s to 1.35 s; the slide bottoms out
+      // around 0.3 s to 0.9 s.
+      const pace = 1 + this.show.level * 0.06;
+      this.runT += dt * pace;
+      this.jumpW += ((this.jump > 0 ? 1 : 0) - this.jumpW) * Math.min(1, dt * 16);
+      this.slideW += ((this.duck ? 1 : 0) - this.slideW) * Math.min(1, dt * 12);
+      this.slideT = this.duck ? Math.min(0.55, Math.max(0.25, this.slideT) + dt) : 0.25;
+      const jt = 0.45 + (1 - Math.max(0, this.jump) / 0.95) * 0.9;
+      this.runner.group.position.y = 0;
+      this.runner.group.scale.y = 1;
+      this.runner.timeline([
+        ["Run", this.runT, Math.max(0, 1 - this.jumpW) * Math.max(0, 1 - this.slideW)],
+        ["Jump", jt, this.jumpW],
+        ["Slide", this.slideT, this.slideW * Math.max(0, 1 - this.jumpW)],
+      ]);
+    } else {
+      this.runner.group.position.y = this.jump > 0 ? Math.sin((this.jump / 0.95) * Math.PI) * 0.8 : 0;
+      this.runner.group.scale.y = this.duck ? 0.62 : 1;
+      this.runner.update(dt * (this.jump > 0 ? 0.3 : 1) * (1 + this.show.level * 0.06));
+    }
     this.world.update(t * 8, t);
     if (this.ghost && this.ghostRunner) {
       const p = this.ghost.replay?.find((p) => p.t >= t);

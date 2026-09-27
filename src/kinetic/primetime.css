@@ -2587,3 +2587,25 @@ dialog.pt-cast-dialog {
   color: var(--pt-gold);
   text-shadow: 0 0 14px rgba(255, 210, 62, 0.5);
 }
+
+/* Progress dialog: blade styles */
+dialog.pt-dialog .pt-gear {
+  margin-top: 16px;
+}
+dialog.pt-dialog .pt-gear h3 {
+  margin: 0 0 4px;
+  font: italic 900 18px var(--pt-display);
+  letter-spacing: 0.1em;
+  color: var(--pt-cyan);
+}
+dialog.pt-dialog .pt-gear button {
+  color: #fff;
+  font: inherit;
+  cursor: pointer;
+}
+dialog.pt-dialog .pt-gear b {
+  color: #fff;
+}
+dialog.pt-dialog .pt-gear small {
+  color: var(--pt-gold);
+}

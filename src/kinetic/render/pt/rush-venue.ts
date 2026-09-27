@@ -182,10 +182,10 @@ export function rushVenue(stage: Stage, show: ShowDirector) {
       void main(){
         vec2 p = (vUv - 0.5) * 2.0; float r = length(p);
         vec3 top = vec3(1.0, 0.86, 0.32), bot = vec3(1.0, 0.18, 0.55);
-        vec3 c = mix(bot, top, smoothstep(-0.9, 0.9, p.y)) * 1.6;
+        vec3 c = mix(bot, top, smoothstep(-0.9, 0.9, p.y)) * 0.8;
         float band = step(0.0, sin((p.y + uTime * 0.05) * 28.0) + 0.9 + p.y * 1.4);
         float disc = smoothstep(1.0, 0.985, r) * (p.y > -0.1 ? 1.0 : band);
-        float glow = smoothstep(1.9, 0.9, r) * 0.25;
+        float glow = smoothstep(1.9, 0.9, r) * 0.1;
         gl_FragColor = vec4(c * disc + bot * glow * (1.0 + uPulse * 0.3), max(disc, glow));
       }`,
   });

@@ -25,6 +25,9 @@ export class KineticTennis extends KineticSession {
   private mine = 0;
   private theirs = 0;
   private resetAt = 0;
+  private oppMoves = false;
+  private idleT = 0;
+  private swingAt = -1;
   constructor(o: KineticOpts) {
     super(o, { bloom: 0.6, bloomThreshold: 0.85, exposure: 1.0 });
     this.duration = Infinity;
@@ -39,7 +42,11 @@ export class KineticTennis extends KineticSession {
       this.stage.key.position.set(-3, 8, -4);
       this.stage.key.target.position.set(0, 1, -14);
     }
-    this.preparation = this.opponent.load("luna").then(() => this.opponent.play("Idle"));
+    this.preparation = this.opponent.load("luna").then(async () => {
+      this.opponent.play("Idle");
+      await this.opponent.loadMoves();
+      this.oppMoves = true;
+    });
     this.ball = new T.Group();
     const core = new T.Mesh(new T.SphereGeometry(0.13, 24, 16), new T.MeshBasicMaterial({ color: new T.Color(0xd8ff5a).multiplyScalar(1.8) }));
     const halo = new T.Sprite(new T.SpriteMaterial({ map: softDot(), color: new T.Color(0xc8ff3a).multiplyScalar(1.4), blending: T.AdditiveBlending, depthWrite: false }));
@@ -61,7 +68,20 @@ export class KineticTennis extends KineticSession {
     this.rally = 0;
   }
   protected step(dt: number, t: number, input: MotionState) {
-    this.opponent.update(dt);
+    if (this.oppMoves) {
+      // Luna swings for real: start the slash so its strike (0.5 s into the
+      // clip) meets the ball as it reaches her.
+      this.idleT += dt;
+      const eta = this.vz < 0 ? (this.z + 13) / Math.max(0.1, -this.vz) : Infinity;
+      if (this.swingAt < 0 && eta < 0.5 && eta > 0) this.swingAt = t - (0.5 - eta);
+      const st = this.swingAt >= 0 ? t - this.swingAt : -1;
+      if (st > 1.3) this.swingAt = -1;
+      const w = st < 0 ? 0 : Math.min(1, st / 0.12) * Math.min(1, (1.3 - st) / 0.3);
+      this.opponent.timeline([
+        ["BoxBounce", this.idleT, 1 - w],
+        ["Slash", Math.max(0, st), w],
+      ]);
+    } else this.opponent.update(dt);
     this.world.update(t);
     const hand = this.opponent.handWorld("R");
     if (hand) {
@@ -144,7 +164,7 @@ export class KineticTennis extends KineticSession {
       } else {
         this.vz = 4 + Math.min(3, this.rally * 0.35);
         this.vx = (this.rnd() - 0.5) * 0.35;
-        this.opponent.reach("L", new T.Vector3(this.x - this.aiX, 1.2, 0.45));
+        if (!this.oppMoves) this.opponent.reach("L", new T.Vector3(this.x - this.aiX, 1.2, 0.45));
       }
     }
     if (this.z > 1.7 && this.vz > 0) this.point(false, t);
