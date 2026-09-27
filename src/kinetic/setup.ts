@@ -9,11 +9,11 @@ import { bodyInFrame, starPose } from "./core/setup-pose";
 const TIPS: Record<GameId, string> = {
   dance: "MIRROR NOVA",
   blade: "SLICE WITH THE ARROWS",
-  box: "PUNCH THE LIT PAD",
+  box: "PUNCH · BLOCK · SLIP",
   rush: "STEP · JUMP · DUCK",
   fruit: "SLICE FRUIT · SKIP BOMBS",
   tennis: "SWING THROUGH THE BALL",
-  bowl: "LOWER · SWING · RELEASE",
+  bowl: "SWING BACK · SWING THROUGH",
 };
 
 /**
