@@ -1,3 +1,44 @@
+# GrooveStar · Round 4 handover (gameplay and mechanics)
+
+Updated 28 September 2026. The owner played the round 3 preview with a real webcam: only Fruit Slice was good. Dance didn't respond to their moves (Nova danced alone), Beat Blade blocks couldn't be hit and had no excitement, Boxing was a pad drill instead of a real match against the AI or another player, Tennis showed two rackets and ignored swing speed, intensity and angle (and Luna returned nothing), and Bowling threw by itself. This round rebuilds the mechanics on `primetime/overhaul`.
+
+## Why the games failed a real player
+
+- Beat Blade read raw camera coordinates: blocks sat at fixed screen spots, the saber always pointed up, and a cut had to cross a spot about 5% of the screen wide. The recorded-human QA scored 0 of 19; the old real-motion suite only warned on zero hits, so it "passed".
+- Tennis and Boxing judged swings and punches at the moment the camera reported them, 150 to 250 ms after they happened, so the ball had already gone by. Bowling armed on any lowered hand and threw on any quick rise.
+- The Dance coach replaced the player's avatar, and the old 2D features couldn't tell dancing from standing still.
+
+## What changed
+
+| Area | Change | Files |
+| --- | --- | --- |
+| Test player | A dev-only simulated body (`?sim=<bot>`) produces MediaPipe-shaped landmarks through a virtual webcam with 30 fps sampling, 85 ms latency, jitter and motion blur. Bots for every game play through the real input chain; `tools/qa/play.mjs` runs them, films them and reports hits. Real recorded clips of bowling, tennis and boxing motion were added. | `src/dev/`, `tools/qa/play.mjs`, `tools/qa/online-box.mjs`, `tests/fixtures/motion/*-real.mp4` |
+| Body-relative input | Hands in reach space (measured from your shoulders in your own arm lengths), a filtered 3D body from MediaPipe world landmarks, and a character driver that mirrors (Dance) or copies (Tennis, Bowling, online Boxing) the player onto a rig. | `src/kinetic/core/reach.ts`, `src/pose/body3d.ts`, `src/kinetic/render/character.ts` |
+| Beat Blade | Blades grow out of the forearm; a cut is the whole blade sweeping through a block between frames, lag-compensated, direction-checked only once the block arrives (wind-ups don't count). Beat Saber charts with swing parity, doubles and bombs; halves split along the swing; score popups, multiplier ring, energy bar and fail state; edge flashes, combo bursts and a chorus drop. | `src/kinetic/games/blade.ts`, `src/kinetic/games/blade-chart.ts` |
+| Dance | You dance beside Nova as a live avatar driven by your 3D pose, with a sync ring and rim light that follow how well you match. Scoring compares arm shapes (weighted by how much Nova uses each limb), leg lifts and hand motion at your learned reaction lag. A copy scores PERFECT and SUPER, random dancing OK and GOOD, standing still OK and MISS. The stage lights pump with your energy. | `src/dance/sync.ts`, `src/kinetic/render/dance.ts`, `src/pose/scorer.ts` |
+| Tennis | One racket in your playing hand (learned from your swings). Your character runs to the ball; timing sets direction, swing speed power, up or down topspin or slice, plus smash and lob. Luna chases and returns with pressure errors. Real scoring, serves and faults, lag-compensated swings, ball shadow, trail and bounce marks. | `src/kinetic/games/tennis.ts`, `src/kinetic/games/tennis-ball.ts` |
+| Bowling | The ball sits in your character's hand and her arm follows yours; a pendulum swing (back while low, then through and up) releases it, with speed from your hand and line and hook from your swing. cannon-es pins tuned on a bench, a new lane at real proportions, a pin camera and ten-frame scoring. | `src/kinetic/games/bowling.ts`, `src/kinetic/games/bowl-score.ts`, `src/kinetic/render/pt/bowl-venue.ts` |
+| Boxing | A three-round fight with Blaze, first person: jabs, crosses, hooks and uppercuts from the fist's speed relative to its shoulder; telegraphed attacks you block, slip or duck; counters, stamina, knockdowns with a ten count (punch to get up) and a decision. FIGHT ONLINE matches two players over the existing rooms, each the authority on their own defense. | `src/kinetic/games/boxing*.ts`, `src/net/room.ts`, `src/main.ts` |
+| Cast | Blaze, the second crew member: Meshy image-to-3D from a concept made in Nova's style, auto-rigged; 26 more library clips for boxing, tennis and bowling. | `public/models/blaze-pt.glb`, `tools/primetime/build-cast.mjs`, `tools/primetime/build-moves.mjs` |
+
+## Verification
+
+Run on 28 September 2026 on the M1 Pro MacBook.
+
+- `npm test`: 41 of 41 pass (5 new: chart parity, bowling totals, tennis shot solving, the online pose codec, dance sync).
+- `npm run build`: passes; the simulator is not in the production bundle; cannon-es loads only with Bowling.
+- `npm run qa:kinetic`: passes; all five 3D demos at 16.7 to 16.8 ms frame p95.
+- `npm run qa:realmotion`: 7 of 7, and each game must now respond to the recorded body (Blade 6 cuts, Boxing punches read from real shadowboxing, Tennis swings from real strokes, Bowling throws from a real bowling swing, Dance scored moves).
+- Bots: Beat Blade 98% cuts on Flow and Expert; Dance copy mostly PERFECT/SUPER, standing still OK/MISS; Tennis rallies with points both ways; Bowling around 100 through nine frames with strikes and spares; Boxing competitive to round 3 with knockdowns both ways; an online round between two browsers kept health and the clock in sync.
+
+## Still open after round 4
+
+- A real webcam on real hardware (the owner's play test), Safari, Firefox and phones.
+- Online boxing across real networks: tested between two local browsers on the public PeerJS broker; strict NATs depend on the TURN relay behind `/api/ice`.
+- Licensed or commissioned music, the other six crew members, Fruit Slice in Three.js.
+
+---
+
 # GrooveStar · Round 3 handover (art, text and game quality)
 
 Updated 27 September 2026. The owner reviewed the Primetime overhaul preview: the UI was better, but the generated menu art looked low quality and AI-made, there was too much text, and the games were far from Kinect or Wii quality (Dance and Beat Blade not vibey, Fruit Slice's background awful). This round answers that on the same branch, `primetime/overhaul`.
