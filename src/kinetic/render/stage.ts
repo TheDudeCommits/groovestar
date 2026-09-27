@@ -243,6 +243,14 @@ export class Stage {
     this.camera.updateProjectionMatrix();
     this.composer?.setSize(w, h);
   }
+  /** Set the reference field of view (degrees at 1.4:1 or wider) and apply it now. */
+  setFov(fov: number) {
+    this.camera.userData.referenceFov = fov;
+    const w = Math.max(1, this.host.clientWidth),
+      h = Math.max(1, this.host.clientHeight);
+    this.camera.fov = T.MathUtils.radToDeg(2 * Math.atan(Math.tan(T.MathUtils.degToRad(fov / 2)) * Math.max(1, 1.4 / (w / h))));
+    this.camera.updateProjectionMatrix();
+  }
   floor(size = 80, color = COLORS.paper) {
     const p = mesh(
       new T.PlaneGeometry(size, size),

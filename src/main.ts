@@ -1712,7 +1712,7 @@ interface PlayOpts {
 
 function play(song: Song, playerName: string, opts: PlayOpts) {
   state = 'play';
-  if(kineticSettings().renderer==='3d')void import('./kinetic/render/dance').then(m=>{if(state!=='play')return;try{dancePresentation=new m.DancePresentation(app,playerStyle,{videoWall:!!opts.yt});dancePresentation.setSong(song);broadcastFloor=m.broadcastFloor;}catch{dancePresentation=null;}});
+  if(kineticSettings().renderer==='3d')void import('./kinetic/render/dance').then(m=>{if(state!=='play')return;try{dancePresentation=new m.DancePresentation(app,playerStyle,{videoWall:!!opts.yt});dancePresentation.setSong(song);{const p=dancePresentation;scorer.live=()=>p.ready?p.liveScore():null;}broadcastFloor=m.broadcastFloor;}catch{dancePresentation=null;}});
   const { clock, yt } = opts;
   const scorer = new Scorer(song.choreo, opts.freestyle ?? []);
   scorer.demoMode = !cameraOk;
@@ -1900,6 +1900,8 @@ function play(song: Song, playerName: string, opts: PlayOpts) {
     ctx.restore();
     drawPreview(preview);
 
+    // QA and diagnostics, like the kinetic games publish
+    {const c=scorer.counts;(window as unknown as {gsKinetic:unknown}).gsKinetic={id:'dance',demo:!cameraOk,elapsed:Math.max(0,beat)*60/song.bpm,score:Math.round(scorer.score),hits:c.OK+c.GOOD+c.SUPER+c.PERFECT+c.YEAH,misses:c.X,counts:c,stars:scorer.stars(),frameP95:0,poseAge:null,paused:manualPause||trackingPause,sync:dancePresentation?.sync.last.score??null,meter:dancePresentation?.sync.meter??null,lag:dancePresentation?.sync.last.lagMs??null};}
     if (clock.finished) endSong(song, scorer, hud, preview, opts);
   };
 
@@ -2346,10 +2348,13 @@ function startBladeHarness() {
   arcadeGame.start();
 }
 const initialQuery = new URLSearchParams(location.search);
+// dev and QA: ?sim=<bot> plays with a simulated body instead of the camera
+if((import.meta as unknown as {env?:{DEV?:boolean}}).env?.DEV&&initialQuery.has('sim'))void import('./dev/sim').then(m=>m.installSim(tracker,initialQuery.get('sim')??'idle',Number(initialQuery.get('simskill')??0.75)));
 if(initialQuery.has('bladetest')) setTimeout(startBladeHarness,400);
 else if(initialQuery.has('demo')) {const id=initialQuery.get('demo') as GameId;if(['blade','box','rush','fruit','bowl','tennis'].includes(id))setTimeout(()=>void launchKinetic(id,true),400);}
 else if(initialQuery.has('dancetest'))setTimeout(()=>void startOriginalDance(true),400);
 else if(initialQuery.has('asset')){stopKineticPreview();void import('./kinetic/render/asset').then(m=>m.renderAsset(initialQuery.get('asset')??'dance',initialQuery.get('cast')??'nova'));}
+else if(initialQuery.get('game')==='dance')setTimeout(()=>kineticActions().open('dance'),100);
 else if(initialQuery.has('game')) {const id=initialQuery.get('game') as GameId;if(['blade','box','rush','fruit','bowl','tennis'].includes(id)){const challenge=initialQuery.get('challenge');if(challenge&&challenge.length<160&&initialQuery.get('v')==='2'){sessionStorage.setItem('gs-next-seed',challenge);sessionStorage.setItem('gs-next-track',String(Math.max(0,Math.min(2,Number(initialQuery.get('track'))||0))));sessionStorage.setItem('gs-next-endless',initialQuery.get('endless')==='1'?'1':'0');const level=initialQuery.get('level');setSettings({difficulty:level==='expert'?'expert':level==='athlete'?'athlete':'flow',lowImpact:initialQuery.get('impact')==='low'});}setTimeout(()=>kineticActions().open(id),100);}}
 // Load the pose model in the background while the player browses, so the
 // camera setup starts tracking immediately. Demo and capture routes skip it.

@@ -3,6 +3,7 @@ import { GLTFLoader, type GLTF } from "three/addons/loaders/GLTFLoader.js";
 import { MeshoptDecoder } from "three/addons/libs/meshopt_decoder.module.js";
 import { clone } from "three/addons/utils/SkeletonUtils.js";
 import type { HandRig } from "../../pose/rig";
+import type { Body3D, Body3DJoint } from "../../pose/body3d";
 import type { Pose } from "../../moves";
 import { forward } from "../../moves";
 import { outfit } from "../core/equipment";
@@ -104,6 +105,8 @@ export class Character {
   private q3 = new T.Quaternion();
   private v1 = new T.Vector3();
   private hipsRest = new T.Vector3();
+  /** rest orientation of each bone relative to the character group */
+  private restChar = new Map<string, T.Quaternion>();
   ready = false;
   constructor(private look: CharacterLook = {}) {}
   async load(id = "nova") {
@@ -152,6 +155,10 @@ export class Character {
       if (name && !this.actions.has(name)) this.actions.set(name, this.mixer.clipAction(c));
     }
     this.group.updateWorldMatrix(true, true);
+    {
+      const gq = this.group.getWorldQuaternion(new T.Quaternion()).invert();
+      for (const [name, b] of this.bones) this.restChar.set(name, gq.clone().multiply(b.getWorldQuaternion(new T.Quaternion())));
+    }
     for (const n of ["FootL", "FootR"]) {
       const b = this.bone(n);
       if (b) this.footRest.set(n, b.getWorldQuaternion(new T.Quaternion()));
@@ -239,6 +246,17 @@ export class Character {
     this.actions.get(this.current)?.fadeOut(fade);
     next.reset().fadeIn(fade).play();
     this.current = name;
+  }
+  /** Live rim light (toon look): the Dance avatar glows with how in sync you are. */
+  setRim(left: T.ColorRepresentation, right: T.ColorRepresentation, strength?: number) {
+    this.model?.traverse((o) => {
+      if (!(o instanceof T.Mesh)) return;
+      const u = (o.material as T.Material).userData?.pt as { uRimL: { value: T.Color }; uRimR: { value: T.Color }; uRim: { value: number } } | undefined;
+      if (!u) return;
+      u.uRimL.value.set(left);
+      u.uRimR.value.set(right);
+      if (strength !== undefined) u.uRim.value = strength;
+    });
   }
   /** Seconds into the current clip, for syncing a dance to the beat. */
   setTimeScale(k: number) {
@@ -365,6 +383,82 @@ export class Character {
     const a = p("shL"),
       b = p("shR");
     if (a && b) this.tiltChest(Math.max(-0.35, Math.min(0.35, Math.atan2(b.y - a.y, Math.abs(b.x - a.x)))), 0.1);
+  }
+  /**
+   * Pose the skeleton from the player's tracked 3D body, every frame.
+   * "front": the character faces the camera and mirrors the player (their
+   * left arm moves its right, like a reflection). "back": seen from behind,
+   * it copies them (third-person games). Limbs are aimed from rest, the
+   * torso takes the player's lean and twist, and the feet stay planted.
+   */
+  drive(body: Body3D, facing: "front" | "back", opts: { blend?: number; legs?: boolean; torso?: boolean; now?: number } = {}) {
+    if (!this.ready || this.kind !== "meshy") return;
+    this.takeControl();
+    this.group.updateWorldMatrix(true, true);
+    const blend = opts.blend ?? 0.6;
+    const sx = facing === "front" ? 1 : -1;
+    const pos = (name: Body3DJoint, minVis = 0.45) => {
+      const j = body.get(name, minVis);
+      return j ? new T.Vector3(sx * j.x, j.y, j.z) : null;
+    };
+    const player = (c: "L" | "R") => (facing === "front" ? (c === "L" ? "R" : "L") : c);
+    const now = opts.now ?? performance.now();
+    if (opts.torso !== false) {
+      const aL = pos(`sh${player("L")}` as Body3DJoint, 0.5),
+        aR = pos(`sh${player("R")}` as Body3DJoint, 0.5),
+        hL = pos(`hip${player("L")}` as Body3DJoint, 0.3),
+        hR = pos(`hip${player("R")}` as Body3DJoint, 0.3);
+      if (aL && aR) {
+        const shoulderMid = aL.clone().add(aR).multiplyScalar(0.5);
+        const hipMid = hL && hR ? hL.clone().add(hR).multiplyScalar(0.5) : new T.Vector3(0, 0, 0);
+        this.orientSpine(shoulderMid.sub(hipMid), aL.clone().sub(aR), blend * 0.7);
+      }
+    }
+    const segs: [string, Body3DJoint, Body3DJoint][] = [];
+    for (const c of ["L", "R"] as const) {
+      const p = player(c);
+      segs.push([`UpperArm${c}`, `sh${p}` as Body3DJoint, `el${p}` as Body3DJoint], [`LowerArm${c}`, `el${p}` as Body3DJoint, `wr${p}` as Body3DJoint]);
+      if (opts.legs !== false) segs.push([`Thigh${c}`, `hip${p}` as Body3DJoint, `knee${p}` as Body3DJoint], [`Shin${c}`, `knee${p}` as Body3DJoint, `ank${p}` as Body3DJoint]);
+    }
+    for (const [bn, a, b] of segs) {
+      const leg = bn.startsWith("Thigh") || bn.startsWith("Shin");
+      const pa = pos(a, leg ? 0.55 : 0.45),
+        pb = pos(b, leg ? 0.55 : 0.45);
+      if (pa && pb) {
+        this.pointBone(bn, pa, pb, blend);
+        this.segSeen.set(bn, now);
+      } else if (now - (this.segSeen.get(bn) ?? -1e9) > HOLD_MS) {
+        const ia = TRACK_SEGMENTS.find((x) => x[0] === bn);
+        if (ia) this.pointBone(bn, idle(ia[1]), idle(ia[2]), 0.08);
+      }
+    }
+    this.plantFeet();
+  }
+
+  /** Turn the spine so the chest matches a target up vector and shoulder line (character space). */
+  private orientSpine(up: T.Vector3, across: T.Vector3, blend: number) {
+    const u = up.clone().normalize();
+    if (!Number.isFinite(u.x) || u.lengthSq() < 0.5) return;
+    const a = across.clone().sub(u.clone().multiplyScalar(across.dot(u)));
+    if (a.lengthSq() < 1e-6) return;
+    a.normalize();
+    const f = new T.Vector3().crossVectors(a, u);
+    const target = new T.Quaternion().setFromRotationMatrix(new T.Matrix4().makeBasis(a, u, f));
+    // keep it human: limit the lean and twist
+    const angle = 2 * Math.acos(Math.min(1, Math.abs(target.w)));
+    if (angle > 0.9) target.slerp(new T.Quaternion(), 1 - 0.9 / angle);
+    const gq = this.group.getWorldQuaternion(new T.Quaternion());
+    const parts: [string, number][] = [["Spine02", 0.45], ["Spine", 1]];
+    for (const [name, k] of parts) {
+      const bone = this.bones.get(name),
+        rest = this.restChar.get(name);
+      if (!bone?.parent || !rest) continue;
+      const qPart = new T.Quaternion().slerp(target, k);
+      const world = gq.clone().multiply(qPart).multiply(rest);
+      const parentQ = bone.parent.getWorldQuaternion(new T.Quaternion());
+      bone.quaternion.slerp(parentQ.invert().multiply(world), blend);
+      bone.updateWorldMatrix(false, true);
+    }
   }
   private tiltChest(angle: number, blend: number) {
     const chest = this.bone("Chest");

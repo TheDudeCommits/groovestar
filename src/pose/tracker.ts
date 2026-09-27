@@ -11,6 +11,11 @@ import { POSE_MODEL_URL, POSE_WASM_URL } from './pose-protocol';
 const L = { shL: 11, shR: 12, elL: 13, elR: 14, wrL: 15, wrR: 16, hipL: 23, hipR: 24 };
 const D = 180 / Math.PI;
 
+/** Anything that produces pose results on demand (the dev simulator). */
+export interface PoseSource {
+  poll(now: number): { ts: number; lms: unknown[]; world: unknown[] } | null;
+}
+
 export interface PlayerFrame {
   t: number;                    // performance.now() ms
   features: number[] | null;    // [shL, shL+elL, shR, shR+elR, lean*2.5] matching poseFeatures()
@@ -34,7 +39,10 @@ export class PoseTracker {
   ready = false;
   error: string | null = null;
   /** where inference runs: a worker (preferred) or this thread (fallback) */
-  mode: 'worker' | 'main' | null = null;
+  mode: 'worker' | 'main' | 'sim' | null = null;
+  /** Dev and QA: a synthetic body feeds landmarks instead of the camera. */
+  private source: PoseSource | null = null;
+  attach(source: PoseSource | null) { this.source = source; }
   private inFlight = false;
   private inFlightAt = 0;
 
@@ -45,6 +53,11 @@ export class PoseTracker {
   }
 
   async init(): Promise<boolean> {
+    if (this.source) {
+      this.mode = 'sim';
+      this.ready = true;
+      return true;
+    }
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
         video: { width: 640, height: 480, facingMode: 'user' }, audio: false,
@@ -89,6 +102,7 @@ export class PoseTracker {
   update() {
     if(this.lastT&&performance.now()-this.lastT>240){this.latestLandmarks=null;this.latestWorld=null;this.latest={...this.latest,features:null,points:null,energy:0};}
     if (this.mode === 'worker') { this.pump(); return; }
+    if (this.mode === 'sim') { this.pollSource(); return; }
     if (!this.ready || !this.lm || this.video.readyState < 2) return;
     const now = performance.now();
     if (this.video.currentTime === this.lastVideoTime) return;
@@ -139,6 +153,15 @@ export class PoseTracker {
         this.inFlight = false;
       }
     }).catch(() => { this.inFlight = false; });
+  }
+
+  private pollSource() {
+    const f = this.source?.poll(performance.now());
+    if (!f) return;
+    this.lastT = performance.now();
+    this.latestLandmarks = f.lms as NormalizedLandmark[];
+    this.latestWorld = f.world as NormalizedLandmark[];
+    this.latest = computeFrame(this.latestLandmarks, f.ts, this.st, this.latest.t);
   }
 
   private applyWorkerResult(r: PoseResult) {

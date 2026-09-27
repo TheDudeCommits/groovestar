@@ -119,7 +119,7 @@ export function bladeArena(stage: Stage, show: ShowDirector) {
         vec2 p = (vUv - 0.5) * 2.0; float r = length(p);
         float ring = smoothstep(0.03, 0.0, abs(r - 0.42 - uPulse * 0.03)) * 1.4;
         float ring2 = smoothstep(0.012, 0.0, abs(r - 0.62)) * 0.8;
-        float core = exp(-r * 9.0) * 1.6 + exp(-r * 3.0) * 0.25;
+        float core = exp(-r * 11.0) * 0.8 + exp(-r * 3.0) * 0.12;
         vec3 c = mix(uA, uB, 0.5 + 0.5 * sin(atan(p.y, p.x) * 2.0 + uTime * 0.3)) * (ring + ring2) + vec3(1.0, 0.95, 1.0) * core;
         gl_FragColor = vec4(c * uK * smoothstep(1.0, 0.8, r), 1.0);
       }`,
@@ -253,7 +253,7 @@ export function bladeArena(stage: Stage, show: ShowDirector) {
         rings.setMatrixAt(i, m4);
         const wave = Math.pow(Math.max(0, 1 - Math.abs(((beat * 3 - (RINGS - i) * 0.25) % 5) - 0.4)), 4);
         ringColor.copy(i % 2 ? red : blue).lerp(i % 2 ? blue : red, leftBias > 0.5 ? leftBias - 0.5 : 0);
-        const k = (0.35 + energy * 0.6 + wave * 0.9 * energy + r.glow * 1.5 + flash * 0.8) * (1 - missFlash * 0.6);
+        const k = (0.25 + energy * 0.45 + wave * 0.8 * energy + r.glow * 1.5 + flash * 0.8) * (1 - missFlash * 0.6) * (i < 3 ? 0.55 : 1);
         ringColor.multiplyScalar(k);
         if (flash > 0.6) ringColor.lerp(white, (flash - 0.6) * 1.5);
         rings.setColorAt(i, ringColor);
