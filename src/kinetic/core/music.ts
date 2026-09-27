@@ -19,71 +19,76 @@ const common = {
   choreo: [],
   lyrics: [],
 };
+// Produced by tools/primetime/music/render.mjs; beats and sections follow the
+// arrangement there (builds count as verses, breakdowns as bridges).
 export const TRACKS: Song[] = [
   {
     ...common,
     id: "signal",
-    title: "Signal / 01",
+    title: "Signal",
     bpm: 112,
-    beats: 168,
+    beats: 176,
     root: 50,
     chords: [
       [0, 3, 7],
-      [-5, 0, 3],
+      [-4, 0, 3],
+      [-2, 3, 7],
       [-2, 2, 5],
-      [-7, -2, 2],
     ],
     sections: [
       { beat: 0, kind: "intro" },
       { beat: 16, kind: "verse" },
-      { beat: 48, kind: "chorus" },
-      { beat: 80, kind: "verse" },
-      { beat: 112, kind: "chorus" },
-      { beat: 152, kind: "outro" },
+      { beat: 64, kind: "chorus" },
+      { beat: 112, kind: "bridge" },
+      { beat: 128, kind: "verse" },
+      { beat: 144, kind: "chorus" },
+      { beat: 172, kind: "outro" },
     ],
   },
   {
     ...common,
     id: "afterimage",
-    title: "Afterimage / 02",
+    title: "Afterimage",
     bpm: 128,
     beats: 192,
     root: 53,
     chords: [
       [0, 4, 7],
+      [-1, 2, 7],
       [-3, 0, 4],
-      [-5, -1, 2],
-      [-7, -3, 0],
+      [-3, 0, 5],
     ],
     sections: [
       { beat: 0, kind: "intro" },
       { beat: 16, kind: "verse" },
-      { beat: 48, kind: "chorus" },
-      { beat: 96, kind: "verse" },
-      { beat: 128, kind: "chorus" },
-      { beat: 176, kind: "outro" },
+      { beat: 64, kind: "chorus" },
+      { beat: 112, kind: "bridge" },
+      { beat: 128, kind: "verse" },
+      { beat: 144, kind: "chorus" },
+      { beat: 188, kind: "outro" },
     ],
   },
   {
     ...common,
     id: "velocity",
-    title: "Velocity / 03",
+    title: "Velocity",
     bpm: 136,
-    beats: 204,
+    beats: 208,
     root: 45,
     chords: [
       [0, 3, 7],
-      [3, 7, 10],
-      [-5, 0, 3],
+      [-4, 0, 3],
+      [-2, 3, 7],
       [-2, 2, 5],
     ],
     sections: [
       { beat: 0, kind: "intro" },
       { beat: 16, kind: "verse" },
-      { beat: 48, kind: "chorus" },
-      { beat: 96, kind: "verse" },
-      { beat: 128, kind: "chorus" },
-      { beat: 192, kind: "outro" },
+      { beat: 64, kind: "chorus" },
+      { beat: 128, kind: "bridge" },
+      { beat: 144, kind: "verse" },
+      { beat: 160, kind: "chorus" },
+      { beat: 204, kind: "outro" },
     ],
   },
 ];
@@ -122,14 +127,18 @@ export class SessionMusic {
   }
   pause() {
     this.paused = true;
+    if (this.stopped) return;
     this.audio?.pause();
-    void this.engine?.ctx.suspend();
+    // a closed context rejects suspend(); tracking loss can arrive after stop()
+    if (this.engine && this.engine.ctx.state !== "closed")
+      this.engine.ctx.suspend().catch(() => {});
   }
   resume() {
     if (this.stopped) return;
     this.paused = false;
     void this.audio?.play().catch(() => {});
-    void this.engine?.ctx.resume();
+    if (this.engine && this.engine.ctx.state !== "closed")
+      this.engine.ctx.resume().catch(() => {});
   }
   energy(value: number) {
     if (this.engine) {
@@ -145,6 +154,7 @@ export class SessionMusic {
       this.audio.load();
     }
     this.engine?.stop();
-    void this.engine?.ctx.close();
+    if (this.engine && this.engine.ctx.state !== "closed")
+      this.engine.ctx.close().catch(() => {});
   }
 }

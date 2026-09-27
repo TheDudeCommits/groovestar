@@ -9,12 +9,12 @@ export class CanvasControls {
     onQuit: () => void,
   ) {
     this.root.className = "k-canvas-controls";
-    this.root.innerHTML = '<button aria-label="Pause game">Ⅱ</button>';
+    this.root.innerHTML = '<button aria-label="Pause game"><span></span><span></span></button>';
     document.getElementById("app")!.appendChild(this.root);
-    this.dialog.className = "k-dialog k-canvas-pause";
+    this.dialog.className = "k-canvas-pause pt-pause-dialog";
     this.dialog.setAttribute("aria-label", "Pause session");
     this.dialog.innerHTML =
-      '<span class="k-eyebrow">TAKE A BREATH</span><h2>In your own time.</h2><button class="k-primary" data-resume>Resume ↗</button><button data-restart>Restart session</button><button data-quit>Back to game</button>';
+      '<div class="pt-pause-card"><span class="pt-eyebrow">PAUSED</span><h2>Catch your breath.</h2><p>Step back into your play area when you are ready.</p><button class="pt-btn pt-btn-gold" data-resume>Resume</button><button class="pt-btn" data-restart>Restart session</button><button class="pt-btn pt-btn-ghost" data-quit>Back to game</button></div>';
     document.body.appendChild(this.dialog);
     this.root
       .querySelector("button")!

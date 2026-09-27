@@ -10,11 +10,12 @@
     "test": "tsx --test tests/*.test.ts",
     "qa:kinetic": "node tools/kinetic/smoke.mjs",
     "assets:cast": "node tools/kinetic/build-cast.mjs",
-    "assets:audio": "node tools/kinetic/build_audio.mjs",
+    "assets:audio": "node tools/kinetic/build_audio.mjs && node tools/primetime/music/render.mjs",
     "assets:art": "node tools/kinetic/capture-artwork.mjs",
     "qa:motion": "node tools/kinetic/motion-check.mjs",
     "qa:rounds": "node tools/kinetic/rounds.mjs",
-    "qa:recovery": "node tools/kinetic/recovery.mjs"
+    "qa:recovery": "node tools/kinetic/recovery.mjs",
+    "qa:realmotion": "node tools/kinetic/realmotion.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.120.0",
@@ -22,6 +23,7 @@
     "@fontsource/ibm-plex-mono": "^5.3.0",
     "@fontsource/manrope": "^5.3.0",
     "@mediapipe/tasks-vision": "^0.10.14",
+    "cannon-es": "^0.20.0",
     "jpeg-js": "^0.4.4",
     "peerjs": "^1.5.5",
     "three": "^0.185.1"

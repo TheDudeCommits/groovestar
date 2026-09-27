@@ -1,11 +1,16 @@
-// Just Dance classics: routines extracted offline from the original gameplay
-// videos (tools/extract_jd) — the real coach's motion, beat-aligned to the
-// exact video that plays as the stage backdrop. Each 2-beat window becomes a
-// native 16-keyframe clip, so the coach, pictograms and scorer all run the
-// authentic choreography.
-
+// Extracted routines: choreography built offline from a performance video
+// (tools/extract_jd), beat-aligned to the video that plays as the stage
+// backdrop. Each 2-beat window becomes a native 16-keyframe clip, so the
+// coach, pictograms and scorer all run the same choreography.
+//
+// The only routines extracted so far came from third-party game footage, so
+// they are local test data: they are not in the repository, and this loader
+// only reads public/routines/ in development builds. Original choreography
+// filmed for GrooveStar can ship through the same path later.
 import { CLIPS, type Clip } from './motion';
 import type { ChoreoMove, SectionDef } from './songs';
+
+const ROUTINES_ENABLED = (import.meta as unknown as { env?: { DEV?: boolean } }).env?.DEV === true;
 
 export interface RoutineEntry {
   v: string;
@@ -27,6 +32,7 @@ export interface LoadedRoutine {
 let indexCache: RoutineEntry[] | null = null;
 
 export async function fetchRoutineIndex(): Promise<RoutineEntry[]> {
+  if (!ROUTINES_ENABLED) return [];
   if (indexCache) return indexCache;
   try {
     const r = await fetch('/routines/index.json');
@@ -39,6 +45,7 @@ export async function fetchRoutineIndex(): Promise<RoutineEntry[]> {
 }
 
 export async function loadRoutine(videoId: string): Promise<LoadedRoutine | null> {
+  if (!ROUTINES_ENABLED) return null;
   try {
     const r = await fetch(`/routines/${videoId}.json`);
     if (!r.ok) return null;

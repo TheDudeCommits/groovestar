@@ -246,6 +246,89 @@ class Sfx {
     this.play('popup', 0.6);
   }
 
+  // ---- sports one-shots (synthesized) ----------------------------------------
+
+  /** A crisp band-passed noise click with an optional pitched body. */
+  private knock(o: { freq: number; q?: number; gain: number; decay: number; tone?: number; toneGain?: number; delay?: number }) {
+    const ctx = this.ensure();
+    if (!ctx || !this.master || !this.noise) return;
+    const t0 = ctx.currentTime + (o.delay ?? 0);
+    const src = ctx.createBufferSource();
+    src.buffer = this.noise;
+    src.playbackRate.value = 0.8 + Math.random() * 0.4;
+    const f = ctx.createBiquadFilter();
+    f.type = 'bandpass';
+    f.frequency.value = o.freq;
+    f.Q.value = o.q ?? 1.2;
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0, t0);
+    g.gain.linearRampToValueAtTime(o.gain, t0 + 0.002);
+    g.gain.exponentialRampToValueAtTime(0.001, t0 + o.decay);
+    src.connect(f).connect(g).connect(this.master);
+    src.start(t0, Math.random() * 0.5);
+    src.stop(t0 + o.decay + 0.05);
+    if (o.tone) this.tone(o.tone, { to: o.tone * 0.7, gain: o.toneGain ?? 0.2, decay: o.decay * 1.4, delay: o.delay });
+  }
+
+  /** Tennis ball off the strings: brighter and louder with power. */
+  racket(power = 0.6) {
+    this.knock({ freq: 1400 + power * 900, q: 1.6, gain: 0.55 + power * 0.35, decay: 0.07, tone: 520 + power * 260, toneGain: 0.22 });
+    this.knock({ freq: 5200, q: 0.8, gain: 0.18 + power * 0.2, decay: 0.03 });
+  }
+
+  /** Ball bouncing on a hard court. */
+  bounce(strength = 0.6) {
+    this.knock({ freq: 700, q: 2.2, gain: 0.3 * strength + 0.1, decay: 0.06, tone: 240, toneGain: 0.12 * strength });
+  }
+
+  /** Beat Blade cut: a crisp tick with a little body, on top of the slice. */
+  blockHit(quality = 1) {
+    this.knock({ freq: 5200, q: 0.9, gain: 0.3 + quality * 0.25, decay: 0.035 });
+    this.knock({ freq: 1800, q: 1.4, gain: 0.25 + quality * 0.2, decay: 0.06, tone: 180, toneGain: 0.18 });
+  }
+
+  /** Ball into the net: a soft, dead thud. */
+  net() {
+    this.knock({ freq: 320, q: 0.9, gain: 0.45, decay: 0.18 });
+  }
+
+  /** Bowling ball hitting pins: a woody clatter scaled by how many fell. */
+  pins(n = 5) {
+    for (let i = 0; i < Math.min(10, n + 2); i++) {
+      this.knock({ freq: 900 + Math.random() * 1600, q: 3, gain: 0.35, decay: 0.09 + Math.random() * 0.08, tone: 380 + Math.random() * 520, toneGain: 0.14, delay: i * 0.018 + Math.random() * 0.03 });
+    }
+  }
+
+  /** A glove landing: low thump plus leather smack. */
+  punch(power = 0.7, blocked = false) {
+    this.tone(blocked ? 180 : 110, { to: 45, gain: 0.55 + power * 0.35, decay: 0.16 });
+    this.knock({ freq: blocked ? 900 : 1600, q: 0.9, gain: 0.5 + power * 0.4, decay: blocked ? 0.07 : 0.11 });
+  }
+
+  /** Crowd reaction: many claps (applause) or a swell (cheer). */
+  crowd(kind: 'applause' | 'cheer' | 'ooh' = 'applause', amount = 1) {
+    const ctx = this.ensure();
+    if (!ctx || !this.master || !this.noise) return;
+    if (kind === 'ooh') {
+      // a gasp: breathy low swell
+      this.hiss({ freq: 380, to: 520, gain: 0.12 * amount, decay: 0.9, type: 'bandpass' });
+      this.hiss({ freq: 760, to: 1040, gain: 0.07 * amount, decay: 0.8, type: 'bandpass' });
+      return;
+    }
+    const claps = Math.round((kind === 'cheer' ? 70 : 45) * amount);
+    const span = kind === 'cheer' ? 2.2 : 1.6;
+    for (let i = 0; i < claps; i++) {
+      const d = Math.pow(Math.random(), 1.6) * span;
+      this.knock({ freq: 1100 + Math.random() * 1800, q: 1.4, gain: (0.05 + Math.random() * 0.06) * amount * (1 - d / span * 0.6), decay: 0.035 + Math.random() * 0.03, delay: d });
+    }
+    if (kind === 'cheer') this.hiss({ freq: 600, to: 900, gain: 0.08 * amount, decay: 1.8, type: 'bandpass' });
+  }
+
+  /** Boxing bell. */
+  ring(times = 1) {
+    for (let i = 0; i < times; i++) for (const f of [980, 1960, 2940]) this.tone(f, { gain: f > 2000 ? 0.05 : 0.16, decay: 1.4, delay: i * 0.35 });
+  }
+
   // ---- persistent saber hum -------------------------------------------------
 
   private hums: Partial<Record<'L' | 'R', { osc1: OscillatorNode; osc2: OscillatorNode; gain: GainNode }>> = {};

@@ -1,4 +1,3 @@
-import {settings} from '../kinetic/core/settings';
 // HUD systems, matching the observed reference layout:
 //  top    — player name chip + judgment pops beneath it
 //  left   — vertical progress meter with 5 stars accumulating
@@ -161,31 +160,71 @@ export function drawPictograms(
   ctx: CanvasRenderingContext2D,
   song: Song, beat: number, w: number, h: number,
 ) {
-  const stripY = h * 0.87;                  // baseline
-  const nowX = w * 0.66;                    // "now" slot
-  const spacing = Math.min(150, w * 0.12);  // px per upcoming beat-step
-  const size = Math.min(110, h * 0.16);
-  const speed = spacing / 2;                // 2 beats between moves
+  // Silhouette cards glide right to left onto the "now" ring, bottom right,
+  // clear of the coach.
+  const size = Math.min(190, h * 0.235, w * 0.15);
+  const stripY = h * 0.935;                 // feet baseline
+  const nowX = w * 0.775;
+  const spacing = size * 0.78;              // px per move (2 beats)
+  const speed = spacing / 2;
 
   ctx.save();
+  // track: a soft rail from the ring to the edge, and the ring itself
+  const pulse = Math.pow(1 - (((beat % 1) + 1) % 1), 3);
+  const railY = stripY + size * 0.07;
+  const rail = ctx.createLinearGradient(nowX, 0, w, 0);
+  rail.addColorStop(0, 'rgba(255,255,255,0.55)');
+  rail.addColorStop(1, 'rgba(255,255,255,0)');
+  ctx.fillStyle = rail;
+  ctx.beginPath();
+  ctx.roundRect(nowX, railY - 2, w - nowX, 4, 2);
+  ctx.fill();
+  const ringY = stripY - size * 0.46;
+  ctx.strokeStyle = `rgba(255,255,255,${0.35 + pulse * 0.45})`;
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  ctx.ellipse(nowX, ringY, size * (0.5 + pulse * 0.03), size * (0.58 + pulse * 0.03), 0, 0, Math.PI * 2);
+  ctx.stroke();
   for (const m of song.choreo) {
     const d = m.beat - beat;               // beats until arrival
-    if (d < -0.6 || d > 7) continue;
+    if (d < -0.8 || d > 8) continue;
     const x = nowX + d * speed;
     if (x > w + size) continue;
-    let alpha = 1, scale = 1;
-    if (d < 0) { alpha = 1 + d / 0.6; scale = 1 + (-d) * 0.45; } // arrival pop & fade
-    else if (d > 5.4) alpha = (7 - d) / 1.6;                     // ease in from the right
-    drawPicto(ctx, m.move, !!m.gold, x, stripY, size * scale, alpha, song.accent);
+    let alpha = 1, scale = d < 0.5 ? 1.08 : 0.9;
+    if (d < 0) { alpha = 1 + d / 0.8; scale = 1.08 + (-d) * 0.35; }  // arrival pop & fade
+    else if (d > 6) alpha = (8 - d) / 2;
+    drawPicto(ctx, m.move, !!m.gold, x, stripY - (d < 0 ? -d * size * 0.2 : 0), size * scale, alpha, song.accent, true, Math.abs(d) < 0.5);
   }
   ctx.restore();
+}
+
+const arrowCache = new Map<string, [number, number][][] | null>();
+/** Wrist paths across a motion slice, for the move-card arrows. */
+function wristPaths(moveId: string): [number, number][][] | null {
+  if (arrowCache.has(moveId)) return arrowCache.get(moveId)!;
+  const clip = CLIPS[moveId];
+  let out: [number, number][][] | null = null;
+  if (clip) {
+    const keys = [0, Math.floor(clip.pk / 2), clip.pk].map((k) => clip.f[Math.max(0, Math.min(clip.f.length - 1, k))]);
+    const sks = keys.map((r) => forward({ lean: r[0], crouch: r[1], armL: [r[2], r[3]], armR: [r[4], r[5]], legL: [r[6], r[7]], legR: [r[8], r[9]] }));
+    out = [];
+    for (const side of ['wrL', 'wrR'] as const) {
+      const pts = sks.map((sk) => sk[side]);
+      const dist = Math.hypot(pts[2][0] - pts[0][0], pts[2][1] - pts[0][1]);
+      if (dist > 0.38) out.push(pts);
+    }
+  }
+  arrowCache.set(moveId, out);
+  return out;
 }
 
 function drawPicto(
   ctx: CanvasRenderingContext2D,
   moveId: string, gold: boolean,
   x: number, y: number, size: number, alpha: number, accent: string,
+  _carded = false, now = false,
 ) {
+  void accent;
   let pose: Pose | null = MOVES[moveId]?.pose ?? null;
   if (!pose && CLIPS[moveId]) pose = clipPeakPose(CLIPS[moveId]);
   if (!pose) return;
@@ -196,63 +235,94 @@ function drawPicto(
 
   ctx.save();
   ctx.globalAlpha = Math.max(0, alpha);
-  // card glow for gold
-  if (gold) {
-    ctx.shadowColor = '#ffd23e';
-    ctx.shadowBlur = 16;
-  }
-  const stroke = gold ? '#f35d42' : settings().renderer==='3d'?'#171917':'#ffffff';
-  ctx.strokeStyle = stroke;
-  ctx.fillStyle = stroke;
   ctx.lineCap = 'round';
   ctx.lineJoin = 'round';
-  ctx.lineWidth = Math.max(3, size * 0.055);
-
-  const seg = (...pts: [number, number][]) => {
+  const c1 = gold ? '#fff07a' : now ? '#ff5ccf' : '#56e6ff';
+  const c2 = gold ? '#ff9a1f' : now ? '#9d5cff' : '#6b62ff';
+  const grad = ctx.createLinearGradient(x, y - 2.7 * s, x, y + 0.1 * s);
+  grad.addColorStop(0, c1);
+  grad.addColorStop(1, c2);
+  const limb = (pts: [number, number][], width: number) => {
+    ctx.lineWidth = width;
     ctx.beginPath();
-    const p0 = P(pts[0]); ctx.moveTo(p0[0], p0[1]);
-    for (let i = 1; i < pts.length; i++) { const p = P(pts[i]); ctx.lineTo(p[0], p[1]); }
+    const p0 = P(pts[0]);
+    ctx.moveTo(p0[0], p0[1]);
+    for (let i = 1; i < pts.length; i++) { const q = P(pts[i]); ctx.lineTo(q[0], q[1]); }
     ctx.stroke();
   };
-  seg(sk.pelvis, sk.neck);
-  seg(sk.shL, sk.elL, sk.wrL);
-  seg(sk.shR, sk.elR, sk.wrR);
-  seg(sk.hipL, sk.kneeL, sk.ankL);
-  seg(sk.hipR, sk.kneeR, sk.ankR);
-  const hd = P(sk.head);
-  ctx.beginPath(); ctx.arc(hd[0], hd[1], s * 0.2, 0, Math.PI * 2); ctx.fill();
-
-  // accent arrows on the moving limb (yellow in the reference)
-  ctx.strokeStyle = gold ? '#fff3b0' : accent;
-  ctx.fillStyle = ctx.strokeStyle;
-  ctx.lineWidth = Math.max(2.5, size * 0.045);
-  const arrow = (from: [number, number], dir: string, side: number) => {
-    const [ax, ay] = P(from);
-    const len = s * 0.5;
-    let vx = 0, vy = 0;
-    if (dir === 'up') { vx = 0; vy = -len; }
-    else if (dir === 'down') { vx = 0; vy = len; }
-    else if (dir === 'out') { vx = side * len; vy = 0; }
-    else if (dir === 'in') { vx = -side * len; vy = 0; }
-    if (dir === 'cw' || dir === 'ccw') {
-      const sw = dir === 'cw' ? 1 : -1;
-      ctx.beginPath();
-      ctx.arc(ax, ay, s * 0.42, sw * 0.4, sw * 0.4 + sw * 4.2);
-      ctx.stroke();
-      return;
-    }
-    ctx.beginPath(); ctx.moveTo(ax, ay); ctx.lineTo(ax + vx, ay + vy); ctx.stroke();
-    const hx = ax + vx, hy = ay + vy;
-    const n = Math.hypot(vx, vy) || 1;
-    const ux = vx / n, uy = vy / n;
+  const body = (extra: number) => {
+    // torso as a rounded quad
+    const quad = [P(sk.shL), P(sk.shR), P(sk.hipR), P(sk.hipL)];
+    ctx.lineWidth = s * 0.22 + extra * 2;
     ctx.beginPath();
-    ctx.moveTo(hx + ux * s * 0.16, hy + uy * s * 0.16);
-    ctx.lineTo(hx - uy * s * 0.12, hy + ux * s * 0.12);
-    ctx.lineTo(hx + uy * s * 0.12, hy - ux * s * 0.12);
-    ctx.closePath(); ctx.fill();
+    ctx.moveTo(quad[0][0], quad[0][1]);
+    for (const q of quad.slice(1)) ctx.lineTo(q[0], q[1]);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+    limb([sk.neck, sk.head], s * 0.18 + extra * 2);
+    limb([sk.hipL, sk.kneeL, sk.ankL], s * 0.3 + extra * 2);
+    limb([sk.hipR, sk.kneeR, sk.ankR], s * 0.3 + extra * 2);
+    limb([sk.shL, sk.elL, sk.wrL], s * 0.24 + extra * 2);
+    limb([sk.shR, sk.elR, sk.wrR], s * 0.24 + extra * 2);
+    const hd = P(sk.head);
+    ctx.beginPath(); ctx.arc(hd[0], hd[1] - s * 0.06, s * 0.28 + extra, 0, Math.PI * 2); ctx.fill();
+    for (const wr of [sk.wrL, sk.wrR]) {
+      const q = P(wr);
+      ctx.beginPath(); ctx.arc(q[0], q[1], s * 0.15 + extra, 0, Math.PI * 2); ctx.fill();
+    }
   };
-  if (move?.pose.arrowL) arrow(sk.wrL, move.pose.arrowL, -1);
-  if (move?.pose.arrowR) arrow(sk.wrR, move.pose.arrowR, 1);
+  // white outline with a dark halo reads on any wall color, then the fill
+  ctx.shadowColor = 'rgba(8,2,20,0.75)';
+  ctx.shadowBlur = size * 0.09;
+  ctx.fillStyle = ctx.strokeStyle = '#ffffff';
+  body(s * 0.085);
+  ctx.shadowBlur = 0;
+  if (now || gold) {
+    ctx.shadowColor = gold ? '#ffd23e' : '#ff4fc1';
+    ctx.shadowBlur = size * 0.16;
+  }
+  ctx.fillStyle = ctx.strokeStyle = grad;
+  body(0);
+  ctx.shadowBlur = 0;
+
+  // motion arrows: how the hands travel into the pose
+  const arrowCol = gold ? '#ffffff' : '#ffd23e';
+  const drawArrow = (pts: [number, number][]) => {
+    const a = P(pts[0]), m = P(pts[1]), b = P(pts[2]);
+    const len = Math.hypot(b[0] - a[0], b[1] - a[1]);
+    if (len < s * 0.3) return;
+    const head = () => {
+      const ux = (b[0] - m[0]) / (Math.hypot(b[0] - m[0], b[1] - m[1]) || 1), uy = (b[1] - m[1]) / (Math.hypot(b[0] - m[0], b[1] - m[1]) || 1);
+      const hs = s * 0.2;
+      ctx.beginPath();
+      ctx.moveTo(b[0] + ux * hs * 0.8, b[1] + uy * hs * 0.8);
+      ctx.lineTo(b[0] - uy * hs * 0.7 - ux * hs * 0.3, b[1] + ux * hs * 0.7 - uy * hs * 0.3);
+      ctx.lineTo(b[0] + uy * hs * 0.7 - ux * hs * 0.3, b[1] - ux * hs * 0.7 - uy * hs * 0.3);
+      ctx.closePath();
+      ctx.fill();
+    };
+    for (const pass of [0, 1]) {
+      ctx.strokeStyle = ctx.fillStyle = pass ? arrowCol : 'rgba(10,4,24,0.85)';
+      ctx.lineWidth = s * (pass ? 0.09 : 0.17);
+      ctx.beginPath();
+      ctx.moveTo(a[0], a[1]);
+      ctx.quadraticCurveTo(m[0] * 2 - (a[0] + b[0]) / 2, m[1] * 2 - (a[1] + b[1]) / 2, b[0], b[1]);
+      ctx.stroke();
+      head();
+    }
+  };
+  const paths = wristPaths(moveId);
+  if (paths) for (const p of paths) drawArrow(p);
+  else if (move) {
+    const legacy = (from: [number, number], dir: string | undefined, side: number) => {
+      if (!dir || dir === 'cw' || dir === 'ccw') return;
+      const v: [number, number] = dir === 'up' ? [0, -0.55] : dir === 'down' ? [0, 0.55] : dir === 'out' ? [side * 0.55, 0] : [-side * 0.55, 0];
+      drawArrow([[from[0] - v[0], from[1] - v[1]], [from[0] - v[0] / 2, from[1] - v[1] / 2], from]);
+    };
+    legacy(sk.wrL, move.pose.arrowL, -1);
+    legacy(sk.wrR, move.pose.arrowR, 1);
+  }
   ctx.restore();
 }
 

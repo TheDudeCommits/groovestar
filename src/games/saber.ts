@@ -24,7 +24,7 @@ export interface SaberState {
 }
 
 const TIP_TRAIL_MS = 260;
-const PLANE_MS = 130;
+const PLANE_MS = 95;
 export const BLADE_LEN = 0.21;         // fraction of view height
 
 interface PlaneSeg { hx: number; hy: number; tx: number; ty: number; t: number }
@@ -111,7 +111,7 @@ export class Sabers {
         for (let i = 1; i < plane.length; i++) {
           const p0 = plane[i - 1], p1 = plane[i];
           const age = (now - p1.t) / PLANE_MS;
-          ctx.globalAlpha = Math.max(0, 1 - age) * 0.24 * (0.3 + hot * 0.7);
+          ctx.globalAlpha = Math.max(0, 1 - age) * 0.15 * (0.3 + hot * 0.7);
           ctx.fillStyle = col;
           ctx.beginPath();
           ctx.moveTo(p0.hx, p0.hy);

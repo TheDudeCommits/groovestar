@@ -33,22 +33,30 @@ interface FruitKind {
   hits?: number;           // multi-hit shells (coconut cracks before it splits)
 }
 
+// Fruit read big and juicy from across the room, like the Kinect original.
+const SZ = 1.42;
 const KINDS: FruitKind[] = [
-  { name: 'melon', r: 0.062, body: '#ff5d73', rind: '#39b356', seeds: '#28203a', points: 3, weight: 3 },
-  { name: 'orange', r: 0.046, body: '#ffa63e', rind: '#e8842a', points: 2, weight: 3 },
-  { name: 'apple', r: 0.044, body: '#f8f4d8', rind: '#e8342e', seeds: '#3a2c20', points: 2, weight: 3 },
-  { name: 'lime', r: 0.04, body: '#d6f78e', rind: '#57d95a', points: 2, weight: 3 },
-  { name: 'berry', r: 0.034, body: '#b39dff', rind: '#7a3df0', points: 4, weight: 2 },
-  { name: 'pineapple', r: 0.056, body: '#ffe9a3', rind: '#e8a52a', seeds: '#8a6a1a', points: 3, weight: 2 },
-  { name: 'dragon', r: 0.05, body: '#f8f4ff', rind: '#ff6ac1', seeds: '#28203a', points: 5, weight: 1.2 },
-  { name: 'star', r: 0.044, body: '#ffe9a3', rind: '#ffd23e', points: 6, weight: 0.7 },
-  { name: 'coconut', r: 0.048, body: '#f8f4d8', rind: '#6b4e35', points: 6, weight: 1.4, hits: 2 },
+  { name: 'melon', r: 0.062 * SZ, body: '#ff5d73', rind: '#39b356', seeds: '#28203a', points: 3, weight: 3 },
+  { name: 'orange', r: 0.046 * SZ, body: '#ffa63e', rind: '#e8842a', points: 2, weight: 3 },
+  { name: 'apple', r: 0.044 * SZ, body: '#f8f4d8', rind: '#e8342e', seeds: '#3a2c20', points: 2, weight: 3 },
+  { name: 'lime', r: 0.04 * SZ, body: '#d6f78e', rind: '#57d95a', points: 2, weight: 3 },
+  { name: 'berry', r: 0.034 * SZ, body: '#b39dff', rind: '#7a3df0', points: 4, weight: 2 },
+  { name: 'pineapple', r: 0.056 * SZ, body: '#ffe9a3', rind: '#e8a52a', seeds: '#8a6a1a', points: 3, weight: 2 },
+  { name: 'dragon', r: 0.05 * SZ, body: '#f8f4ff', rind: '#ff6ac1', seeds: '#28203a', points: 5, weight: 1.2 },
+  { name: 'star', r: 0.044 * SZ, body: '#ffe9a3', rind: '#ffd23e', points: 6, weight: 0.7 },
+  { name: 'coconut', r: 0.048 * SZ, body: '#f8f4d8', rind: '#6b4e35', points: 6, weight: 1.4, hits: 2 },
 ];
 const KIND_WEIGHT = KINDS.reduce((a, k) => a + k.weight, 0);
-const GOLD: FruitKind = { name: 'gold', r: 0.048, body: '#ffe9a3', rind: '#ffd23e', points: 15, weight: 0 };
-const ICE: FruitKind = { name: 'ice', r: 0.046, body: '#dff4ff', rind: '#6ee7ff', points: 5, weight: 0 };
-const BOMB: FruitKind = { name: 'bomb', r: 0.048, body: '#2c2837', rind: '#43404d', points: 0, weight: 0 };
-const BOSS: FruitKind = { name: 'boss', r: 0.088, body: '#ff5d73', rind: '#8a2444', seeds: '#ffd23e', points: 25, weight: 0 };
+/** Juice stain colors on the dojo wall. */
+const JUICE: Record<string, string> = {
+  melon: '#e3163c', orange: '#ff8a00', apple: '#f2c230', lime: '#69c81e', berry: '#7c2ee0',
+  pineapple: '#ffbf14', dragon: '#f0208f', star: '#ffc61a', coconut: '#efe7d2', gold: '#ffc61a',
+  ice: '#7fe6ff', boss: '#e3163c',
+};
+const GOLD: FruitKind = { name: 'gold', r: 0.048 * SZ, body: '#ffe9a3', rind: '#ffd23e', points: 15, weight: 0 };
+const ICE: FruitKind = { name: 'ice', r: 0.046 * SZ, body: '#dff4ff', rind: '#6ee7ff', points: 5, weight: 0 };
+const BOMB: FruitKind = { name: 'bomb', r: 0.048 * SZ, body: '#2c2837', rind: '#43404d', points: 0, weight: 0 };
+const BOSS: FruitKind = { name: 'boss', r: 0.088 * SZ, body: '#ff5d73', rind: '#8a2444', seeds: '#ffd23e', points: 25, weight: 0 };
 const BOSS_HP = 8;
 
 interface Fruit {
@@ -651,20 +659,41 @@ export class FruitGame implements Game {
   private stampSplat(f: Fruit, angle: number) {
     const c = this.splatCtx;
     const r = f.kind.r * this.H;
+    const col = JUICE[f.kind.name] ?? f.kind.body;
     c.save();
     c.translate(f.x, f.y);
     c.rotate(angle);
-    c.fillStyle = f.kind.body;
-    c.globalAlpha = 0.26;
-    c.beginPath();
-    c.ellipse(0, 0, r * 1.3, r * 0.42, 0, 0, Math.PI * 2);
-    c.fill();
-    c.globalAlpha = 0.2;
-    for (let i = 0; i < 4; i++) {
-      const a = Math.random() * Math.PI * 2;
-      const d = r * (0.7 + Math.random() * 0.9);
+    c.fillStyle = col;
+    // the splash: overlapping blobs along the cut, droplets flung past it
+    c.globalAlpha = 0.42;
+    for (let i = 0; i < 5; i++) {
       c.beginPath();
-      c.arc(Math.cos(a) * d, Math.sin(a) * d * 0.5, r * (0.1 + Math.random() * 0.16), 0, Math.PI * 2);
+      c.ellipse((Math.random() - 0.5) * r * 1.3, (Math.random() - 0.5) * r * 0.45, r * (0.45 + Math.random() * 0.55), r * (0.22 + Math.random() * 0.22), Math.random() * 0.6 - 0.3, 0, Math.PI * 2);
+      c.fill();
+    }
+    c.globalAlpha = 0.6;
+    for (let i = 0; i < 16; i++) {
+      const side = Math.random() < 0.5 ? -1 : 1;
+      const d = r * (1 + Math.random() * 1.7);
+      const a = (Math.random() - 0.5) * 0.9;
+      c.beginPath();
+      c.arc(side * d * Math.cos(a), d * Math.sin(a) * 0.8, r * (0.035 + Math.random() * 0.09), 0, Math.PI * 2);
+      c.fill();
+    }
+    c.restore();
+    // drips run down the wall
+    c.save();
+    c.fillStyle = col;
+    c.globalAlpha = 0.38;
+    for (let i = 0; i < 3; i++) {
+      const x = f.x + (Math.random() - 0.5) * r * 1.4;
+      const len = r * (0.5 + Math.random() * 1.5);
+      const wd = r * (0.06 + Math.random() * 0.06);
+      c.beginPath();
+      c.roundRect(x - wd / 2, f.y, wd, len, wd / 2);
+      c.fill();
+      c.beginPath();
+      c.arc(x, f.y + len, wd * 0.85, 0, Math.PI * 2);
       c.fill();
     }
     c.restore();
@@ -690,7 +719,7 @@ export class FruitGame implements Game {
     if (this.splat.width) {
       this.splatCtx.save();
       this.splatCtx.globalCompositeOperation = 'destination-out';
-      this.splatCtx.globalAlpha = 0.035;
+      this.splatCtx.globalAlpha = 0.009;
       this.splatCtx.fillRect(0, 0, this.splat.width, this.splat.height);
       this.splatCtx.restore();
     }
@@ -746,7 +775,7 @@ export class FruitGame implements Game {
       ctx.textAlign = 'center';
       ctx.fillStyle = 'rgba(255,247,238,0.7)';
       ctx.font = `700 ${h * 0.022}px 'Manrope', sans-serif`;
-      ctx.fillText('Step back so the camera can see you', w / 2, h * 0.5);
+      ctx.fillText('STEP INTO VIEW', w / 2, h * 0.5);
       ctx.restore();
     }
     this.drawHud(ctx, left);
@@ -782,8 +811,32 @@ export class FruitGame implements Game {
       return;
     }
     if (!f.sliced) {
+      ctx.save();
       ctx.rotate(f.rot);
       this.drawWhole(ctx, f, r, now);
+      ctx.restore();
+      // Stage lighting that does not spin with the fruit: key highlight,
+      // core shadow and a two-color rim from the neon market.
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(0, 0, r * 1.02, 0, Math.PI * 2);
+      ctx.clip();
+      const hl = ctx.createRadialGradient(-r * 0.38, -r * 0.42, 0, -r * 0.38, -r * 0.42, r * 0.75);
+      hl.addColorStop(0, 'rgba(255,255,255,0.5)');
+      hl.addColorStop(1, 'rgba(255,255,255,0)');
+      ctx.fillStyle = hl;
+      ctx.fillRect(-r, -r, r * 2, r * 2);
+      const sh = ctx.createRadialGradient(-r * 0.2, -r * 0.25, r * 0.4, 0, 0, r * 1.05);
+      sh.addColorStop(0, 'rgba(20,0,40,0)');
+      sh.addColorStop(1, 'rgba(20,0,40,0.5)');
+      ctx.fillStyle = sh;
+      ctx.fillRect(-r, -r, r * 2, r * 2);
+      ctx.restore();
+      ctx.lineWidth = r * 0.09;
+      ctx.strokeStyle = 'rgba(63,224,255,0.75)';
+      ctx.beginPath(); ctx.arc(0, 0, r * 0.97, 0.2, 1.4); ctx.stroke();
+      ctx.strokeStyle = 'rgba(255,63,180,0.7)';
+      ctx.beginPath(); ctx.arc(0, 0, r * 0.97, 1.6, 2.7); ctx.stroke();
     } else {
       for (const half of [-1, 1] as const) {
         ctx.save();
@@ -999,73 +1052,93 @@ export class FruitGame implements Game {
   private drawHud(ctx: Ctx, left: number) {
     const w = this.W, h = this.H;
     ctx.save();
+    // Score panel: angled glass card, top-left, like the other Primetime HUDs.
+    const px = w * 0.02, py = h * 0.03, pw = Math.max(h * 0.24, 160), ph = h * 0.11;
+    ctx.beginPath();
+    ctx.moveTo(px, py); ctx.lineTo(px + pw, py); ctx.lineTo(px + pw - h * 0.02, py + ph); ctx.lineTo(px, py + ph); ctx.closePath();
+    const pg = ctx.createLinearGradient(px, py, px + pw, py + ph);
+    pg.addColorStop(0, 'rgba(20,10,52,0.62)');
+    pg.addColorStop(1, 'rgba(8,4,22,0.4)');
+    ctx.fillStyle = pg;
+    ctx.fill();
+    ctx.fillStyle = '#3fe0ff';
+    ctx.fillRect(px, py, 3, ph);
     ctx.textAlign = 'left';
-    ctx.fillStyle = '#fff7ee';
-    ctx.font = `400 ${h * 0.052}px 'Barlow Condensed', sans-serif`;
-    ctx.fillText(String(this.score), w * 0.045, h * 0.1);
-    ctx.font = `700 ${h * 0.017}px 'Manrope', sans-serif`;
-    ctx.fillStyle = 'rgba(255,247,238,0.55)';
-    ctx.fillText(this.o.cameraOk?`BEST ${Math.max(this.best, this.score)}`:'DEMO · RECORDS DISABLED', w * 0.046, h * 0.135);
-    // next medal target keeps a goal on screen the whole round
-    if (this.o.medals) {
-      const [b, s, g] = this.o.medals;
-      const next = this.score < b ? ['BRONZE', b] as const : this.score < s ? ['SILVER', s] as const : this.score < g ? ['GOLD', g] as const : null;
-      ctx.font = `700 ${h * 0.015}px 'Manrope', sans-serif`;
-      if (next) {
-        ctx.fillStyle = next[0] === 'GOLD' ? '#ffd23e' : next[0] === 'SILVER' ? '#cfd6e4' : '#d9915b';
-        ctx.fillText(`${next[0]} AT ${next[1]}`, w * 0.046, h * 0.162);
-      } else {
-        ctx.fillStyle = '#ffd23e';
-        ctx.fillText('GOLD MEDAL SECURED', w * 0.046, h * 0.162);
-      }
+    ctx.font = `italic 900 ${h * 0.068}px 'Barlow Condensed', sans-serif`;
+    const sg = ctx.createLinearGradient(0, py + h * 0.02, 0, py + h * 0.09);
+    sg.addColorStop(0.3, '#ffffff');
+    sg.addColorStop(1, '#b9f3ff');
+    ctx.fillStyle = sg;
+    ctx.shadowColor = 'rgba(63,224,255,0.6)';
+    ctx.shadowBlur = 14;
+    ctx.fillText(String(this.score), px + h * 0.02, py + h * 0.075);
+    ctx.shadowBlur = 0;
+    if (this.o.cameraOk && this.best > 0) {
+      ctx.font = `italic 800 ${h * 0.017}px 'Barlow Condensed', sans-serif`;
+      ctx.fillStyle = '#ffd23e';
+      ctx.fillText(`★ ${Math.max(this.best, this.score)}`, px + h * 0.022, py + h * 0.1);
     }
     // live rival score in a race
     const rival = this.o.race?.rival();
     if (rival) {
       const ahead = this.score >= rival.score;
       ctx.fillStyle = ahead ? '#7cf95c' : '#ff5d5d';
-      ctx.font = `700 ${h * 0.019}px 'Manrope', sans-serif`;
-      ctx.fillText(`${rival.name} ${rival.score}`, w * 0.046, h * 0.192);
+      ctx.font = `italic 800 ${h * 0.02}px 'Barlow Condensed', sans-serif`;
+      ctx.fillText(`${rival.name} ${rival.score}`, px + h * 0.022, py + ph + h * 0.03);
     }
-    const cx = w / 2, cy = h * 0.085, r = h * 0.038;
+    // Timer ring with a glow, and the fever bar under it.
+    const cx = w / 2, cy = h * 0.085, r = h * 0.042;
     const urgent = left < 10;
-    ctx.strokeStyle = 'rgba(255,255,255,0.18)';
+    ctx.fillStyle = 'rgba(10,6,28,0.7)';
+    ctx.beginPath(); ctx.arc(cx, cy, r * 1.25, 0, Math.PI * 2); ctx.fill();
+    ctx.strokeStyle = 'rgba(255,255,255,0.14)';
     ctx.lineWidth = h * 0.008;
     ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.stroke();
-    ctx.strokeStyle = urgent ? '#ff5d5d' : '#ffd23e';
+    ctx.strokeStyle = urgent ? '#ff3fb4' : '#ffd23e';
+    ctx.shadowColor = ctx.strokeStyle;
+    ctx.shadowBlur = 12;
+    ctx.lineCap = 'round';
     ctx.beginPath();
     ctx.arc(cx, cy, r, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * (left / ROUND_SECS));
     ctx.stroke();
+    ctx.shadowBlur = 0;
     ctx.textAlign = 'center';
     ctx.fillStyle = '#fff7ee';
     const pulse = urgent ? 1 + Math.max(0, Math.sin((left % 1) * Math.PI)) * 0.15 : 1;
-    ctx.font = `400 ${h * 0.026 * pulse}px 'Barlow Condensed', sans-serif`;
-    ctx.fillText(String(Math.ceil(left)), cx, cy + h * 0.01);
-    const bw = w * 0.11;
+    ctx.font = `italic 900 ${h * 0.034 * pulse}px 'Barlow Condensed', sans-serif`;
+    ctx.fillText(String(Math.ceil(left)), cx, cy + h * 0.012);
+    const bw = w * 0.12;
     const lvl = this.feverLeft > 0 ? this.feverLeft / FEVER_SECS : this.fever;
+    const by = cy + r * 1.25 + h * 0.018;
     ctx.fillStyle = 'rgba(255,255,255,0.14)';
-    ctx.fillRect(cx - bw / 2, cy + r + h * 0.02, bw, h * 0.006);
-    ctx.fillStyle = this.feverLeft > 0 ? '#ff6ac1' : '#ffd23e';
-    ctx.fillRect(cx - bw / 2, cy + r + h * 0.02, bw * Math.min(1, lvl), h * 0.006);
+    ctx.beginPath(); ctx.roundRect(cx - bw / 2, by, bw, h * 0.008, h * 0.004); ctx.fill();
+    const fg = ctx.createLinearGradient(cx - bw / 2, 0, cx + bw / 2, 0);
+    fg.addColorStop(0, '#8d5cff'); fg.addColorStop(0.5, '#ff3fb4'); fg.addColorStop(1, '#ffd23e');
+    ctx.fillStyle = fg;
+    ctx.beginPath(); ctx.roundRect(cx - bw / 2, by, Math.max(h * 0.008, bw * Math.min(1, lvl)), h * 0.008, h * 0.004); ctx.fill();
+    ctx.font = `italic 800 ${h * 0.018}px 'Barlow Condensed', sans-serif`;
     if (this.feverLeft > 0) {
       ctx.fillStyle = '#ff6ac1';
-      ctx.font = `700 ${h * 0.015}px 'Manrope', sans-serif`;
-      ctx.fillText('FEVER, DOUBLE POINTS', cx, cy + r + h * 0.045);
+      ctx.fillText('FEVER ×2', cx, by + h * 0.035);
     } else if (this.goldRush) {
       ctx.fillStyle = this.finale === 'frenzy' ? '#ff6ac1' : '#ffd23e';
-      ctx.font = `700 ${h * 0.015}px 'Manrope', sans-serif`;
-      const label = this.finale === 'goldrush' ? 'GOLD RUSH, DOUBLE POINTS' : this.finale === 'frenzy' ? 'FRENZY FINALE' : 'FINAL BOSSES, DOUBLE POINTS';
-      ctx.fillText(label, cx, cy + r + h * 0.045);
+      const label = this.finale === 'goldrush' ? 'GOLD RUSH ×2' : this.finale === 'frenzy' ? 'FRENZY' : 'BOSSES ×2';
+      ctx.fillText(label, cx, by + h * 0.035);
     }
     if (this.combo >= 2) {
       ctx.textAlign = 'right';
       const grow = 1 + this.comboFlashT * 0.5;
-      ctx.fillStyle = this.combo >= 4 ? '#ffd23e' : '#fff7ee';
-      ctx.font = `400 ${h * 0.042 * grow}px 'Barlow Condensed', sans-serif`;
-      ctx.fillText(`x${this.combo}`, w * 0.96, h * 0.11);
-      ctx.font = `700 ${h * 0.014}px 'Manrope', sans-serif`;
-      ctx.fillStyle = 'rgba(255,247,238,0.55)';
-      ctx.fillText('COMBO', w * 0.958, h * 0.135);
+      ctx.font = `italic 900 ${h * 0.07 * grow}px 'Barlow Condensed', sans-serif`;
+      const cg = ctx.createLinearGradient(0, h * 0.13, 0, h * 0.2);
+      cg.addColorStop(0, '#ffffff'); cg.addColorStop(0.45, '#ffe27a'); cg.addColorStop(1, '#ff9a1a');
+      ctx.fillStyle = this.combo >= 4 ? cg : '#fff7ee';
+      ctx.shadowColor = 'rgba(255,170,40,0.6)';
+      ctx.shadowBlur = 16;
+      ctx.fillText(`x${this.combo}`, w * 0.965, h * 0.2);
+      ctx.shadowBlur = 0;
+      ctx.font = `italic 800 ${h * 0.022}px 'Barlow Condensed', sans-serif`;
+      ctx.fillStyle = '#fff';
+      ctx.fillText('COMBO', w * 0.962, h * 0.232);
     }
     ctx.restore();
   }

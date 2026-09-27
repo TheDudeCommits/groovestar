@@ -7,3 +7,8 @@ dist
 .playwright-cli
 output
 *.blend1
+
+# Extracted third-party routines are local test data only; never commit them
+public/routines/
+tools/primetime/scratch/
+tools/qa/scratch/

@@ -21,7 +21,9 @@ export interface GameDefinition {
   mode: "rhythm" | "round" | "course";
   bundle: string;
 }
-const hands = [11, 12, 13, 14, 15, 16, 23, 24];
+/** Arm games need shoulders and hands in frame, so they play seated too. */
+const hands = [11, 12, 13, 14, 15, 16];
+const body = [...hands, 23, 24];
 export const CATALOG: GameDefinition[] = [
   {
     id: "dance",
@@ -35,7 +37,7 @@ export const CATALOG: GameDefinition[] = [
     players: "Solo · Friends",
     color: "#d7ef70",
     number: "01",
-    required: hands,
+    required: body,
     mode: "rhythm",
     bundle: "dance",
   },
@@ -83,7 +85,7 @@ export const CATALOG: GameDefinition[] = [
     players: "Solo · Ghosts",
     color: "#bbcc9e",
     number: "04",
-    required: [...hands, 25, 26, 27, 28],
+    required: [...body, 25, 26, 27, 28],
     mode: "course",
     bundle: "rush",
   },
@@ -131,7 +133,7 @@ export const CATALOG: GameDefinition[] = [
     players: "1–2 players",
     color: "#d5b7cd",
     number: "07",
-    required: hands,
+    required: body,
     mode: "round",
     bundle: "bowl",
   },

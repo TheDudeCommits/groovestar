@@ -86,8 +86,31 @@ export class AudioEngine {
     this.timer = window.setInterval(() => this.pump(), 25);
   }
 
+  /** A produced track (public/kinetic/audio) replaces the live synth; the
+   *  clock stays sample-accurate because the buffer starts on the grid. */
+  private source: AudioBufferSourceNode | null = null;
+  private buffered = false;
+  async playTrack(url: string, song: Song, countInBeats = 4) {
+    const data = await fetch(url).then((r) => r.arrayBuffer());
+    const buf = await this.ctx.decodeAudioData(data);
+    await this.ctx.resume();
+    this.song = song;
+    this.buffered = true;
+    this.startTime = this.ctx.currentTime + 0.05 + countInBeats * (60 / song.bpm);
+    const src = this.ctx.createBufferSource();
+    src.buffer = buf;
+    src.connect(this.master);
+    const offset = Math.max(0, this.ctx.currentTime - this.startTime);
+    src.start(Math.max(this.ctx.currentTime, this.startTime), offset);
+    this.source = src;
+    this.nextSixteenth = -countInBeats * 4;
+    this.timer = window.setInterval(() => this.pump(), 25);
+  }
+
   stop() {
     if (this.timer !== null) { clearInterval(this.timer); this.timer = null; }
+    try { this.source?.stop(); } catch { /* not started */ }
+    this.source = null;
     this.song = null;
   }
 
@@ -101,7 +124,7 @@ export class AudioEngine {
     const ahead = this.ctx.currentTime + 0.14;
     while (this.startTime + (this.nextSixteenth / 4) * this.spb < ahead) {
       if (this.nextSixteenth >= 0 && this.nextSixteenth < this.song.beats * 4) {
-        this.scheduleStep(this.nextSixteenth);
+        if (!this.buffered) this.scheduleStep(this.nextSixteenth);
       } else if (this.nextSixteenth < 0 && this.nextSixteenth % 4 === 0) {
         // count-in ticks
         this.tick(this.stepTime(this.nextSixteenth), 1600, 0.25);

@@ -9,12 +9,17 @@ import '@fontsource/barlow-condensed/latin-600.css';
 import '@fontsource/barlow-condensed/latin-700.css';
 import '@fontsource/barlow-condensed/latin-800.css';
 import '@fontsource/barlow-condensed/latin-600-italic.css';
+import '@fontsource/barlow-condensed/latin-700-italic.css';
+import '@fontsource/barlow-condensed/latin-800-italic.css';
+import '@fontsource/barlow-condensed/latin-900.css';
+import '@fontsource/barlow-condensed/latin-900-italic.css';
 import '@fontsource/manrope/latin-400.css';
 import '@fontsource/manrope/latin-600.css';
 import '@fontsource/manrope/latin-700.css';
 import '@fontsource/ibm-plex-mono/latin-400.css';
 import '@fontsource/ibm-plex-mono/latin-500.css';
 import './kinetic/kinetic.css';
+import './kinetic/primetime.css';
 import {renderHome,renderGameHome,renderResult,openCast,stopKineticPreview,decorateDanceHome} from './kinetic/ui';
 import {prepareSession} from './kinetic/setup';
 import {CanvasControls} from './kinetic/core/canvas-controls';
@@ -24,6 +29,7 @@ import {dailySeed,saveRun,type RunRecord} from './kinetic/core/records';
 
 import { SONGS, type Song, type SectionDef } from './songs';
 import { PoseTracker } from './pose/tracker';
+import { poseEngine } from './pose/engine';
 import { Scorer, type JudgmentEvent } from './pose/scorer';
 import { choreoPose, addGroove, drawCharacter, coachStyleOf } from './coach';
 import { drawScene } from './scenes';
@@ -33,7 +39,8 @@ import { StyleScanner, type StyleProfile } from './appearance';
 import { CAST, applyCharacter } from './characters';
 import { CLIPS, clipPose } from './motion';
 import { PlayerAvatar, type Cosmetics } from './avatar';
-import { generateChoreo, freestyleWindows, carveFreestyle, smoothChoreo, type FreestyleWindow } from './choreograph';
+import { generateChoreo, freestyleWindows, carveFreestyle, type FreestyleWindow } from './choreograph';
+import { novaRoutine } from './dance/nova-routine';
 import { fetchVibe, vibeAt, type VibePalette } from './vibe';
 import { fetchRoutineIndex, loadRoutine, type RoutineEntry } from './routines';
 import { FruitGame, type RaceLink } from './games/fruit';
@@ -53,7 +60,7 @@ import { fruitStats, totalMedals, saberStyle, setSaberStyle, SABER_STYLES } from
 import './games/tuning';
 import { parseYouTubeId, YouTubeSource, YouTubeClock } from './youtube';
 import { BeatListener } from './audio/beatsync';
-import { fetchSyncedLyrics, lyricsToLines, applyKeywordChoreo, fetchAiChoreo, fetchSongMeta, introBeatsOf } from './lyrics';
+import { fetchSyncedLyrics, lyricsToLines, fetchSongMeta, introBeatsOf } from './lyrics';
 import { Room, encodePose, decodePose, MAX_PLAYERS, type NetMsg } from './net/room';
 import { TvCamHost, connectPhoneCam } from './net/camlink';
 import { DEFAULT_COSMETICS } from './avatar';
@@ -312,13 +319,14 @@ function kineticActions() {
     open: (id: GameId) => id === 'dance' ? showDanceHome() : showGameHome(ARCADE.find(g => g.id === id)!),
     play: (id: GameId, demo: boolean, track = 0, endless = false) => { void launchKinetic(id, demo, track, endless); },
     phone: () => openPhoneCam(), race: () => fruitRaceLobby(ARCADE[0]), youtube: () => startBeatBlade(), dance: () => showDanceHome(),
+    online: () => boxOnlineLobby(),
   };
 }
 let requestedDemo = false;
 let lastKineticRecord: RunRecord | null = null;
 let dancePresentation:import('./kinetic/render/dance').DancePresentation|null=null;
 let broadcastFloor:typeof import('./kinetic/render/dance').broadcastFloor|null=null;
-async function launchKinetic(id: GameId, demo = false, track = 0, endless = false) {
+async function launchKinetic(id: GameId, demo = false, track = 0, endless = false, room?: Room) {
   playerNameFromMenu();
   stopKineticPreview();
   if (id === 'dance') { showDanceHome(); return; }
@@ -344,11 +352,11 @@ async function launchKinetic(id: GameId, demo = false, track = 0, endless = fals
   const preview = cameraOk ? buildArcadePreview() : null;
   const seed = sessionStorage.getItem('gs-next-seed') ?? dailySeed(id);
   sessionStorage.removeItem('gs-next-seed');sessionStorage.removeItem('gs-next-endless');sessionStorage.removeItem('gs-next-track');
-  const opts = {id,canvas,ctx,tracker:cam(),cameraOk,track,endless,seed,players:Number(sessionStorage.getItem('gs-bowl-players')??1),
+  const opts = {id,canvas,ctx,tracker:cam(),cameraOk,track,endless,seed,room,players:Number(sessionStorage.getItem('gs-bowl-players')??1),
     onRecord:(r: RunRecord)=>{lastKineticRecord=r;},
-    onQuit:()=>{preview?.remove();debugCtl.exit();showGameHome(def);},
+    onQuit:()=>{preview?.remove();debugCtl.exit();room?.destroy();showGameHome(def);},
     onRestart:()=>{preview?.remove();debugCtl.exit();if(seed)sessionStorage.setItem('gs-next-seed',seed);void launchKinetic(id,demo,track,endless);},
-    onExit:(score:number,label?:string)=>{preview?.remove();debugCtl.exit();endArcade(def,score,label);},
+    onExit:(score:number,label?:string)=>{preview?.remove();debugCtl.exit();room?.destroy();endArcade(def,score,label);},
   };
   try {
     if(id==='fruit'){arcadeGame=new FruitGame({...opts,rig:new HandRig(),medals:def.medals});}
@@ -469,7 +477,9 @@ function showDanceHome() {
     drawCharacter(ctx, 'menu', pose, castStyle, W() / 2, H() * 0.99, H() * 0.34, { alpha: 0.45, beat: t * 2 });
     raf = requestAnimationFrame(loop);
   };
-  loop();
+  // The Primetime dance home is opaque; only the classic renderer shows this canvas.
+  if (kineticSettings().renderer === 'classic') loop();
+  else ctx.clearRect(0, 0, W(), H());
 }
 
 function drawFruitCover(cv: HTMLCanvasElement) {
@@ -747,6 +757,74 @@ function showFruitHome() {
   menu.querySelector('#fh-solo')!.addEventListener('click', () => launchFruitSolo());
   menu.querySelector('#fh-race')!.addEventListener('click', () => fruitRaceLobby(def));
   menu.querySelector('#home-back')!.addEventListener('click', () => showMenu());
+}
+
+/** Online boxing: create or join a room, then both fighters enter the ring. */
+async function boxOnlineLobby() {
+  const pick = div('overlay lobby');
+  pick.innerHTML = `<div class="lobby-box">
+    <div class="lobby-title">Fight online</div>
+    <div class="yt-row" style="justify-content:center">
+      <button id="bx-create" class="mp-btn">Create room</button>
+      <input id="bx-code" placeholder="CODE" maxlength="4" inputmode="numeric" aria-label="Room code">
+      <button id="bx-join" class="mp-btn">Join</button>
+    </div>
+    <div id="bx-status" class="yt-err" aria-live="polite"></div>
+    <div id="bx-roster" class="fit-row"></div>
+    <button id="bx-start" class="mp-btn" style="display:none">Start the fight</button>
+    <button id="bx-back" class="lobby-leave">Back</button>
+  </div>`;
+  app.appendChild(pick);
+  const status = pick.querySelector('#bx-status') as HTMLElement;
+  const rosterEl = pick.querySelector('#bx-roster') as HTMLElement;
+  const startBtn = pick.querySelector('#bx-start') as HTMLButtonElement;
+  let room: Room | null = null;
+  let launched = false;
+  const go = (r: Room) => {
+    if (launched) return;
+    launched = true;
+    pick.remove();
+    void launchKinetic('box', false, 0, false, r);
+  };
+  const showRoster = () => {
+    if (!room) return;
+    rosterEl.textContent = room.players.map((p) => p.name).join('  VS  ');
+    if (room.isHost) {
+      startBtn.style.display = room.players.length >= 2 ? '' : 'none';
+      status.textContent = room.players.length >= 2 ? '' : `Room ${room.code}. Share the code with your opponent`;
+    } else status.textContent = 'Connected. Waiting for the host to start';
+  };
+  const wire = (r: Room) => {
+    room = r;
+    r.onUpdate = showRoster;
+    r.onMessage = (_from, msg) => { if (msg.t === 'bxstart') go(r); };
+    r.onClosed = (reason) => { if (!launched) status.textContent = reason; };
+    showRoster();
+  };
+  pick.querySelector('#bx-create')!.addEventListener('click', async () => {
+    if (room) return;
+    status.textContent = 'Creating room…';
+    try { wire(await Room.create(playerNameFromMenu())); } catch (e) { status.textContent = String((e as Error).message ?? e); }
+  });
+  pick.querySelector('#bx-join')!.addEventListener('click', async () => {
+    if (room) return;
+    const code = (pick.querySelector('#bx-code') as HTMLInputElement).value.trim();
+    if (!/^\d{4}$/.test(code)) { status.textContent = 'Enter the 4-digit code.'; return; }
+    status.textContent = 'Joining…';
+    try { wire(await Room.join(code, playerNameFromMenu())); } catch (e) { status.textContent = String((e as Error).message ?? e); }
+  });
+  startBtn.addEventListener('click', () => {
+    if (!room || launched || room.players.length < 2) return;
+    room.send({ t: 'bxstart', seed: String(Math.floor(Math.random() * 1e9)) });
+    go(room);
+  });
+  pick.querySelector('#bx-back')!.addEventListener('click', () => {
+    if (!launched) { room?.destroy(); pick.remove(); }
+  });
+  // dev and QA: ?bxroom=create or ?bxroom=<code> drives the lobby
+  const q = (import.meta as unknown as { env?: { DEV?: boolean } }).env?.DEV ? initialQuery.get('bxroom') : null;
+  if (q === 'create') (pick.querySelector('#bx-create') as HTMLElement).click();
+  else if (q && /^\d{4}$/.test(q)) { (pick.querySelector('#bx-code') as HTMLInputElement).value = q; (pick.querySelector('#bx-join') as HTMLElement).click(); }
 }
 
 async function fruitRaceLobby(def: ArcadeDef) {
@@ -1141,45 +1219,17 @@ async function startYouTube(videoId: string) {
     coach: { skin: '#e8b89a', hair: '#20182a', top: accents[0], vest: '#191d2e', pants: '#2c3352', glove: '#ffd23e', boots: '#14121c' },
     root: 57, chords: [[0, 3, 7]],
     sections: gen.sections,
-    choreo: gen.choreo,
+    choreo: novaRoutine({ sections: gen.sections, totalBeats, bpm, seed: videoId, difficulty }),
     lyrics: lyr ? lyricsToLines(lyr, bpm, 4) : [],
   };
-
-  // AI choreography fetch runs in parallel with the camera scan
-  const cacheKey = `gs-ai3-${videoId}-${Math.round(bpm)}`;
-  const aiPromise: Promise<Song['choreo'] | null> = (async () => {
-    if (!lyr) return null;
-    try {
-      const cached = localStorage.getItem(cacheKey);
-      if (cached) return JSON.parse(cached);
-    } catch { /* bad cache */ }
-    const result = await fetchAiChoreo(videoId, song.title, src.duration, bpm, introBeats, totalBeats);
-    if (result) { try { localStorage.setItem(cacheKey, JSON.stringify(result)); } catch { /* full */ } }
-    return result;
-  })();
 
   await readyFlow(song, `<b>${escapeHtml(song.title)}</b><span>${Math.round(bpm)} BPM${meta === null ? ' (auto-sync)' : ''}${introBeats > 10 ? ' \u00b7 intro detected' : ''}</span>`);
 
   if (!lyr) toast('No synced lyrics found. Karaoke is off.');
   if (meta === null) toast('Tempo unknown. The mic will lock onto the beat.');
-  if (lyr) {
-    const waitCard = div('overlay ready-card');
-    waitCard.innerHTML = `<div class="ready-inner"><div class="ready-tip"><span class="scanline">\u266a CHOREOGRAPHING TO THE LYRICS\u2026</span></div>
-      <div class="ready-tip" style="opacity:0.6;font-size:0.85em">The first dance on a new song takes about 30 seconds to choreograph.</div></div>`;
-    app.appendChild(waitCard);
-    const ai = await Promise.race([aiPromise, wait(45000).then(() => 'timeout' as const)]);
-    waitCard.remove();
-    if (ai && ai !== 'timeout') {
-      song.choreo = ai;
-    } else {
-      toast('AI choreographer unavailable. Using the generated routine.');
-      song.choreo = applyKeywordChoreo(gen.choreo, song.lyrics).choreo;
-    }
-  }
-
-  // fluidity pass, then carve the freestyle GO-OFF windows out of the routine
+  // carve the freestyle GO-OFF windows out of the routine
   const freestyle = freestyleWindows(totalBeats, introBeats);
-  song.choreo = carveFreestyle(smoothChoreo(song.choreo), freestyle);
+  song.choreo = carveFreestyle(song.choreo, freestyle);
 
   const clock = new YouTubeClock(src, bpm, gen.sections, totalBeats, 4);
   clock.freeTempo = meta === null; // unknown tempo: let the mic adopt the real one
@@ -1367,21 +1417,11 @@ function openLobby(room: Room) {
       ]);
       const bpm = meta ?? 120;
       const intro = introBeatsOf(lyr, bpm, 4);
-      // host fetches the AI routine once and hands the exact same moves to
-      // every client — guests never need their own (possibly diverging) fetch
-      let aiChoreo: Song['choreo'] | null = null;
-      if (lyr) {
-        err.textContent = 'Choreographing. The first time on a song takes about 30 seconds.';
-        const totalBeats = Math.max(48, Math.floor((probe.duration * bpm) / 60) - 8);
-        aiChoreo = await Promise.race([
-          fetchAiChoreo(id, probe.title, probe.duration, bpm, intro, totalBeats),
-          wait(45000).then(() => null),
-        ]);
-      }
+      // every client builds the same seeded Nova routine from the video id
       probe.destroy();
-      room.send({ t: 'start', videoId: id, bpm, intro, choreo: aiChoreo ?? undefined });
+      room.send({ t: 'start', videoId: id, bpm, intro });
       lobby.remove();
-      startYouTubeMP(id, bpm, intro, room, aiChoreo);
+      startYouTubeMP(id, bpm, intro, room);
     });
   }
 }
@@ -1394,7 +1434,7 @@ function alertOverlay(text: string) {
 }
 
 /** multiplayer song start: deterministic choreography so every client matches */
-async function startYouTubeMP(videoId: string, bpm: number, introBeats: number, room: Room, aiChoreo: Song['choreo'] | null = null, jd = false) {
+async function startYouTubeMP(videoId: string, bpm: number, introBeats: number, room: Room, _aiChoreo: Song['choreo'] | null = null, jd = false) {
   state = 'ready';
   cancelAnimationFrame(raf);
   app.querySelectorAll('.overlay, .yt-holder').forEach((e) => e.remove());
@@ -1455,7 +1495,7 @@ async function startYouTubeMP(videoId: string, bpm: number, introBeats: number, 
     coach: { skin: '#e8b89a', hair: '#20182a', top: accents[0], vest: '#191d2e', pants: '#2c3352', glove: '#ffd23e', boots: '#14121c' },
     root: 57, chords: [[0, 3, 7]],
     sections: routine?.sections ?? gen!.sections,
-    choreo: routine?.choreo ?? gen!.choreo,
+    choreo: routine?.choreo ?? novaRoutine({ sections: gen!.sections, totalBeats, bpm: useBpm, seed: videoId, difficulty: 2 }),
     lyrics: [],
   };
 
@@ -1473,9 +1513,8 @@ async function startYouTubeMP(videoId: string, bpm: number, introBeats: number, 
   // client) or the seeded generator, smoothed + carved deterministically
   let freestyle: FreestyleWindow[] = [];
   if (!routine) {
-    if (aiChoreo?.length) song.choreo = aiChoreo;
     freestyle = freestyleWindows(totalBeats, introBeats);
-    song.choreo = carveFreestyle(smoothChoreo(song.choreo), freestyle);
+    song.choreo = carveFreestyle(song.choreo, freestyle);
   }
 
   const clock = new YouTubeClock(src, useBpm, song.sections, totalBeats, 4);
@@ -1742,7 +1781,7 @@ interface PlayOpts {
 
 function play(song: Song, playerName: string, opts: PlayOpts) {
   state = 'play';
-  if(kineticSettings().renderer==='3d')void import('./kinetic/render/dance').then(m=>{if(state!=='play')return;try{dancePresentation=new m.DancePresentation(app,playerStyle);broadcastFloor=m.broadcastFloor;}catch{dancePresentation=null;}});
+  if(kineticSettings().renderer==='3d')void import('./kinetic/render/dance').then(m=>{if(state!=='play')return;try{dancePresentation=new m.DancePresentation(app,playerStyle,{videoWall:!!opts.yt});dancePresentation.setSong(song);{const p=dancePresentation;scorer.live=()=>p.ready?p.liveScore():null;}broadcastFloor=m.broadcastFloor;}catch{dancePresentation=null;}});
   const { clock, yt } = opts;
   const scorer = new Scorer(song.choreo, opts.freestyle ?? []);
   scorer.demoMode = !cameraOk;
@@ -1766,10 +1805,11 @@ function play(song: Song, playerName: string, opts: PlayOpts) {
   app.appendChild(countdown);
   let manualPause=false,trackingPause=false;
   const pauseAudio=()=>{const hold=manualPause||trackingPause;if(yt){if(hold)yt.pause();else yt.play();}else{const ac=(clock as unknown as {ctx?:AudioContext}).ctx;if(ac){if(hold)void ac.suspend();else void ac.resume();}}};
-  if(!opts.room){opts.lostHint=div('k-dance-tracking');opts.lostHint.textContent='Step back into frame · your dance is paused';opts.lostHint.hidden=true;app.appendChild(opts.lostHint);
+  if(!opts.room){opts.lostHint=div('k-dance-tracking');opts.lostHint.textContent='Step back into the frame · the dance is paused';opts.lostHint.hidden=true;app.appendChild(opts.lostHint);
    const cleanup=()=>{clock.stop();opts.yt?.destroy();opts.mic?.stop();opts.controls?.dispose();opts.lostHint?.remove();dancePresentation?.dispose();dancePresentation=null;hud.destroy();preview?.remove();cancelAnimationFrame(raf);};
    opts.controls=new CanvasControls(v=>{manualPause=v;pauseAudio();},()=>{cleanup();opts.onAgain();},()=>{cleanup();showDanceHome();});}
   const playStart = performance.now();
+  let videoBounds = '';
   let tapShown = false;
   let lastSync = 0;
 
@@ -1838,7 +1878,8 @@ function play(song: Song, playerName: string, opts: PlayOpts) {
     const sx = kineticSettings().reducedMotion?0:(Math.random() - 0.5) * fx.shake, sy = kineticSettings().reducedMotion?0:(Math.random() - 0.5) * fx.shake;
     ctx.save();
     ctx.translate(sx, sy);
-    if(dancePresentation?.ready && !yt && broadcastFloor)broadcastFloor(ctx,W(),H(),Math.max(0,beat));
+    // The Primetime stage renders underneath; this canvas only carries the move cards.
+    if(dancePresentation?.ready)ctx.clearRect(-60,-60,W()+120,H()+120);
     else drawScene({ ctx, w: W(), h: H(), beat: Math.max(0, beat), section, song, goldBurst: fx.goldBurst });
 
     // stage color pair: graded to the music video, easing between its acts
@@ -1846,10 +1887,12 @@ function play(song: Song, playerName: string, opts: PlayOpts) {
 
     // YouTube backdrop: the video becomes the upper half of the stage
     stageLight = null;
-    if (yt) drawVideoStage(yt, Math.max(0, beat), fx.goldBurst, stageCols);
+    if (yt && dancePresentation?.ready) { const r = dancePresentation.videoRect(); const k = `${r.x},${r.y},${r.w},${r.h}`; if (k !== videoBounds) { videoBounds = k; yt.setBounds(r.x, r.y, r.w, r.h); } }
+    else if (yt) drawVideoStage(yt, Math.max(0, beat), fx.goldBurst, stageCols);
 
     // floor tiles that lit up under last frame's footsteps
-    drawFloorTiles(tiles, avatar.feet, stageCols);
+    // the 3D presentation stands on its own floor; legacy tiles would float as pink boxes
+    if (!dancePresentation?.ready) drawFloorTiles(tiles, avatar.feet, stageCols);
 
     // freestyle windows: banner + combo chip live on the HUD
     const fsWins = opts.freestyle ?? [];
@@ -1921,16 +1964,19 @@ function play(song: Song, playerName: string, opts: PlayOpts) {
         gloveFlash: fx.gloveFlash, goldHold: goldHold && fx.goldBurst > 0.2, beat: Math.max(0, beat),
       });
     }
-    dancePresentation?.update(cam(),coachPose,cameraOk);
+    dancePresentation?.update(cam(),coachPose,cameraOk,beat);
     if (!inFs) drawPictograms(ctx, song, beat, W(), H());
     ctx.restore();
     drawPreview(preview);
 
+    // QA and diagnostics, like the kinetic games publish
+    {const c=scorer.counts;(window as unknown as {gsKinetic:unknown}).gsKinetic={id:'dance',demo:!cameraOk,elapsed:Math.max(0,beat)*60/song.bpm,score:Math.round(scorer.score),hits:c.OK+c.GOOD+c.SUPER+c.PERFECT+c.YEAH,misses:c.X,counts:c,stars:scorer.stars(),frameP95:0,poseAge:null,paused:manualPause||trackingPause,sync:dancePresentation?.sync.last.score??null,meter:dancePresentation?.sync.meter??null,lag:dancePresentation?.sync.last.lagMs??null};}
     if (clock.finished) endSong(song, scorer, hud, preview, opts);
   };
 
   function applyEvent(ev: JudgmentEvent) {
     avatar.react(ev.judgment); // the dancer's rim color IS the judgment feedback
+    dancePresentation?.judge(ev.judgment, ev.gold);
     if (ev.judgment !== 'X') fx.gloveFlash = 1;
     if (ev.judgment === 'YEAH') {
       fx.goldBurst = 1;
@@ -1943,9 +1989,13 @@ function play(song: Song, playerName: string, opts: PlayOpts) {
 
 async function startOriginalDance(demo=false){
  stopKineticPreview();const calibrated=await prepareSession('dance',demo,async()=>{if(phoneCam?.connected)return true;if(tracker.ready)return true;trackerStarted=true;return tracker.init();},()=>cam());
- if(calibrated===null){showDanceHome();return;}cameraOk=calibrated;const song=SONGS[0];playerStyle=applyCharacter(defaultStyle(song),charPref(),1);
+ if(calibrated===null){showDanceHome();return;}cameraOk=calibrated;const base=SONGS[0];const song={...base,lyrics:[],choreo:novaRoutine({sections:base.sections,totalBeats:base.beats,bpm:base.bpm,seed:base.id,difficulty:base.difficulty})};playerStyle=applyCharacter(defaultStyle(song),charPref(),1);
  app.querySelectorAll('.overlay,.yt-holder').forEach(e=>e.remove());cancelAnimationFrame(raf);
- const {AudioEngine}=await import('./audio/engine');const music=new AudioEngine();music.setVolume(kineticSettings().volume*.65);await music.play(song,4);
+ const {AudioEngine}=await import('./audio/engine');const music=new AudioEngine();music.setVolume(kineticSettings().volume*.65);
+ // dev: ?dancetest&at=48 starts the song at beat 48 for visual checks
+ const seek=(import.meta as unknown as {env?:{DEV?:boolean}}).env?.DEV?Number(initialQuery.get('at')??0):0;
+ // the produced track; the live synth remains the fallback if it can't load
+ try{await music.playTrack(`/kinetic/audio/${song.id}.mp3`,song,seek>0?-seek:4);}catch{await music.play(song,seek>0?-seek:4);}
  play(song,playerNameFromMenu(),{clock:music,onAgain:()=>void startOriginalDance(demo)});
 }
 
@@ -2243,7 +2293,8 @@ async function endSong(song: Song, scorer: Scorer, hud: Hud, preview: HTMLCanvas
   }
 
   const flash = div('overlay flash');
-  flash.innerHTML = `<div class="flash-logo">GROOVESTAR</div>`;
+  flash.innerHTML = kineticSettings().renderer === '3d' ? '<img class="pt-flash-logo" src="/kinetic/pt/logo.webp" alt="GrooveStar">' : `<div class="flash-logo">GROOVESTAR</div>`;
+  if (kineticSettings().renderer === '3d') flash.classList.add('pt-flash');
   app.appendChild(flash);
   await wait(900);
   flash.classList.add('fade');
@@ -2366,8 +2417,18 @@ function startBladeHarness() {
   arcadeGame.start();
 }
 const initialQuery = new URLSearchParams(location.search);
+// dev and QA: ?sim=<bot> plays with a simulated body instead of the camera
+if((import.meta as unknown as {env?:{DEV?:boolean}}).env?.DEV&&initialQuery.has('sim'))void import('./dev/sim').then(m=>m.installSim(tracker,initialQuery.get('sim')??'idle',Number(initialQuery.get('simskill')??0.75)));
 if(initialQuery.has('bladetest')) setTimeout(startBladeHarness,400);
 else if(initialQuery.has('demo')) {const id=initialQuery.get('demo') as GameId;if(['blade','box','rush','fruit','bowl','tennis'].includes(id))setTimeout(()=>void launchKinetic(id,true),400);}
 else if(initialQuery.has('dancetest'))setTimeout(()=>void startOriginalDance(true),400);
 else if(initialQuery.has('asset')){stopKineticPreview();void import('./kinetic/render/asset').then(m=>m.renderAsset(initialQuery.get('asset')??'dance',initialQuery.get('cast')??'nova'));}
+else if(initialQuery.get('game')==='dance')setTimeout(()=>kineticActions().open('dance'),100);
 else if(initialQuery.has('game')) {const id=initialQuery.get('game') as GameId;if(['blade','box','rush','fruit','bowl','tennis'].includes(id)){const challenge=initialQuery.get('challenge');if(challenge&&challenge.length<160&&initialQuery.get('v')==='2'){sessionStorage.setItem('gs-next-seed',challenge);sessionStorage.setItem('gs-next-track',String(Math.max(0,Math.min(2,Number(initialQuery.get('track'))||0))));sessionStorage.setItem('gs-next-endless',initialQuery.get('endless')==='1'?'1':'0');const level=initialQuery.get('level');setSettings({difficulty:level==='expert'?'expert':level==='athlete'?'athlete':'flow',lowImpact:initialQuery.get('impact')==='low'});}setTimeout(()=>kineticActions().open(id),100);}}
+// Load the pose model in the background while the player browses, so the
+// camera setup starts tracking immediately. Demo and capture routes skip it.
+if(!['bladetest','demo','dancetest','asset'].some(k=>initialQuery.has(k))&&navigator.mediaDevices){
+  const warm=()=>void poseEngine.preload();
+  const idle=(window as unknown as {requestIdleCallback?:(cb:()=>void,o?:{timeout:number})=>void}).requestIdleCallback;
+  setTimeout(()=>idle?idle(warm,{timeout:3000}):warm(),1200);
+}

@@ -37,12 +37,12 @@ await Promise.all(
       await page.screenshot({
         path: `output/playwright/round-${id}-action.png`,
       });
-      await page.waitForSelector(".k-result", { timeout: 180000 });
+      await page.waitForSelector(".pt-result-screen", { timeout: 180000 });
       await page.waitForLoadState("networkidle");
       await page.screenshot({
         path: `output/playwright/round-${id}-results.png`,
       });
-      const result = await page.locator(".k-result main").innerText();
+      const result = await page.locator(".pt-result-main").innerText();
       assert.match(result, /DEMO COMPLETE/);
       if(id==="bowl2")assert.match(result,/PLAYER 2/);
       if(id==="dance")assert.equal(await page.evaluate(()=>localStorage.getItem("gs-stars")),null);

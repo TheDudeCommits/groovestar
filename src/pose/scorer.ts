@@ -29,6 +29,11 @@ interface Slot {
   best: number;            // best blended similarity seen in window
   sawPlayer: boolean;
   done: boolean;
+  /** live-match mode: running sum and count over the move's own beats */
+  sum: number;
+  n: number;
+  /** beats this move lasts (to the next move, at most 2) */
+  span: number;
 }
 
 function wrapDiff(a: number, b: number) {
@@ -51,6 +56,12 @@ export class Scorer {
   log: { move: string; judgment: Judgment }[] = [];
   /** true → no camera; judgments are simulated so presentation still works */
   demoMode = false;
+  /**
+   * Live 3D match against the coach, 0..1 per frame (Dance with the mocap
+   * coach). When set, each move is judged on how well the player danced with
+   * the coach across that move's own beats, instead of pose-card features.
+   */
+  live: (() => number | null) | null = null;
 
   private fs: {
     w: FreestyleWindow;
@@ -60,7 +71,10 @@ export class Scorer {
   }[];
 
   constructor(choreo: ChoreoMove[], freestyle: FreestyleWindow[] = []) {
-    this.slots = choreo.map((move, index) => ({ move, index, best: 0, sawPlayer: false, done: false }));
+    this.slots = choreo.map((move, index) => ({
+      move, index, best: 0, sawPlayer: false, done: false, sum: 0, n: 0,
+      span: Math.max(0.5, Math.min(2, (choreo[index + 1]?.beat ?? move.beat + 2) - move.beat)),
+    }));
     this.fs = freestyle.map((w) => ({ w, energySum: 0, n: 0, samples: [], done: false }));
     const weight = choreo.reduce((n, m) => n + (m.gold ? 2 : 1), 0) + freestyle.length * 5;
     this.perMove = MAX_SCORE / Math.max(1, weight);
@@ -105,6 +119,28 @@ export class Scorer {
         f.done = true;
         out.push(this.judgeFreestyle(f));
       }
+    }
+    if (this.live && !this.demoMode) {
+      const now = this.live();
+      for (const slot of this.slots) {
+        if (slot.done) continue;
+        const d = beat - slot.move.beat;
+        if (d < -0.2) break;
+        if (d <= slot.span) {
+          if (now !== null) {
+            slot.sawPlayer = true;
+            slot.sum += now;
+            slot.n++;
+            slot.best = Math.max(slot.best, now);
+          }
+        } else {
+          slot.done = true;
+          // mostly the whole move, with credit for its best moment
+          if (slot.n) slot.best = (slot.sum / slot.n) * 0.65 + slot.best * 0.35;
+          out.push(this.judge(slot));
+        }
+      }
+      return out;
     }
     for (const slot of this.slots) {
       if (slot.done) continue;
