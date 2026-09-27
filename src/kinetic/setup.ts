@@ -7,13 +7,13 @@ import { poseEngine } from "../pose/engine";
 import { bodyInFrame, starPose } from "./core/setup-pose";
 
 const TIPS: Record<GameId, string> = {
-  dance: "Mirror the dancer on stage. Big, confident moves score best.",
-  blade: "Swing through each block in the direction of its arrow. Left hand blue, right hand coral.",
-  box: "Keep your guard up. Punch toward the camera when a pad lights, then return to guard.",
-  rush: "Step left and right to change lanes, rise to clear hurdles and duck under bars.",
-  fruit: "Slice the fruit with fast hand sweeps. Leave the bombs alone.",
-  tennis: "Swing a hand through the ball as it reaches you.",
-  bowl: "Lower your bowling hand, then swing forward and up to release.",
+  dance: "MIRROR NOVA",
+  blade: "SLICE WITH THE ARROWS",
+  box: "PUNCH THE LIT PAD",
+  rush: "STEP · JUMP · DUCK",
+  fruit: "SLICE FRUIT · SKIP BOMBS",
+  tennis: "SWING THROUGH THE BALL",
+  bowl: "LOWER · SWING · RELEASE",
 };
 
 /**
@@ -30,14 +30,10 @@ export async function prepareSession(
 ): Promise<boolean | null> {
   if (demo) return false;
   const config = settings();
-  const tip =
-    id === "rush" && config.lowImpact
-      ? "Step left and right to change lanes, raise a knee or reach up to clear hurdles, dip slightly under bars."
-      : TIPS[id];
   const panel = document.createElement("div");
   const title = gameDef(id).title;
   panel.className = "overlay pt-setup";
-  panel.innerHTML = `<div class="pt-setup-bg" aria-hidden="true"><img src="/kinetic/pt/card-${id}.webp" alt=""></div><button data-back class="pt-back">← BACK TO ${title.toUpperCase()}</button><div class="pt-setup-layout"><div class="pt-setup-copy"><span class="pt-eyebrow">GET READY · ${title.toUpperCase()}</span><h1 class="pt-title">STRIKE YOUR<br>STAR POSE</h1><p>Place your camera at about chest height. Step back until your ${id === "rush" ? "whole body fits" : id === "dance" || id === "bowl" ? "hips and hands fit" : "shoulders and hands fit"} the frame, then raise both hands above your head.</p><ol class="pt-steps"><li data-step="0"><b>1</b><span>Step into the frame</span></li><li data-step="1"><b>2</b><span>Raise both hands</span></li></ol><div class="pt-howto"><span class="pt-eyebrow">HOW TO PLAY</span><p>${tip}</p></div><p data-status class="pt-setup-status" aria-live="polite">Loading motion tracking…</p><div class="pt-progress" data-progress><i></i></div><div class="pt-setup-actions"><button data-anyway class="pt-btn" hidden><span>START ANYWAY</span></button></div><div data-fail class="pt-setup-fail" hidden><button data-demo class="pt-btn pt-btn-gold"><span>WATCH DEMO</span></button><p>Camera access is needed to track your movement.</p></div></div><div class="pt-camera"><canvas width="640" height="480"></canvas><div class="pt-camera-guide" aria-hidden="true"></div><span class="pt-camera-tag"><i></i>LIVE CAMERA</span></div></div>`;
+  panel.innerHTML = `<div class="pt-setup-bg" aria-hidden="true"><img src="/kinetic/pt/card-${id}.webp" alt=""></div><button data-back class="pt-back" aria-label="Back to ${title}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg></button><div class="pt-setup-layout"><div class="pt-setup-copy"><h1 class="pt-title">RAISE<br>BOTH HANDS</h1><p class="pt-setup-tip">${TIPS[id]}</p><ol class="pt-steps"><li data-step="0"><b>1</b><span>STEP IN</span></li><li data-step="1"><b>2</b><span>HANDS UP</span></li></ol><p data-status class="pt-setup-status" aria-live="polite">…</p><div class="pt-progress" data-progress><i></i></div><div class="pt-setup-actions"><button data-anyway class="pt-btn" hidden><span>START ANYWAY</span></button></div><div data-fail class="pt-setup-fail" hidden><button data-demo class="pt-btn pt-btn-gold"><span>WATCH DEMO</span></button><p>Camera access is needed to track your movement.</p></div></div><div class="pt-camera"><canvas width="640" height="480"></canvas><div class="pt-camera-guide" aria-hidden="true"></div></div></div>`;
   document.getElementById("app")!.appendChild(panel);
   const status = panel.querySelector("[data-status]")!;
   const progress = panel.querySelector<HTMLElement>("[data-progress]")!;
@@ -50,10 +46,10 @@ export async function prepareSession(
   const unsubscribe = poseEngine.subscribe((s) => {
     if (!alive || counting) return;
     if (s.stage === "download") {
-      status.textContent = `Loading motion tracking · ${Math.round(s.progress * 100)}%`;
+      status.textContent = `${Math.round(s.progress * 100)}%`;
       progress.style.setProperty("--p", String(s.progress));
     } else if (s.stage === "compile") {
-      status.textContent = "Preparing motion tracking…";
+      status.textContent = "…";
       progress.style.setProperty("--p", "1");
     }
   });
@@ -82,7 +78,7 @@ export async function prepareSession(
     (panel.querySelector("[data-fail]") as HTMLElement).hidden = false;
     return result;
   }
-  status.textContent = "Step into the frame.";
+  status.textContent = "STEP IN";
   announce("Step into the frame, then raise both hands.");
   const tr = tracker(),
     motion = new MotionInput(tr, config.lowImpact),
@@ -188,20 +184,20 @@ export async function prepareSession(
       }
     }
     if (!state.tracked || !lms) {
-      status.textContent = "Step into the frame.";
+      status.textContent = "STEP IN";
       held = 0;
       return;
     }
     const visible = bodyInFrame(lms, gameDef(id).required);
     if (!visible) {
-      status.textContent = `Step back so your ${id === "rush" ? "feet, hips and hands" : id === "dance" || id === "bowl" ? "hips and hands" : "shoulders and hands"} are in frame.`;
+      status.textContent = "STEP BACK";
       held = 0;
       return;
     }
     if (!state.fresh) return;
     if (step === 0) {
       held += Math.max(dt, 25);
-      status.textContent = "Step into the frame.";
+      status.textContent = "STEP IN";
       if (held > 300) {
         setStep(1);
         announce("Raise both hands.");
@@ -209,7 +205,7 @@ export async function prepareSession(
       return;
     }
     const pose = starPose(lms);
-    status.textContent = pose ? "Hold it…" : "Raise both hands above your head.";
+    status.textContent = pose ? "HOLD IT" : "HANDS UP";
     panel.classList.toggle("is-posing", pose);
     held = pose ? held + Math.max(dt, 25) : 0;
     if (held > 350) begin();

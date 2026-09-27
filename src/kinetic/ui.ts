@@ -1,4 +1,4 @@
-import { earnedMedals, equippedSaber, nextReward } from "./core/equipment";
+import { earnedMedals, equippedSaber } from "./core/equipment";
 import { CATALOG, gameDef, type GameId } from "./core/catalog";
 import { CAST_INFO, settings, setSettings, characterId } from "./core/settings";
 import { ledger, challengeUrl, type RunRecord, dailySeed, movementStreak } from "./core/records";
@@ -25,6 +25,13 @@ const CARD_COLORS: Record<GameId, [string, string]> = {
   bowl: ["#8d5cff", "#ff3fb4"],
 };
 const art = (id: GameId) => `/kinetic/pt/card-${id}.webp`;
+const hero = (id: GameId) => `/kinetic/pt/hero-${id}.webp`;
+const ICON = {
+  crew: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="8" r="3.2" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M3.5 19c.6-3.3 2.8-5 5.5-5s4.9 1.7 5.5 5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><circle cx="16.5" cy="9" r="2.6" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M15.5 13.6c2.6-.3 4.5 1.3 5 4.4" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>',
+  phone: '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="7" y="2.5" width="10" height="19" rx="2.2" fill="none" stroke="currentColor" stroke-width="1.8"/><circle cx="12" cy="18" r="1" fill="currentColor"/></svg>',
+  back: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+  lock: '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="10.5" width="14" height="10" rx="2" fill="currentColor"/><path d="M8 10.5V8a4 4 0 0 1 8 0v2.5" fill="none" stroke="currentColor" stroke-width="2"/></svg>',
+};
 
 let cleanup: (() => void) | null = null;
 let previewEpoch = 0;
@@ -75,9 +82,9 @@ export function starsFor(r: RunRecord) {
 }
 const RANKS = ["KEEP GROOVING", "WARMED UP", "NICE MOVES", "ON FIRE", "HEADLINER", "SUPERSTAR"];
 
-function topBar(extra = "") {
+function topBar(extra = "", phone = false) {
   const p = profile();
-  return `<header class="pt-top">${extra}<button class="pt-logo" data-home aria-label="GrooveStar home"><img src="/kinetic/pt/logo.webp" alt="GrooveStar"></button><nav class="pt-top-right" aria-label="Player"><button class="pt-level" data-progress aria-label="Your progress, level ${p.level}"><span class="pt-level-star">★</span><span class="pt-level-text"><b>LV ${p.level}</b><i style="--p:${(p.into / 1000).toFixed(3)}"></i></span></button><span class="pt-chip" title="Medals earned"><span class="pt-chip-star">★</span>${p.stars}</span><span class="pt-chip" title="Days in a row"><span class="pt-flame"></span>${p.streak} DAY STREAK</span><button class="pt-chip pt-chip-btn" data-cast>THE CREW</button><button class="pt-icon-btn" data-settings aria-label="Movement and display settings"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 8.5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7Zm8.4 4.9-.1-2.8 2-1.6-2-3.4-2.4.9-2.3-1.4L15 2.5h-4l-.6 2.6-2.3 1.4-2.4-.9-2 3.4 2 1.6-.1 2.8-2 1.6 2 3.4 2.4-.9 2.3 1.4.6 2.6h4l.6-2.6 2.3-1.4 2.4.9 2-3.4Z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg></button></nav></header>`;
+  return `<header class="pt-top">${extra}<button class="pt-logo" data-home aria-label="GrooveStar home"><img src="/kinetic/pt/logo.webp" alt="GrooveStar"></button><nav class="pt-top-right" aria-label="Player"><button class="pt-level" data-progress aria-label="Your progress, level ${p.level}"><span class="pt-level-star">★</span><span class="pt-level-text"><b>${p.level}</b><i style="--p:${(p.into / 1000).toFixed(3)}"></i></span></button><span class="pt-chip" title="Medals"><span class="pt-chip-star">★</span>${p.stars}</span><span class="pt-chip" title="Days in a row"><span class="pt-flame"></span>${p.streak}</span>${phone ? `<button class="pt-icon-btn" data-phone aria-label="Use your phone as a camera" title="Phone camera">${ICON.phone}</button>` : ""}<button class="pt-icon-btn" data-cast aria-label="THE CREW" title="The crew">${ICON.crew}</button><button class="pt-icon-btn" data-settings aria-label="Movement and display settings"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 8.5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7Zm8.4 4.9-.1-2.8 2-1.6-2-3.4-2.4.9-2.3-1.4L15 2.5h-4l-.6 2.6-2.3 1.4-2.4-.9-2 3.4 2 1.6-.1 2.8-2 1.6 2 3.4 2.4-.9 2.3 1.4.6 2.6h4l.6-2.6 2.3-1.4 2.4.9 2-3.4Z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg></button></nav></header>`;
 }
 function wireTop(menu: HTMLElement, a: Actions) {
   menu.querySelector("[data-home]")?.addEventListener("click", a.home);
@@ -91,15 +98,11 @@ function shell(menu: HTMLElement, cls: string) {
 
 export function renderHome(menu: HTMLElement, a: Actions) {
   shell(menu, "pt-home");
-  const name = esc(localStorage.getItem("gs-name") ?? "DANCER");
-  menu.innerHTML = `<div class="pt-scene" id="k-preview" aria-hidden="true"></div><div class="pt-home-shade" aria-hidden="true"></div>${topBar()}<main class="pt-home-main"><section class="pt-carousel" id="k-games" aria-label="Choose a game"><div class="pt-cards" role="list">${CATALOG.map(
+  menu.innerHTML = `<div class="pt-scene" id="k-preview" aria-hidden="true"></div><div class="pt-home-shade" aria-hidden="true"></div>${topBar("", true)}<main class="pt-home-main"><section class="pt-carousel" id="k-games" aria-label="Choose a game"><div class="pt-cards" role="list">${CATALOG.map(
     (g, i) =>
-      `<button class="pt-card" role="listitem" data-game="${g.id}" data-index="${i}" style="--c1:${CARD_COLORS[g.id][0]};--c2:${CARD_COLORS[g.id][1]}" aria-label="${g.title}. ${g.tag.toLowerCase()}. ${g.duration}"><span class="pt-card-art"><img src="${art(g.id)}" alt="" loading="${i < 4 ? "eager" : "lazy"}"></span><span class="pt-card-title">${g.title.toUpperCase().replace(" ", "<br>")}</span><span class="pt-card-meta">${g.duration} · ${g.movement}</span><span class="pt-card-play">PLAY</span></button>`,
-  ).join("")}</div></section><section class="pt-home-copy"><h1 class="pt-tagline"><span>PLAY.</span> <span>MOVE.</span> <span>BE YOU.</span></h1><p>Seven games. Your body is the controller.</p><div class="pt-home-actions"><button class="pt-btn pt-btn-hot" data-session><span>4-MINUTE CIRCUIT</span></button><label class="pt-name"><span>PLAYER</span><input aria-label="Player name" maxlength="14" value="${name}"></label><button class="pt-btn pt-btn-ghost" data-phone><span>USE YOUR PHONE AS A CAMERA</span></button></div></section></main><footer class="pt-hints" aria-hidden="true"><span><i>◀ ▶</i> CHOOSE</span><span><i>ENTER</i> OPEN</span></footer>`;
+      `<button class="pt-card" role="listitem" data-game="${g.id}" data-index="${i}" style="--c1:${CARD_COLORS[g.id][0]};--c2:${CARD_COLORS[g.id][1]}" aria-label="${g.title}. ${g.tag.toLowerCase()}. ${g.duration}"><span class="pt-card-art"><img src="${art(g.id)}" alt="" loading="${i < 4 ? "eager" : "lazy"}"></span><span class="pt-card-title">${g.title.toUpperCase().replace(" ", "<br>")}</span><span class="pt-card-play">PLAY</span></button>`,
+  ).join("")}</div></section><button class="pt-btn pt-btn-hot pt-circuit" data-session aria-label="Play the 4-minute circuit"><span>CIRCUIT</span></button></main>`;
   wireTop(menu, a);
-  menu.querySelector("input")!.addEventListener("input", (e) =>
-    localStorage.setItem("gs-name", (e.target as HTMLInputElement).value.slice(0, 14)),
-  );
   menu.querySelector("[data-phone]")!.addEventListener("click", a.phone);
   menu.querySelector("[data-session]")!.addEventListener("click", () => {
     sessionStorage.setItem("gs-circuit", "blade,box,rush");
@@ -139,32 +142,22 @@ export function renderGameHome(menu: HTMLElement, id: GameId, a: Actions) {
   shell(menu, "pt-detail-screen");
   const g = gameDef(id),
     s = settings();
-  const best = Number(localStorage.getItem(`gs-${id}-best`) ?? 0),
-    runs = ledger().runs.filter((r) => r.id === id);
+  const best = Number(localStorage.getItem(`gs-${id}-best`) ?? 0);
   const [c1, c2] = CARD_COLORS[id];
-  const medals = id === "blade" ? earnedMedals() : totalMedals();
-  const equipped = (id === "blade" ? equippedSaber() : saberStyle()).id;
   const extras = [
-    id === "blade" ? '<button class="pt-mode" data-youtube><b>ANY SONG</b><small>Play along to a YouTube song</small></button>' : "",
-    id === "fruit" ? '<button class="pt-mode" data-race><b>RACE A FRIEND</b><small>Same fruit, live, head to head</small></button>' : "",
-    id === "rush" ? '<button class="pt-mode" data-endless><b>ENDLESS RUN</b><small>Keep going until three knocks</small></button>' : "",
-    id === "bowl" ? '<button class="pt-mode" data-two><b>2 PLAYERS</b><small>Pass and play, one camera</small></button>' : "",
-    `<button class="pt-mode" data-daily><b>TODAY’S CHALLENGE</b><small>One seed, everyone, today</small></button>`,
+    id === "blade" ? '<button class="pt-mode" data-youtube>ANY SONG</button>' : "",
+    id === "fruit" ? '<button class="pt-mode" data-race>RACE A FRIEND</button>' : "",
+    id === "rush" ? '<button class="pt-mode" data-endless>ENDLESS</button>' : "",
+    id === "bowl" ? '<button class="pt-mode" data-two>2 PLAYERS</button>' : "",
+    `<button class="pt-mode" data-daily>DAILY</button>`,
   ].join("");
-  menu.innerHTML = `<div class="pt-detail" style="--c1:${c1};--c2:${c2}"><div class="pt-detail-art" aria-hidden="true"><img src="${art(id)}" alt=""></div><div class="pt-detail-shade" aria-hidden="true"></div>${topBar('<button class="pt-back" data-back>← ALL GAMES</button>')}<main class="pt-detail-main"><section class="pt-detail-info"><span class="pt-eyebrow">${g.number} / 07 · ${g.tag}</span><h1 class="pt-title">${g.title.toUpperCase()}</h1><h2>${g.verb}</h2><p>${g.description}</p><div class="pt-specs"><span><small>SESSION</small>${g.duration}</span><span><small>MOVEMENT</small>${g.movement}</span><span><small>PLAYERS</small>${g.players}</span></div><div class="pt-pace" role="group" aria-label="Your pace"><span class="pt-eyebrow">YOUR PACE</span><div>${(["flow", "athlete", "expert"] as const)
-    .map(
-      (x) =>
-        `<button data-level="${x}" aria-pressed="${s.difficulty === x}" class="${s.difficulty === x ? "selected" : ""}"><b>${x === "flow" ? "FLOW" : x === "athlete" ? "ATHLETE" : "EXPERT"}</b><small>${x === "flow" ? "Find your flow" : x === "athlete" ? "Break a sweat" : "Push the pace"}</small></button>`,
-    )
-    .join("")}</div></div><label class="pt-toggle"><input type="checkbox" data-impact ${s.lowImpact ? "checked" : ""}><span></span>LOW IMPACT · SAME GOOD ENERGY</label>${
+  menu.innerHTML = `<div class="pt-detail" style="--c1:${c1};--c2:${c2}"><div class="pt-detail-art" aria-hidden="true"><img src="${hero(id)}" alt=""></div><div class="pt-detail-shade" aria-hidden="true"></div>${topBar(`<button class="pt-back" data-back aria-label="All games">${ICON.back}</button>`)}<main class="pt-detail-main"><section class="pt-detail-info"><h1 class="pt-title">${g.title.toUpperCase()}</h1>${best ? `<p class="pt-best"><span>★</span>${best.toLocaleString()}</p>` : ""}<div class="pt-pace" role="group" aria-label="Your pace">${(["flow", "athlete", "expert"] as const)
+    .map((x) => `<button data-level="${x}" aria-pressed="${s.difficulty === x}" class="${s.difficulty === x ? "selected" : ""}">${x === "flow" ? "FLOW" : x === "athlete" ? "ATHLETE" : "EXPERT"}</button>`)
+    .join("")}</div><div class="pt-options"><label class="pt-toggle"><input type="checkbox" data-impact ${s.lowImpact ? "checked" : ""}><span></span>LOW IMPACT</label>${
     id === "blade"
-      ? `<label class="pt-select"><span class="pt-eyebrow">SOUNDTRACK</span><select data-track>${TRACKS.map((t, i) => `<option value="${i}" ${Number(sessionStorage.getItem("gs-next-track") ?? 0) === i ? "selected" : ""}>${t.title} · ${t.bpm} BPM</option>`).join("")}</select></label>`
+      ? `<label class="pt-select"><select data-track aria-label="Soundtrack">${TRACKS.map((t, i) => `<option value="${i}" ${Number(sessionStorage.getItem("gs-next-track") ?? 0) === i ? "selected" : ""}>♪ ${t.title.replace(/ \/ \d+$/, "")}</option>`).join("")}</select></label>`
       : ""
-  }<div class="pt-play-row"><button class="pt-btn pt-btn-gold pt-play" data-play><span>PLAY</span></button><button class="pt-btn" data-demo><span>WATCH DEMO</span></button></div></section><aside class="pt-detail-side"><div class="pt-records"><span class="pt-eyebrow">YOUR RECORD</span><div><strong>${best.toLocaleString()}<small>BEST SCORE</small></strong><strong>${runs.length}<small>SESSIONS</small></strong><strong>${Math.max(0, ...runs.map((r) => r.combo))}<small>BEST COMBO</small></strong></div></div><div class="pt-modes"><span class="pt-eyebrow">MORE WAYS TO PLAY</span>${extras}</div>${
-    id === "fruit" || id === "blade"
-      ? `<div class="pt-gear"><span class="pt-eyebrow">YOUR BLADE STYLE</span><div>${SABER_STYLES.map((st) => `<button data-saber="${st.id}" class="${st.id === equipped ? "selected" : ""}" ${medals < st.need ? "disabled" : ""}><b>${st.name}</b><small>${medals < st.need ? st.need + " medals to unlock" : st.id === equipped ? "EQUIPPED" : "READY"}</small></button>`).join("")}</div></div>`
-      : ""
-  }</aside></main></div>`;
+  }</div><div class="pt-play-row"><button class="pt-btn pt-btn-gold pt-play" data-play><span>PLAY</span></button><button class="pt-btn pt-btn-ghost" data-demo aria-label="Watch demo"><span>DEMO</span></button></div><div class="pt-modes">${extras}</div></section></main></div>`;
   wireTop(menu, a);
   menu.querySelector("[data-back]")!.addEventListener("click", a.home);
   menu.querySelectorAll<HTMLElement>("[data-level]").forEach((b) =>
@@ -194,12 +187,6 @@ export function renderGameHome(menu: HTMLElement, id: GameId, a: Actions) {
     sessionStorage.setItem("gs-next-seed", dailySeed(id));
     a.play(id, false, track(), sessionStorage.getItem("gs-next-endless") === "1");
   });
-  menu.querySelectorAll<HTMLElement>("[data-saber]").forEach((b) =>
-    b.addEventListener("click", () => {
-      setSaberStyle(b.dataset.saber!);
-      a.open(id);
-    }),
-  );
   (menu.querySelector("[data-play]") as HTMLElement).focus({ preventScroll: true });
   stopKineticPreview();
 }
@@ -215,7 +202,7 @@ function dialog(title: string) {
 export function openSettings() {
   const s = settings(),
     d = dialog("Movement and display settings");
-  d.innerHTML = `<button data-close class="pt-dialog-close" aria-label="Close settings">×</button><span class="pt-eyebrow">SETTINGS</span><h2>Your pace. Your space.</h2><div class="pt-settings"><label>Intensity<select data-key="difficulty"><option value="flow">Flow</option><option value="athlete">Athlete</option><option value="expert">Expert</option></select></label><label>Graphics<select data-key="quality"><option value="auto">Automatic</option><option value="high">High</option><option value="low">Low</option></select></label><label>Rendering<select data-key="renderer"><option value="3d">Primetime 3D</option><option value="classic">Classic Canvas</option></select></label><label>Music volume<input data-key="volume" type="range" min="0" max="1" step=".05"></label><label class="pt-toggle"><input data-key="lowImpact" type="checkbox"><span></span>Low impact movement</label><label class="pt-toggle"><input data-key="reducedMotion" type="checkbox"><span></span>Reduce camera motion and effects</label><label class="pt-toggle"><input data-key="voice" type="checkbox"><span></span>Spoken coach cues</label><label class="pt-toggle"><input data-key="shareVideo" type="checkbox"><span></span>Share my camera in friend sessions</label></div><p class="pt-dialog-note">Changes apply to your next session.</p>`;
+  d.innerHTML = `<button data-close class="pt-dialog-close" aria-label="Close settings">×</button><h2>SETTINGS</h2><div class="pt-settings"><label>Intensity<select data-key="difficulty"><option value="flow">Flow</option><option value="athlete">Athlete</option><option value="expert">Expert</option></select></label><label>Graphics<select data-key="quality"><option value="auto">Automatic</option><option value="high">High</option><option value="low">Low</option></select></label><label>Rendering<select data-key="renderer"><option value="3d">Primetime 3D</option><option value="classic">Classic Canvas</option></select></label><label>Music volume<input data-key="volume" type="range" min="0" max="1" step=".05"></label><label class="pt-toggle"><input data-key="lowImpact" type="checkbox"><span></span>Low impact movement</label><label class="pt-toggle"><input data-key="reducedMotion" type="checkbox"><span></span>Reduce camera motion and effects</label><label class="pt-toggle"><input data-key="voice" type="checkbox"><span></span>Spoken coach cues</label><label class="pt-toggle"><input data-key="shareVideo" type="checkbox"><span></span>Share my camera in friend sessions</label></div>`;
   for (const el of d.querySelectorAll<HTMLInputElement | HTMLSelectElement>("[data-key]")) {
     const k = el.dataset.key as keyof typeof s;
     if (el instanceof HTMLInputElement && el.type === "checkbox") el.checked = !!s[k];
@@ -233,11 +220,11 @@ export function openCast(onDone: () => void) {
   const d = dialog("Choose your character");
   d.classList.add("pt-cast-dialog");
   const current = characterId();
-  d.innerHTML = `<button data-close class="pt-dialog-close" aria-label="Close character selection">×</button><div class="pt-cast"><div class="pt-cast-stage" id="k-cast-stage"></div><div class="pt-cast-info"><span class="pt-eyebrow">THE CREW</span><h2>Meet <em>Nova.</em></h2><p>Dancer. Creative. Fearless. Nova headlines every venue while the rest of the crew gets ready for the stage.</p><div class="pt-cast-grid">${CAST_INFO.map(
+  d.innerHTML = `<button data-close class="pt-dialog-close" aria-label="Close character selection">×</button><div class="pt-cast"><div class="pt-cast-stage" id="k-cast-stage"></div><div class="pt-cast-info"><h2>THE CREW</h2><div class="pt-cast-grid">${CAST_INFO.map(
     (c) =>
       c.id === "nova"
-        ? `<button data-cast-id="nova" class="selected" aria-pressed="true"><img src="/kinetic/pt/nova-avatar.webp" alt="Nova, the GrooveStar dancer"><b>${c.name}</b><span>${c.role}</span></button>`
-        : `<button data-cast-id="${c.id}" class="locked" disabled aria-label="${c.name}, arriving soon" style="--c:${c.color}"><span class="pt-silhouette" aria-hidden="true"></span><b>${c.name}</b><span>ARRIVING SOON</span></button>`,
+        ? `<button data-cast-id="nova" class="selected" aria-pressed="true"><img src="/kinetic/pt/nova-avatar.webp" alt="Nova, the GrooveStar dancer"><b>${c.name}</b></button>`
+        : `<button data-cast-id="${c.id}" class="locked" disabled aria-label="${c.name}, arriving soon" style="--c:${c.color}"><span class="pt-silhouette" aria-hidden="true">${ICON.lock}</span><b>${c.name}</b></button>`,
   ).join("")}</div></div></div>`;
   d.querySelector('[data-cast-id="nova"]')!.addEventListener("click", () => {
     localStorage.setItem("gs-char", "nova");
@@ -259,13 +246,22 @@ function openProgress(a: Actions) {
     p = profile(),
     d = dialog("Your movement progress");
   void a;
-  d.innerHTML = `<button data-close class="pt-dialog-close" aria-label="Close progress">×</button><span class="pt-eyebrow">YOUR PROGRESS</span><h2>Level ${p.level}</h2><div class="pt-xp"><span>XP</span><div><i style="--p:${(p.into / 1000).toFixed(3)}"></i></div><b>${p.into} / 1000</b></div><div class="pt-progress-numbers"><strong>${Math.floor(l.activeSeconds / 60)}<small>ACTIVE MINUTES</small></strong><strong>${l.runs.length}<small>SESSIONS</small></strong><strong>${p.stars}<small>MEDALS</small></strong><strong>${p.streak}<small>DAY STREAK</small></strong></div><div class="pt-history">${
+  const medals = totalMedals(),
+    equipped = saberStyle().id;
+  d.innerHTML = `<button data-close class="pt-dialog-close" aria-label="Close progress">×</button><h2>LEVEL ${p.level}</h2><div class="pt-xp"><span>XP</span><div><i style="--p:${(p.into / 1000).toFixed(3)}"></i></div><b>${p.into} / 1000</b></div><div class="pt-progress-numbers"><strong>${Math.floor(l.activeSeconds / 60)}<small>ACTIVE MINUTES</small></strong><strong>${l.runs.length}<small>SESSIONS</small></strong><strong>${p.stars}<small>MEDALS</small></strong><strong>${p.streak}<small>DAY STREAK</small></strong></div><div class="pt-history">${
     l.runs
       .slice(-8)
       .reverse()
       .map((r) => `<div><img src="${art(r.id)}" alt=""><span>${gameDef(r.id).title}<small>${r.date.slice(0, 10)} · ${r.difficulty}</small></span><b>${r.score.toLocaleString()}</b></div>`)
-      .join("") || "<p>Your first session starts a good habit.</p>"
-  }</div>`;
+      .join("") || ""
+  }</div><div class="pt-gear"><h3>BLADES</h3><div>${SABER_STYLES.map((st) => `<button data-saber="${st.id}" class="${st.id === equipped ? "selected" : ""}" ${medals < st.need ? "disabled" : ""} aria-label="${st.name}${medals < st.need ? ", " + st.need + " medals to unlock" : ""}"><b>${st.name}</b>${medals < st.need ? `<small>★ ${st.need}</small>` : ""}</button>`).join("")}</div></div>`;
+  d.querySelectorAll<HTMLElement>("[data-saber]").forEach((b) =>
+    b.addEventListener("click", () => {
+      setSaberStyle(b.dataset.saber!);
+      equippedSaber();
+      d.querySelectorAll("[data-saber]").forEach((x) => x.classList.toggle("selected", x === b));
+    }),
+  );
   d.querySelector("[data-close]")!.addEventListener("click", () => d.close());
   d.showModal();
 }
@@ -278,9 +274,9 @@ export function renderResult(menu: HTMLElement, r: RunRecord, a: Actions) {
   const p = profile();
   const gained = Math.round(60 + Math.min(420, r.score / 12) + (r.activeSeconds ?? r.seconds) * 2);
   const title = RANKS[stars];
-  menu.innerHTML = `<div class="pt-scene" id="k-preview" aria-hidden="true"></div><div class="pt-result-shade" aria-hidden="true"></div>${topBar()}<main class="pt-result-main"><span class="pt-eyebrow">${gameDef(r.id).title.toUpperCase()} · ${r.camera ? "SESSION COMPLETE" : "DEMO COMPLETE · RECORDS DISABLED"}</span><h1 class="pt-result-title" data-text="${title}">${title}</h1><div class="pt-stars" aria-label="${stars} of 5 stars">${[0, 1, 2, 3, 4].map((i) => `<span class="${i < stars ? "on" : ""}" style="--i:${i}">★</span>`).join("")}</div><div class="pt-score-panel"><small>SCORE</small><strong data-count="${r.score}">${r.score.toLocaleString()}</strong></div><div class="pt-stat-tiles"><span><small>ACCURACY</small><b>${accuracy}%</b></span><span><small>BEST COMBO</small><b>${r.combo}</b></span><span><small>ACTIVE SEC</small><b>${Math.round(r.activeSeconds ?? r.seconds)}</b></span>${(r.details ?? []).map((d) => `<span><small>${esc(d.label)}</small><b>${esc(d.value)}</b></span>`).join("")}</div>${
-    r.camera ? `<div class="pt-xp"><span>XP</span><div><i style="--p:${(p.into / 1000).toFixed(3)}"></i></div><b>+${gained} · LEVEL ${p.level}</b></div>` : ""
-  }<div class="pt-result-buttons"><button class="pt-btn pt-btn-gold" data-replay><span>PLAY AGAIN</span></button>${sessionStorage.getItem("gs-circuit") ? '<button data-next class="pt-btn pt-btn-hot"><span>NEXT IN CIRCUIT</span></button>' : ""}<button class="pt-btn" data-back><span>BACK TO ${gameDef(r.id).title.toUpperCase()}</span></button>${r.camera && r.id !== "dance" ? '<button class="pt-btn pt-btn-ghost" data-share><span>CHALLENGE A FRIEND</span></button>' : ""}</div><p data-share-status class="pt-share-status" aria-live="polite">${accuracy >= 80 && r.camera ? "PRECISION MEDAL EARNED." : ""}</p><p class="pt-next-reward">${nextReward()}</p></main>`;
+  menu.innerHTML = `<div class="pt-scene" id="k-preview" aria-hidden="true"></div><div class="pt-result-shade" aria-hidden="true"></div>${topBar()}<main class="pt-result-main"><h1 class="pt-result-title" data-text="${title}">${title}</h1><div class="pt-stars" aria-label="${stars} of 5 stars">${[0, 1, 2, 3, 4].map((i) => `<span class="${i < stars ? "on" : ""}" style="--i:${i}">★</span>`).join("")}</div><div class="pt-score-panel"><strong data-count="${r.score}">${r.score.toLocaleString()}</strong></div><div class="pt-stat-tiles"><span><small>ACCURACY</small><b>${accuracy}%</b></span><span><small>COMBO</small><b>${r.combo}</b></span>${(r.details ?? []).filter((d) => !/STAR/.test(d.label)).slice(0, 2).map((d) => `<span><small>${esc(d.label)}</small><b>${esc(d.value)}</b></span>`).join("")}</div>${
+    r.camera ? `<div class="pt-xp"><span>+${gained} XP</span><div><i style="--p:${(p.into / 1000).toFixed(3)}"></i></div><b>LV ${p.level}</b></div>` : ""
+  }<div class="pt-result-buttons"><button class="pt-btn pt-btn-gold" data-replay><span>PLAY AGAIN</span></button>${sessionStorage.getItem("gs-circuit") ? '<button data-next class="pt-btn pt-btn-hot"><span>NEXT</span></button>' : ""}<button class="pt-btn" data-back aria-label="Back to ${gameDef(r.id).title}"><span>BACK</span></button>${r.camera && r.id !== "dance" ? '<button class="pt-btn pt-btn-ghost" data-share aria-label="Challenge a friend"><span>CHALLENGE</span></button>' : ""}</div><p data-share-status class="pt-share-status" aria-live="polite"></p></main>`;
   wireTop(menu, a);
   const count = menu.querySelector<HTMLElement>("[data-count]")!;
   if (!settings().reducedMotion) {
@@ -325,28 +321,28 @@ export function decorateDanceHome(menu: HTMLElement, a: Actions, startOriginal: 
   menu.querySelector(".logo")?.remove();
   menu.querySelector("#home-back")?.closest(".menu-foot")?.remove();
   const [c1, c2] = CARD_COLORS.dance;
-  const hero = document.createElement("section");
-  hero.className = "pt-dance-hero";
-  hero.style.setProperty("--c1", c1);
-  hero.style.setProperty("--c2", c2);
-  hero.innerHTML = `<div class="pt-dance-hero-art" aria-hidden="true"><img src="${art("dance")}" alt=""></div><div class="pt-dance-hero-copy"><span class="pt-eyebrow">01 / 07 · FIND YOUR FLOW</span><h1 class="pt-title">DANCE</h1><h2>Own the floor.</h2><p>Mirror the hologram coach, hit the moves on the cards and raise the hype until the stage goes Supernova.</p><div class="pt-play-row"><button class="pt-btn pt-btn-gold pt-play" data-original><span>PLAY AN ORIGINAL ROUTINE</span></button><button class="pt-btn" data-watch><span>WATCH DEMO</span></button></div></div>`;
+  const heroEl = document.createElement("section");
+  heroEl.className = "pt-dance-hero";
+  heroEl.style.setProperty("--c1", c1);
+  heroEl.style.setProperty("--c2", c2);
+  heroEl.innerHTML = `<div class="pt-dance-hero-art" aria-hidden="true"><img src="${hero("dance")}" alt=""></div><div class="pt-dance-hero-copy"><h1 class="pt-title">DANCE</h1><div class="pt-play-row"><button class="pt-btn pt-btn-gold pt-play" data-original aria-label="Play an original routine"><span>PLAY</span></button><button class="pt-btn pt-btn-ghost" data-watch aria-label="Watch demo"><span>DEMO</span></button></div></div>`;
   // The song search, dance-off and dancer options become glass cards under the hero.
   const panels = document.createElement("section");
   panels.className = "pt-dance-panels";
   panels.setAttribute("aria-label", "More ways to dance");
   for (const el of [...menu.querySelectorAll<HTMLElement>(":scope > .yt-panel, :scope > .menu-foot")]) panels.appendChild(el);
   const song = panels.querySelector(".yt-panel:not(.mp-panel) .yt-title");
-  if (song) song.innerHTML = 'ANY SONG <small>Search YouTube or paste a link. Moves are generated to the beat.</small>';
+  if (song) song.innerHTML = 'ANY SONG';
   const off = panels.querySelector(".mp-panel .yt-title");
-  if (off) off.innerHTML = 'DANCE-OFF <small>Up to four players on their own cameras.</small>';
+  if (off) off.innerHTML = 'DANCE-OFF';
   const foot = panels.querySelector(".menu-foot");
-  if (foot) foot.insertAdjacentHTML("afterbegin", '<div class="yt-title">YOUR DANCER <small>Name, fitness tracking and camera.</small></div>');
-  menu.prepend(hero);
-  hero.after(panels);
-  menu.insertAdjacentHTML("afterbegin", topBar('<button class="pt-back" data-back-home>← ALL GAMES</button>'));
+  if (foot) foot.insertAdjacentHTML("afterbegin", '<div class="yt-title">YOU</div>');
+  menu.prepend(heroEl);
+  heroEl.after(panels);
+  menu.insertAdjacentHTML("afterbegin", topBar(`<button class="pt-back" data-back-home aria-label="All games">${ICON.back}</button>`));
   wireTop(menu, a);
   menu.querySelector("[data-back-home]")?.addEventListener("click", a.home);
-  hero.querySelector("[data-original]")!.addEventListener("click", () => startOriginal(false));
-  hero.querySelector("[data-watch]")!.addEventListener("click", () => startOriginal(true));
+  heroEl.querySelector("[data-original]")!.addEventListener("click", () => startOriginal(false));
+  heroEl.querySelector("[data-watch]")!.addEventListener("click", () => startOriginal(true));
   stopKineticPreview();
 }

@@ -168,7 +168,7 @@ export class KineticTennis extends KineticSession {
     return [{ label: "YOU / LUNA", value: `${this.mine} / ${this.theirs}` }];
   }
   protected hint() {
-    return `YOU ${this.mine} / ${this.theirs} LUNA · FIRST TO 5 · ${this.rally} SHOT RALLY`;
+    return `${this.mine} – ${this.theirs}`;
   }
   protected diagnostics() {
     return {

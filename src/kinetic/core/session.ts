@@ -77,7 +77,7 @@ export abstract class KineticSession implements Game {
     this.music = new SessionMusic(TRACKS[options.track ?? 0]);
     this.hud = document.createElement("div");
     this.hud.className = "pt-hud";
-    this.hud.innerHTML = `<div class="pt-hud-panel pt-hud-score"><span class="pt-hud-game">${gameDef(options.id).title.toUpperCase()}${options.cameraOk ? "" : " · DEMO"}</span><strong data-score>0</strong><span data-detail>0 CLEAN · 0 MISSED</span><div class="pt-hype" data-level="0"><div class="pt-hype-bar"><i data-hype></i></div><span data-level-name>${HYPE_LEVELS[0].name}</span></div></div><div class="pt-hud-panel pt-hud-right"><button data-pause aria-label="Pause game"><span></span><span></span></button><strong data-time>90</strong><span data-time-label>SECONDS</span></div><div class="pt-combo" data-combo-wrap><strong data-combo>0</strong><span>COMBO</span></div>`;
+    this.hud.innerHTML = `<div class="pt-hud-panel pt-hud-score"${options.cameraOk ? "" : ' data-demo-run'}><strong data-score>0</strong><div class="pt-hype" data-level="0"><div class="pt-hype-bar"><i data-hype></i></div></div></div><div class="pt-hud-panel pt-hud-right"><button data-pause aria-label="Pause game"><span></span><span></span></button><strong data-time>90</strong></div><div class="pt-combo" data-combo-wrap><strong data-combo>0</strong><span>COMBO</span></div>`;
     this.host.appendChild(this.hud);
     this.judgeEl = document.createElement("div");
     this.judgeEl.className = "pt-judgment";
@@ -89,7 +89,7 @@ export abstract class KineticSession implements Game {
     this.host.appendChild(this.bannerEl);
     this.show.onLevel((level, up) => {
       if (!up) return;
-      this.bannerEl.innerHTML = `<small>HYPE LEVEL ${level + 1}</small><b>${HYPE_LEVELS[level].name}!</b>`;
+      this.bannerEl.innerHTML = `<b>${HYPE_LEVELS[level].name}!</b>`;
       this.bannerEl.classList.remove("show");
       void this.bannerEl.offsetWidth;
       this.bannerEl.classList.add("show");
@@ -201,7 +201,7 @@ export abstract class KineticSession implements Game {
     }
     if (this.stopped) return;
     this.statusEl.textContent = lost
-      ? "Show your shoulders and hands to the camera · the round is paused"
+      ? "STEP INTO VIEW"
       : this.paused
         ? ""
         : this.hint();
@@ -246,9 +246,7 @@ export abstract class KineticSession implements Game {
     input: MotionState,
   ): void;
   protected hint(): string {
-    return this.options.cameraOk
-      ? ""
-      : "DEMO · Camera-free preview · Records disabled";
+    return "";
   }
   protected diagnostics(): Record<string, unknown> {
     return {};
@@ -285,14 +283,10 @@ export abstract class KineticSession implements Game {
       void comboWrap.offsetWidth;
       comboWrap.classList.add("bump");
     }
-    q("[data-detail]").textContent = `${this.hits} CLEAN · ${this.misses} MISSED`;
     const hype = q("[data-hype]");
     hype.style.setProperty("--hype", String(this.show.hype));
     const meter = q(".pt-hype");
-    if (meter.dataset.level !== String(this.show.level)) {
-      meter.dataset.level = String(this.show.level);
-      q("[data-level-name]").textContent = this.show.levelName;
-    }
+    if (meter.dataset.level !== String(this.show.level)) meter.dataset.level = String(this.show.level);
   }
   protected hit(points = 100, text = "ON POINT") {
     this.hits++;

@@ -217,7 +217,8 @@ export class KineticBowl extends KineticSession {
     this.phaseAt = t;
   }
   protected hint() {
-    return `PLAYER ${this.player + 1} · FRAME ${this.frameIndex + 1}/5 · THROW ${this.attempt + 1}/2 · ${this.totals[this.player]} POINTS · LOWER YOUR HAND, THEN SWING FORWARD`;
+    const who = this.players === 2 ? `P${this.player + 1} · ` : "";
+    return `${who}FRAME ${this.frameIndex + 1}/5`;
   }
   protected diagnostics() {
     return {

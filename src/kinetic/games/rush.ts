@@ -180,7 +180,7 @@ export class KineticRush extends KineticSession {
     };
   }
   protected hint() {
-    return `${this.lives} CHANCES · ${this.coins} COINS${this.shield > 0 ? " · SECOND WIND" : ""}${this.config.lowImpact ? " · RAISE A KNEE TO CLEAR" : ""}`;
+    return `${"♥".repeat(Math.max(0, this.lives))}   ◉ ${this.coins}`;
   }
   protected diagnostics() {
     return {

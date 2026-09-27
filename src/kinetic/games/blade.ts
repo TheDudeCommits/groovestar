@@ -350,9 +350,6 @@ export class KineticBlade extends KineticSession {
     );
     cam.lookAt(0, 1.6, -20);
   }
-  protected hint() {
-    return this.options.cameraOk ? "LEFT HAND · BLUE      RIGHT HAND · CORAL" : super.hint();
-  }
   protected diagnostics() {
     return {
       beat: this.beat,
