@@ -28,8 +28,11 @@ export function lobbyScene(host: HTMLElement, shot: LobbyShot = "home") {
         cam.position.set(0, 1.35, 6.2);
         cam.lookAt(0, 1.25, 0);
       } else {
-        cam.position.set(2.05, 1.2, 4.5);
-        cam.lookAt(1.5, 1.22, 0);
+        // Nova stands in the left third, clear of the card carousel.
+        const aspect = host.clientWidth / Math.max(1, host.clientHeight);
+        const shift = 1.5 + Math.max(0, 1.78 - aspect) * 0.9;
+        cam.position.set(shift + 0.55, 1.2, 4.5);
+        cam.lookAt(shift, 1.22, 0);
       }
     } else if (shot === "result") {
       cam.position.set(narrow() ? 0 : 2.2, 1.5, 5.8);

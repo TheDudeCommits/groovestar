@@ -1043,14 +1043,13 @@ dialog.pt-pause-dialog::backdrop {
   position: absolute;
   left: 3.4%;
   bottom: 5%;
-  max-width: 34%;
+  max-width: 30%;
 }
 .pt-tagline {
   margin: 0;
-  font: italic 900 clamp(40px, 4.4vw, 82px) / 0.9 var(--pt-display);
+  font: italic 900 clamp(38px, 4vw, 82px) / 0.92 var(--pt-display);
   letter-spacing: -0.005em;
   text-transform: uppercase;
-  white-space: nowrap;
 }
 .pt-tagline span {
   display: inline-block;
