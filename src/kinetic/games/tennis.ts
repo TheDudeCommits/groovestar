@@ -104,6 +104,7 @@ export class KineticTennis extends KineticSession {
   private lunaGoal = new T.Vector3(0, 0, -18.6);
   private lunaPlan: Plan | null = null;
   private lunaSwingAt = -1;
+  private lunaServing = false;
   private lunaReactAt = 0;
   private plan: Plan | null = null;
   private racketHand: "L" | "R" = "R";
@@ -417,7 +418,8 @@ export class KineticTennis extends KineticSession {
       const swingW = st >= 0 && st < 0.7 ? Math.min(1, st / 0.06) * Math.min(1, (0.7 - st) / 0.25) : 0;
       this.you.timeline([
         ["BoxBounce", t * 0.8, Math.max(0, 1 - run) * (1 - swingW)],
-        ["Run", this.runT, run * (1 - swingW)],
+        // across the court she side-runs; toward the net she runs
+        [Math.abs(this.youVel.x) > Math.abs(this.youVel.z) ? (this.youVel.x > 0 ? "RunFightR" : "RunFightL") : "Run", this.runT, run * (1 - swingW)],
         [this.swingAnim.fore ? "Slash" : "SlashL", 0.25 + Math.max(0, st) * (0.9 + this.swingAnim.power * 0.5), swingW],
       ]);
       const side = this.racketHand;
@@ -617,6 +619,7 @@ export class KineticTennis extends KineticSession {
     // her serve
     if (this.phase === "serve" && this.server === "luna" && t - this.phaseAt > 1.2) {
       this.lunaSwingAt = t;
+      this.lunaServing = true;
       this.phase = "toss";
       this.phaseAt = t;
       this.ball.v.set(0, 4.6, 0);
@@ -625,7 +628,10 @@ export class KineticTennis extends KineticSession {
     // return the ball when it reaches her
     const p = this.lunaPlan;
     if (p && this.phase === "flight" && this.ball.by === "you" && this.ball.bounces === 1) {
-      if (this.lunaSwingAt < p.t - 1 && t > p.t - 0.5) this.lunaSwingAt = t;
+      if (this.lunaSwingAt < p.t - 1 && t > p.t - 0.5) {
+        this.lunaSwingAt = t;
+        this.lunaServing = false;
+      }
       if (t >= p.t) this.lunaReturn(t);
     }
     const speed = this.lunaVel.length();
@@ -636,8 +642,9 @@ export class KineticTennis extends KineticSession {
       const run = Math.min(1, speed / 3) * (1 - w);
       this.luna.timeline([
         ["BoxBounce", t * 0.8, Math.max(0, 1 - run - w)],
-        ["Run", this.lunaRunT, run],
-        [p?.forehand === false ? "SlashL" : "Slash", Math.max(0, st), w],
+        // facing you, moving to her left (+x) is a left side-run
+        [Math.abs(this.lunaVel.x) > Math.abs(this.lunaVel.z) ? (this.lunaVel.x > 0 ? "RunFightL" : "RunFightR") : "Run", this.lunaRunT, run],
+        [this.lunaServing ? "Serve" : p?.forehand === false ? "SlashL" : "Slash", Math.max(0, st) * (this.lunaServing ? 1.25 : 1), w],
       ]);
       this.luna.group.rotation.set(0, Math.max(-0.5, Math.min(0.5, this.lunaVel.x * 0.06)), 0);
     }

@@ -281,6 +281,12 @@ class Sfx {
     this.knock({ freq: 700, q: 2.2, gain: 0.3 * strength + 0.1, decay: 0.06, tone: 240, toneGain: 0.12 * strength });
   }
 
+  /** Beat Blade cut: a crisp tick with a little body, on top of the slice. */
+  blockHit(quality = 1) {
+    this.knock({ freq: 5200, q: 0.9, gain: 0.3 + quality * 0.25, decay: 0.035 });
+    this.knock({ freq: 1800, q: 1.4, gain: 0.25 + quality * 0.2, decay: 0.06, tone: 180, toneGain: 0.18 });
+  }
+
   /** Ball into the net: a soft, dead thud. */
   net() {
     this.knock({ freq: 320, q: 0.9, gain: 0.45, decay: 0.18 });

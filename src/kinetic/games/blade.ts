@@ -196,11 +196,14 @@ export class KineticBlade extends KineticSession {
   };
   private cutFaceMat = new T.MeshBasicMaterial({ color: new T.Color(1, 0.95, 0.9).multiplyScalar(1.3), transparent: true, side: T.DoubleSide, depthWrite: false, blending: T.AdditiveBlending });
   private bombMat: T.Material;
-  private ui: { root: HTMLElement; mult: HTMLElement; ring: HTMLElement; energy: HTMLElement; pops: HTMLElement[]; popAt: number };
+  private ui: { root: HTMLElement; mult: HTMLElement; ring: HTMLElement; energy: HTMLElement; edge: Record<"L" | "R", HTMLElement>; big: HTMLElement; pops: HTMLElement[]; popAt: number };
   private freshAt = 0;
   private clashAt = 0;
   private nextId = 0;
   private cutLog: { dir: number; sd: [number, number]; dot: number; ahead: number }[] = [];
+  private lastSection = "";
+  /** the chorus drop: a camera punch-in that settles over a second */
+  private drop = 0;
 
   constructor(o: KineticOpts) {
     super(o, { fog: 0x03020c, fogDensity: 0.012, bloom: 0.8, bloomRadius: 0.5, bloomThreshold: 0.78, vignette: 0.55, exposure: 1.0 });
@@ -331,7 +334,7 @@ export class KineticBlade extends KineticSession {
   private makeUi() {
     const root = document.createElement("div");
     root.className = "bb-ui";
-    root.innerHTML = `<div class="bb-mult" data-mult><svg viewBox="0 0 64 64" aria-hidden="true"><circle cx="32" cy="32" r="28" class="bb-ring-bg"/><circle cx="32" cy="32" r="28" class="bb-ring" data-ring/></svg><b data-mult-n>×1</b></div><div class="bb-energy" aria-hidden="true"><i data-energy></i></div><div class="bb-pops" data-pops></div>`;
+    root.innerHTML = `<div class="bb-edge bb-edge-l" data-edge-l></div><div class="bb-edge bb-edge-r" data-edge-r></div><div class="bb-mult" data-mult><svg viewBox="0 0 64 64" aria-hidden="true"><circle cx="32" cy="32" r="28" class="bb-ring-bg"/><circle cx="32" cy="32" r="28" class="bb-ring" data-ring/></svg><b data-mult-n>×1</b></div><div class="bb-energy" aria-hidden="true"><i data-energy></i></div><div class="bb-pops" data-pops></div><div class="bb-big" data-big></div>`;
     this.host.appendChild(root);
     const popsRoot = root.querySelector<HTMLElement>("[data-pops]")!;
     const pops: HTMLElement[] = [];
@@ -346,6 +349,8 @@ export class KineticBlade extends KineticSession {
       mult: root.querySelector<HTMLElement>("[data-mult-n]")!,
       ring: root.querySelector<HTMLElement>("[data-ring]")!,
       energy: root.querySelector<HTMLElement>("[data-energy]")!,
+      edge: { L: root.querySelector<HTMLElement>("[data-edge-l]")!, R: root.querySelector<HTMLElement>("[data-edge-r]")! },
+      big: root.querySelector<HTMLElement>("[data-big]")!,
       pops,
       popAt: 0,
     };
@@ -399,6 +404,13 @@ export class KineticBlade extends KineticSession {
     this.beat = this.music.beat(t);
     let sec: "intro" | "verse" | "chorus" | "bridge" | "outro" = "intro";
     for (const x of track.sections) if (this.beat >= x.beat) sec = x.kind;
+    if (sec !== this.lastSection) {
+      if (sec === "chorus" && this.lastSection) {
+        this.world.moment();
+        this.drop = 1;
+      }
+      this.lastSection = sec;
+    }
     this.world.section = sec;
     this.world.update(t, this.config.reducedMotion);
     this.reach.update();
@@ -415,7 +427,9 @@ export class KineticBlade extends KineticSession {
     const cam = this.stage.camera;
     const reduced = this.config.reducedMotion;
     const jit = reduced ? 0 : this.shake;
-    cam.position.set((reduced ? 0 : Math.sin(t * 0.35) * 0.04) + (Math.random() - 0.5) * jit * 0.045, CAM.y + (Math.random() - 0.5) * jit * 0.035, CAM.z);
+    this.drop = Math.max(0, this.drop - dt * 1.2);
+    const punch = reduced ? 0 : Math.sin(Math.min(1, this.drop) * Math.PI) * 0.35;
+    cam.position.set((reduced ? 0 : Math.sin(t * 0.35) * 0.04) + (Math.random() - 0.5) * jit * 0.045, CAM.y + (Math.random() - 0.5) * jit * 0.035, CAM.z - punch);
     cam.lookAt(0, CAM.lookY, CAM.lookZ);
   }
 
@@ -585,6 +599,30 @@ export class KineticBlade extends KineticSession {
     this.world.sparks.emit(at, 0xffffff, 18, 4.5, 0.4);
     this.shake = Math.min(1, this.shake + 0.35);
     sfx.slice(this.combo);
+    sfx.blockHit(points / 115);
+    this.edgeFlash(n.hand);
+    // combo milestones light the whole place up
+    if (this.combo === 25 || this.combo === 50 || this.combo % 100 === 0) {
+      this.world.moment();
+      this.popupBig(`${this.combo} COMBO`);
+      sfx.pop(Math.min(9, Math.floor(this.combo / 25) + 3));
+    }
+  }
+
+  /** A flash of the saber's color from the side of the screen it cut on. */
+  private edgeFlash(side: "L" | "R") {
+    const el = this.ui.edge[side];
+    el.classList.remove("show");
+    void el.offsetWidth;
+    el.classList.add("show");
+  }
+
+  private popupBig(text: string) {
+    const el = this.ui.big;
+    el.textContent = text;
+    el.classList.remove("show");
+    void el.offsetWidth;
+    el.classList.add("show");
   }
 
   private award(points: number, tier: Judged) {

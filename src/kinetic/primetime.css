@@ -3080,3 +3080,39 @@ dialog.pt-dialog .pt-gear small {
   25% { transform: translate(-50%, -50%) scale(1); opacity: 1; }
   100% { transform: translate(-50%, -50%) scale(0.96); opacity: 1; }
 }
+.bb-edge {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 18%;
+  opacity: 0;
+}
+.bb-edge-l {
+  left: 0;
+  background: linear-gradient(90deg, rgba(47, 123, 255, 0.45), transparent);
+}
+.bb-edge-r {
+  right: 0;
+  background: linear-gradient(270deg, rgba(255, 45, 85, 0.45), transparent);
+}
+.bb-edge.show {
+  animation: bb-edge 0.32s ease-out forwards;
+}
+@keyframes bb-edge {
+  0% { opacity: 1; }
+  100% { opacity: 0; }
+}
+.bb-big {
+  position: absolute;
+  left: 50%;
+  top: 22%;
+  transform: translate(-50%, -50%) skewX(-8deg);
+  font: italic 900 clamp(40px, 6vw, 88px) / 1 var(--pt-display);
+  color: #fff4b0;
+  text-shadow: 0 5px 0 #4a1a00, 0 0 30px rgba(255, 190, 40, 0.85);
+  white-space: nowrap;
+  opacity: 0;
+}
+.bb-big.show {
+  animation: tn-pop 1.2s cubic-bezier(0.2, 1.4, 0.4, 1) forwards;
+}

@@ -295,7 +295,9 @@ export class DancePresentation {
       }
     }
     this.updateYou(tracker, camera, now, dt, beat);
-    this.venue.update(now / 1000, dt, this.motion);
+    // the lights pump with whoever is dancing harder: Nova, or you
+    const you = camera && this.body.live(now) ? Math.min(1, this.sync.last.playerMotion / 2.2) * (0.5 + this.sync.meter * 0.5) : 0;
+    this.venue.update(now / 1000, dt, Math.max(this.motion, you));
     this.stage.post(now / 1000, this.show);
     this.stage.render();
   }
