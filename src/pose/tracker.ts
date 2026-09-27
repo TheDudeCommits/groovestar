@@ -186,11 +186,15 @@ export interface FrameState { lastWrists: { x: number; y: number }[] | null; ene
 export function computeFrame(
   lms: NormalizedLandmark[], now: number, st: FrameState, prevT: number,
 ): PlayerFrame {
+  // Mirrored viewer space: the player's anatomical left appears on the
+  // screen's left, like a mirror, and matches the coach's screen-left limb
+  // (the coach's right arm, since the coach faces the player). Features use
+  // the move library's convention: 0 down, +90 out to that side, 180 up.
   const p = (i: number) => ({ x: 1 - lms[i].x, y: lms[i].y });
-  const shL = p(L.shR), shR = p(L.shL);
-  const elL = p(L.elR), elR = p(L.elL);
-  const wrL = p(L.wrR), wrR = p(L.wrL);
-  const hipL = p(L.hipR), hipR = p(L.hipL);
+  const shL = p(L.shL), shR = p(L.shR);
+  const elL = p(L.elL), elR = p(L.elR);
+  const wrL = p(L.wrL), wrR = p(L.wrR);
+  const hipL = p(L.hipL), hipR = p(L.hipR);
 
   const midSh = { x: (shL.x + shR.x) / 2, y: (shL.y + shR.y) / 2 };
   const midHip = { x: (hipL.x + hipR.x) / 2, y: (hipL.y + hipR.y) / 2 };

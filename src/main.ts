@@ -39,7 +39,8 @@ import { StyleScanner, type StyleProfile } from './appearance';
 import { CAST, applyCharacter } from './characters';
 import { CLIPS, clipPose } from './motion';
 import { PlayerAvatar, type Cosmetics } from './avatar';
-import { generateChoreo, freestyleWindows, carveFreestyle, smoothChoreo, type FreestyleWindow } from './choreograph';
+import { generateChoreo, freestyleWindows, carveFreestyle, type FreestyleWindow } from './choreograph';
+import { novaRoutine } from './dance/nova-routine';
 import { fetchVibe, vibeAt, type VibePalette } from './vibe';
 import { fetchRoutineIndex, loadRoutine, type RoutineEntry } from './routines';
 import { FruitGame, type RaceLink } from './games/fruit';
@@ -59,7 +60,7 @@ import { fruitStats, totalMedals, saberStyle, setSaberStyle, SABER_STYLES } from
 import './games/tuning';
 import { parseYouTubeId, YouTubeSource, YouTubeClock } from './youtube';
 import { BeatListener } from './audio/beatsync';
-import { fetchSyncedLyrics, lyricsToLines, applyKeywordChoreo, fetchAiChoreo, fetchSongMeta, introBeatsOf } from './lyrics';
+import { fetchSyncedLyrics, lyricsToLines, fetchSongMeta, introBeatsOf } from './lyrics';
 import { Room, encodePose, decodePose, MAX_PLAYERS, type NetMsg } from './net/room';
 import { TvCamHost, connectPhoneCam } from './net/camlink';
 import { DEFAULT_COSMETICS } from './avatar';
@@ -1149,45 +1150,17 @@ async function startYouTube(videoId: string) {
     coach: { skin: '#e8b89a', hair: '#20182a', top: accents[0], vest: '#191d2e', pants: '#2c3352', glove: '#ffd23e', boots: '#14121c' },
     root: 57, chords: [[0, 3, 7]],
     sections: gen.sections,
-    choreo: gen.choreo,
+    choreo: novaRoutine({ sections: gen.sections, totalBeats, bpm, seed: videoId, difficulty }),
     lyrics: lyr ? lyricsToLines(lyr, bpm, 4) : [],
   };
-
-  // AI choreography fetch runs in parallel with the camera scan
-  const cacheKey = `gs-ai3-${videoId}-${Math.round(bpm)}`;
-  const aiPromise: Promise<Song['choreo'] | null> = (async () => {
-    if (!lyr) return null;
-    try {
-      const cached = localStorage.getItem(cacheKey);
-      if (cached) return JSON.parse(cached);
-    } catch { /* bad cache */ }
-    const result = await fetchAiChoreo(videoId, song.title, src.duration, bpm, introBeats, totalBeats);
-    if (result) { try { localStorage.setItem(cacheKey, JSON.stringify(result)); } catch { /* full */ } }
-    return result;
-  })();
 
   await readyFlow(song, `<b>${escapeHtml(song.title)}</b><span>${Math.round(bpm)} BPM${meta === null ? ' (auto-sync)' : ''}${introBeats > 10 ? ' \u00b7 intro detected' : ''}</span>`);
 
   if (!lyr) toast('No synced lyrics found. Karaoke is off.');
   if (meta === null) toast('Tempo unknown. The mic will lock onto the beat.');
-  if (lyr) {
-    const waitCard = div('overlay ready-card');
-    waitCard.innerHTML = `<div class="ready-inner"><div class="ready-tip"><span class="scanline">\u266a CHOREOGRAPHING TO THE LYRICS\u2026</span></div>
-      <div class="ready-tip" style="opacity:0.6;font-size:0.85em">The first dance on a new song takes about 30 seconds to choreograph.</div></div>`;
-    app.appendChild(waitCard);
-    const ai = await Promise.race([aiPromise, wait(45000).then(() => 'timeout' as const)]);
-    waitCard.remove();
-    if (ai && ai !== 'timeout') {
-      song.choreo = ai;
-    } else {
-      toast('AI choreographer unavailable. Using the generated routine.');
-      song.choreo = applyKeywordChoreo(gen.choreo, song.lyrics).choreo;
-    }
-  }
-
-  // fluidity pass, then carve the freestyle GO-OFF windows out of the routine
+  // carve the freestyle GO-OFF windows out of the routine
   const freestyle = freestyleWindows(totalBeats, introBeats);
-  song.choreo = carveFreestyle(smoothChoreo(song.choreo), freestyle);
+  song.choreo = carveFreestyle(song.choreo, freestyle);
 
   const clock = new YouTubeClock(src, bpm, gen.sections, totalBeats, 4);
   clock.freeTempo = meta === null; // unknown tempo: let the mic adopt the real one
@@ -1375,21 +1348,11 @@ function openLobby(room: Room) {
       ]);
       const bpm = meta ?? 120;
       const intro = introBeatsOf(lyr, bpm, 4);
-      // host fetches the AI routine once and hands the exact same moves to
-      // every client — guests never need their own (possibly diverging) fetch
-      let aiChoreo: Song['choreo'] | null = null;
-      if (lyr) {
-        err.textContent = 'Choreographing. The first time on a song takes about 30 seconds.';
-        const totalBeats = Math.max(48, Math.floor((probe.duration * bpm) / 60) - 8);
-        aiChoreo = await Promise.race([
-          fetchAiChoreo(id, probe.title, probe.duration, bpm, intro, totalBeats),
-          wait(45000).then(() => null),
-        ]);
-      }
+      // every client builds the same seeded Nova routine from the video id
       probe.destroy();
-      room.send({ t: 'start', videoId: id, bpm, intro, choreo: aiChoreo ?? undefined });
+      room.send({ t: 'start', videoId: id, bpm, intro });
       lobby.remove();
-      startYouTubeMP(id, bpm, intro, room, aiChoreo);
+      startYouTubeMP(id, bpm, intro, room);
     });
   }
 }
@@ -1402,7 +1365,7 @@ function alertOverlay(text: string) {
 }
 
 /** multiplayer song start: deterministic choreography so every client matches */
-async function startYouTubeMP(videoId: string, bpm: number, introBeats: number, room: Room, aiChoreo: Song['choreo'] | null = null, jd = false) {
+async function startYouTubeMP(videoId: string, bpm: number, introBeats: number, room: Room, _aiChoreo: Song['choreo'] | null = null, jd = false) {
   state = 'ready';
   cancelAnimationFrame(raf);
   app.querySelectorAll('.overlay, .yt-holder').forEach((e) => e.remove());
@@ -1463,7 +1426,7 @@ async function startYouTubeMP(videoId: string, bpm: number, introBeats: number, 
     coach: { skin: '#e8b89a', hair: '#20182a', top: accents[0], vest: '#191d2e', pants: '#2c3352', glove: '#ffd23e', boots: '#14121c' },
     root: 57, chords: [[0, 3, 7]],
     sections: routine?.sections ?? gen!.sections,
-    choreo: routine?.choreo ?? gen!.choreo,
+    choreo: routine?.choreo ?? novaRoutine({ sections: gen!.sections, totalBeats, bpm: useBpm, seed: videoId, difficulty: 2 }),
     lyrics: [],
   };
 
@@ -1481,9 +1444,8 @@ async function startYouTubeMP(videoId: string, bpm: number, introBeats: number, 
   // client) or the seeded generator, smoothed + carved deterministically
   let freestyle: FreestyleWindow[] = [];
   if (!routine) {
-    if (aiChoreo?.length) song.choreo = aiChoreo;
     freestyle = freestyleWindows(totalBeats, introBeats);
-    song.choreo = carveFreestyle(smoothChoreo(song.choreo), freestyle);
+    song.choreo = carveFreestyle(song.choreo, freestyle);
   }
 
   const clock = new YouTubeClock(src, useBpm, song.sections, totalBeats, 4);
@@ -1750,7 +1712,7 @@ interface PlayOpts {
 
 function play(song: Song, playerName: string, opts: PlayOpts) {
   state = 'play';
-  if(kineticSettings().renderer==='3d')void import('./kinetic/render/dance').then(m=>{if(state!=='play')return;try{dancePresentation=new m.DancePresentation(app,playerStyle,{videoWall:!!opts.yt});broadcastFloor=m.broadcastFloor;}catch{dancePresentation=null;}});
+  if(kineticSettings().renderer==='3d')void import('./kinetic/render/dance').then(m=>{if(state!=='play')return;try{dancePresentation=new m.DancePresentation(app,playerStyle,{videoWall:!!opts.yt});dancePresentation.setSong(song);broadcastFloor=m.broadcastFloor;}catch{dancePresentation=null;}});
   const { clock, yt } = opts;
   const scorer = new Scorer(song.choreo, opts.freestyle ?? []);
   scorer.demoMode = !cameraOk;
@@ -1943,7 +1905,7 @@ function play(song: Song, playerName: string, opts: PlayOpts) {
 
   function applyEvent(ev: JudgmentEvent) {
     avatar.react(ev.judgment); // the dancer's rim color IS the judgment feedback
-    dancePresentation?.judge(ev.judgment);
+    dancePresentation?.judge(ev.judgment, ev.gold);
     if (ev.judgment !== 'X') fx.gloveFlash = 1;
     if (ev.judgment === 'YEAH') {
       fx.goldBurst = 1;
@@ -1956,9 +1918,11 @@ function play(song: Song, playerName: string, opts: PlayOpts) {
 
 async function startOriginalDance(demo=false){
  stopKineticPreview();const calibrated=await prepareSession('dance',demo,async()=>{if(phoneCam?.connected)return true;if(tracker.ready)return true;trackerStarted=true;return tracker.init();},()=>cam());
- if(calibrated===null){showDanceHome();return;}cameraOk=calibrated;const song=SONGS[0];playerStyle=applyCharacter(defaultStyle(song),charPref(),1);
+ if(calibrated===null){showDanceHome();return;}cameraOk=calibrated;const base=SONGS[0];const song={...base,lyrics:[],choreo:novaRoutine({sections:base.sections,totalBeats:base.beats,bpm:base.bpm,seed:base.id,difficulty:base.difficulty})};playerStyle=applyCharacter(defaultStyle(song),charPref(),1);
  app.querySelectorAll('.overlay,.yt-holder').forEach(e=>e.remove());cancelAnimationFrame(raf);
- const {AudioEngine}=await import('./audio/engine');const music=new AudioEngine();music.setVolume(kineticSettings().volume*.65);await music.play(song,4);
+ const {AudioEngine}=await import('./audio/engine');const music=new AudioEngine();music.setVolume(kineticSettings().volume*.65);
+ // dev: ?dancetest&at=48 starts the song at beat 48 for visual checks
+ const seek=(import.meta as unknown as {env?:{DEV?:boolean}}).env?.DEV?Number(initialQuery.get('at')??0):0;await music.play(song,seek>0?-seek:4);
  play(song,playerNameFromMenu(),{clock:music,onAgain:()=>void startOriginalDance(demo)});
 }
 

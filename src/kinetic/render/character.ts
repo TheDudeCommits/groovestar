@@ -170,13 +170,72 @@ export class Character {
   private bone(logical: string) {
     return this.bones.get(this.kind === "meshy" ? (MESHY_BONES[logical] ?? logical) : logical);
   }
+  /** A skeleton bone by its Meshy name (Hips, LeftHand, Head...). */
+  rigBone(name: string) {
+    return this.bones.get(name);
+  }
   get clips() {
     return [...this.actions.keys()];
+  }
+  /**
+   * Load Nova's extra clips (dance routines, game actions) from
+   * nova-moves.glb; they bind to this skeleton by bone name.
+   */
+  async loadMoves() {
+    if (this.kind !== "meshy" || !this.mixer) return;
+    const key = "/models/nova-moves.glb";
+    let promise = cache.get(key);
+    if (!promise) {
+      promise = new GLTFLoader().setMeshoptDecoder(MeshoptDecoder).loadAsync(key);
+      cache.set(key, promise);
+    }
+    const gltf = await promise;
+    if (!this.alive || !this.mixer) return;
+    for (const c of gltf.animations) if (!this.actions.has(c.name)) this.actions.set(c.name, this.mixer.clipAction(c));
+  }
+  clipDuration(name: string) {
+    return this.actions.get(name)?.getClip().duration ?? 0;
+  }
+  /**
+   * Pose the skeleton straight from clips on an external timeline (the song
+   * beat), blending up to two: [name, seconds, weight].
+   */
+  timeline(layers: [string, number, number][]) {
+    if (!this.ready || !this.mixer) return;
+    if (this.current) {
+      this.actions.get(this.current)?.stop();
+      this.current = "";
+    }
+    const used = new Set<string>();
+    for (const [name, time, weight] of layers) {
+      const a = this.actions.get(name);
+      if (!a || weight <= 0.001) continue;
+      const d = a.getClip().duration;
+      if (!this.timelineNames.has(name)) {
+        a.reset();
+        a.play();
+      }
+      a.paused = true;
+      a.enabled = true;
+      a.setEffectiveWeight(weight);
+      a.time = ((time % d) + d) % d;
+      used.add(name);
+    }
+    for (const name of this.timelineNames) if (!used.has(name)) this.actions.get(name)?.stop();
+    this.timelineNames = used;
+    this.mixer.update(0);
+    if (this.holo) this.holo.uTime.value = performance.now() / 1000;
+  }
+  private timelineNames = new Set<string>();
+  private stopTimeline() {
+    for (const name of this.timelineNames) this.actions.get(name)?.stop();
+    this.timelineNames.clear();
   }
   play(name: string, fade = 0.18) {
     if (name === this.current) return;
     const next = this.actions.get(name);
     if (!next) return;
+    this.stopTimeline();
     this.actions.get(this.current)?.fadeOut(fade);
     next.reset().fadeIn(fade).play();
     this.current = name;
@@ -253,6 +312,12 @@ export class Character {
   }
   /** Reset tracked bones to rest so an animation clip hands over cleanly. */
   private takeControl() {
+    if (this.timelineNames.size) {
+      this.stopTimeline();
+      if (this.kind === "meshy") for (const [n, q] of this.rest) this.bones.get(n)?.quaternion.copy(q);
+      const hips = this.bones.get("Hips");
+      if (hips && this.kind === "meshy") hips.position.copy(this.hipsRest);
+    }
     if (this.current) {
       this.mixer?.stopAllAction();
       this.current = "";

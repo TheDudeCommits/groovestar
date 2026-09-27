@@ -561,8 +561,16 @@
 .pt-dance-on #stage {
   z-index: 2;
 }
+.pt-dance .pt-level-banner {
+  top: 11%;
+}
+.pt-dance .pt-level-banner b {
+  font-size: clamp(34px, 4.6vw, 64px);
+}
 .pt-dance-judgment {
-  top: 12%;
+  top: 50%;
+  left: 77.5%;
+  font-size: clamp(34px, 4.2vw, 64px);
 }
 
 /* Dance HUD: lyrics, star meter, combo chip, pause. */
@@ -572,7 +580,7 @@
 }
 .pt-dance-on .hud .lyric-now {
   position: relative;
-  font: italic 900 clamp(26px, 3.3vw, 46px) / 1.1 var(--pt-display);
+  font: italic 900 clamp(22px, 2.6vw, 38px) / 1.1 var(--pt-display);
   letter-spacing: 0.01em;
   padding-bottom: 12px;
   background: linear-gradient(90deg, #7ff0ff 0%, #ff8fd8 var(--fill, 0%), rgba(255, 255, 255, 0.95) var(--fill, 0%));
@@ -595,9 +603,7 @@
   box-shadow: 0 0 12px var(--pt-magenta);
 }
 .pt-dance-on .hud .lyric-next {
-  font: italic 700 clamp(13px, 1.3vw, 17px) var(--pt-display);
-  color: rgba(255, 244, 234, 0.55);
-  letter-spacing: 0.06em;
+  display: none;
 }
 .pt-dance-on .hud .meter {
   left: 22px;
