@@ -66,3 +66,30 @@ export function artTexture(url: string) {
   }
   return t;
 }
+
+/**
+ * Additive materials normally add their alpha to the frame. On a transparent
+ * canvas that punches holes shut (the video wall), so keep the color blend
+ * and leave the destination alpha untouched.
+ */
+export function keepAlpha(m: T.Material) {
+  if (m.blending !== T.AdditiveBlending && m.blending !== T.CustomBlending) return;
+  if (m.blending === T.AdditiveBlending) {
+    m.blending = T.CustomBlending;
+    m.blendEquation = T.AddEquation;
+    m.blendSrc = T.SrcAlphaFactor;
+    m.blendDst = T.OneFactor;
+  }
+  m.blendEquationAlpha = T.AddEquation;
+  m.blendSrcAlpha = T.ZeroFactor;
+  m.blendDstAlpha = T.OneFactor;
+  m.needsUpdate = true;
+}
+/** Apply keepAlpha to every material under root. */
+export function alphaSafe(root: T.Object3D) {
+  root.traverse((o) => {
+    const mat = (o as T.Mesh).material as T.Material | T.Material[] | undefined;
+    if (!mat) return;
+    for (const m of Array.isArray(mat) ? mat : [mat]) keepAlpha(m);
+  });
+}

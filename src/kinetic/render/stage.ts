@@ -6,6 +6,7 @@ import { OutputPass } from "three/addons/postprocessing/OutputPass.js";
 import type { ShaderPass } from "three/addons/postprocessing/ShaderPass.js";
 import { settings } from "../core/settings";
 import { gradePass } from "./pt/post";
+import { keepAlpha } from "./pt/palette";
 import type { ShowDirector } from "./pt/show";
 
 /** Look of a Primetime venue: night fog, bloom and grade. */
@@ -129,10 +130,8 @@ export class Stage {
       this.renderer.toneMapping = T.ACESFilmicToneMapping;
       this.renderer.toneMappingExposure = look.exposure ?? 1.0;
       this.renderer.shadowMap.type = T.PCFSoftShadowMap;
-      if (!opts.alpha) {
-        this.scene.background = new T.Color(look.background ?? 0x07040f);
-        this.scene.fog = new T.FogExp2(look.fog ?? 0x120826, look.fogDensity ?? 0.018);
-      }
+      if (!opts.alpha) this.scene.background = new T.Color(look.background ?? 0x07040f);
+      this.scene.fog = new T.FogExp2(look.fog ?? 0x120826, look.fogDensity ?? 0.018);
       this.scene.add(new T.HemisphereLight(0x6a5cff, 0x12051f, 0.75));
       const key = new T.DirectionalLight(0xfff1e6, look.key ?? 2.1);
       key.position.set(-2.5, 6, 6);
@@ -168,6 +167,8 @@ export class Stage {
         look.bloomThreshold ?? 0.82,
       );
       this.composer.addPass(this.bloom);
+      // On a transparent canvas the bloom must glow over holes, not fill them.
+      if (opts.alpha) keepAlpha(this.bloom.blendMaterial);
       this.grade = gradePass();
       this.grade.uniforms.uVignette.value = look.vignette ?? 0.5;
       this.composer.addPass(this.grade);

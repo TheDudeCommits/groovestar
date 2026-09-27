@@ -1,7 +1,7 @@
 import * as T from "three";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
 import type { Stage } from "../stage";
-import { PT, neon } from "./palette";
+import { PT, neon, alphaSafe } from "./palette";
 import { backdrop, MovingHeads, Lasers, LedWall, Crowd, Confetti, Sparks, Pyro, glossFloor, crowdStrip, haze, neonTube } from "./fx";
 import type { ShowDirector } from "./show";
 
@@ -10,7 +10,7 @@ import type { ShowDirector } from "./show";
  * wall, truss lights and lasers, pyro at the stage corners and an arena
  * of fans. The hologram coach stands on a pedestal stage right.
  */
-export function danceVenue(stage: Stage, show: ShowDirector, o: { crowdFront?: boolean } = {}) {
+export function danceVenue(stage: Stage, show: ShowDirector, o: { crowdFront?: boolean; videoWall?: boolean } = {}) {
   const root = new T.Group();
   stage.scene.add(root);
   stage.scene.fog = new T.FogExp2(0x120826, 0.02);
@@ -55,6 +55,7 @@ export function danceVenue(stage: Stage, show: ShowDirector, o: { crowdFront?: b
 
   // Giant curved LED wall with towers.
   const led = new LedWall(root, { width: 17, height: 6.2, position: new T.Vector3(0, 3.9, -6.2), curve: 0.9, grid: 118, mode: "city", brightness: 0.82 });
+  if (o.videoWall) led.videoMode();
   const towerMat = new T.MeshStandardMaterial({ color: 0x14102a, roughness: 0.45, metalness: 0.75 });
   const towerParts: T.BufferGeometry[] = [];
   const barParts: T.BufferGeometry[] = [];
@@ -159,6 +160,7 @@ export function danceVenue(stage: Stage, show: ShowDirector, o: { crowdFront?: b
   // A line of light tubes along the stage front.
   const frontTube = neonTube(root, [new T.Vector3(-5, -1.04, 4.6), new T.Vector3(5, -1.04, 4.6)], PT.gold, { radius: 0.03, intensity: 1.8, segments: 4 });
 
+  if (o.videoWall) alphaSafe(root);
   let last = 0;
   return {
     root,

@@ -7,7 +7,7 @@ import type { Pose } from "../../moves";
 import type { TrackerLike } from "../../games/shared";
 import type { StyleProfile } from "../../appearance";
 import { ShowDirector } from "./pt/show";
-import { HYPE_LEVELS, PT } from "./pt/palette";
+import { HYPE_LEVELS, PT, alphaSafe } from "./pt/palette";
 import { danceVenue } from "./pt/dance-venue";
 import { settings } from "../core/settings";
 
@@ -43,13 +43,19 @@ export class DancePresentation {
   private judgeTimer = 0;
   private bannerTimer = 0;
   ready = false;
-  constructor(parent: HTMLElement, style: StyleProfile | null) {
-    this.host.className = "kinetic-dance-layer pt-dance";
+  /** A YouTube song plays on the LED wall, behind a transparent canvas. */
+  readonly videoWall: boolean;
+  constructor(parent: HTMLElement, style: StyleProfile | null, o: { videoWall?: boolean } = {}) {
+    this.videoWall = !!o.videoWall;
+    this.host.className = `kinetic-dance-layer pt-dance${this.videoWall ? " pt-video" : ""}`;
     parent.prepend(this.host);
     parent.classList.add("pt-dance-on");
-    this.stage = new Stage(this.host, { primetime: { fog: 0x120826, fogDensity: 0.02, bloom: 0.66, bloomThreshold: 0.84, exposure: 1.0 } });
+    this.stage = new Stage(this.host, {
+      alpha: this.videoWall,
+      primetime: { fog: 0x120826, fogDensity: 0.02, bloom: 0.66, bloomThreshold: 0.84, exposure: 1.0 },
+    });
     this.show = new ShowDirector(settings().reducedMotion);
-    this.venue = danceVenue(this.stage, this.show);
+    this.venue = danceVenue(this.stage, this.show, { videoWall: this.videoWall });
     this.stage.camera.userData.referenceFov = 36;
     this.stage.camera.fov = 36;
     this.stage.camera.position.set(0, 1.5, 7.6);
@@ -78,6 +84,7 @@ export class DancePresentation {
     void Promise.all([this.player.load(characterId()), this.coach.load("nova")]).then(() => {
       if (!this.alive) return;
       if (style && localStorage.getItem("gs-char") === "auto") this.player.applyLook(style);
+      if (this.videoWall) alphaSafe(this.stage.scene);
       this.ready = true;
     });
   }
@@ -109,6 +116,24 @@ export class DancePresentation {
     const xs = pts.map((p) => p.x * w),
       ys = pts.map((p) => p.y * h);
     return { x: Math.min(...xs), y: Math.min(...ys), w: Math.max(...xs) - Math.min(...xs), h: Math.max(...ys) - Math.min(...ys) };
+  }
+  /**
+   * Where to place the video so it fills the visible part of the LED wall
+   * (cover fit, 16:9); the 3D scene masks everything outside the wall.
+   */
+  videoRect() {
+    const r = this.screenRect();
+    const w = this.host.clientWidth,
+      h = this.host.clientHeight;
+    const x0 = Math.max(0, r.x),
+      y0 = Math.max(0, r.y),
+      x1 = Math.min(w, r.x + r.w),
+      y1 = Math.min(h, r.y + r.h);
+    const cw = Math.max(1, x1 - x0),
+      ch = Math.max(1, y1 - y0);
+    const vw = Math.max(cw, (ch * 16) / 9),
+      vh = (vw * 9) / 16;
+    return { x: Math.round(x0 + (cw - vw) / 2), y: Math.round(y0 + (ch - vh) / 2), w: Math.round(vw), h: Math.round(vh) };
   }
   update(tracker: TrackerLike, pose: Pose, camera: boolean, beat = 0) {
     const now = performance.now(),

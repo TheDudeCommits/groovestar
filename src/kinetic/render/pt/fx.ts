@@ -400,7 +400,32 @@ export class LedWall {
   setMode(mode: LedMode) {
     this.material.uniforms.uMode.value = LED_MODES[mode];
   }
+  private hole?: T.ShaderMaterial;
+  /**
+   * Turn the wall into a window onto a video playing behind a transparent
+   * canvas: the wall writes black with an LED-dot alpha pattern, so the
+   * video shows through as if on the screen, dimmed between the dots.
+   */
+  videoMode() {
+    this.hole = new T.ShaderMaterial({
+      blending: T.NoBlending,
+      side: this.material.side,
+      fog: false,
+      uniforms: { uGrid: this.material.uniforms.uGrid, uPulse: { value: 0 } },
+      vertexShader: VERT_UV,
+      fragmentShader: `varying vec2 vUv; uniform vec2 uGrid; uniform float uPulse;
+        void main(){
+          vec2 cell = fract(vUv * uGrid) - 0.5;
+          float led = smoothstep(0.62, 0.2, length(cell));
+          float edge = smoothstep(0.0, 0.03, min(min(vUv.x, 1.0 - vUv.x), min(vUv.y, 1.0 - vUv.y)));
+          float a = mix(0.6, 0.22, led) - uPulse * 0.06;
+          gl_FragColor = vec4(0.0, 0.0, 0.0, mix(1.0, a, edge));
+        }`,
+    });
+    this.mesh.material = this.hole;
+  }
   update(t: number, show: ShowDirector) {
+    if (this.hole) this.hole.uniforms.uPulse.value = show.pulse;
     const u = this.material.uniforms;
     u.uTime.value = t;
     u.uBeat.value = show.beat;

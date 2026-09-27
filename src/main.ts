@@ -1750,7 +1750,7 @@ interface PlayOpts {
 
 function play(song: Song, playerName: string, opts: PlayOpts) {
   state = 'play';
-  if(kineticSettings().renderer==='3d')void import('./kinetic/render/dance').then(m=>{if(state!=='play')return;try{dancePresentation=new m.DancePresentation(app,playerStyle);broadcastFloor=m.broadcastFloor;}catch{dancePresentation=null;}});
+  if(kineticSettings().renderer==='3d')void import('./kinetic/render/dance').then(m=>{if(state!=='play')return;try{dancePresentation=new m.DancePresentation(app,playerStyle,{videoWall:!!opts.yt});broadcastFloor=m.broadcastFloor;}catch{dancePresentation=null;}});
   const { clock, yt } = opts;
   const scorer = new Scorer(song.choreo, opts.freestyle ?? []);
   scorer.demoMode = !cameraOk;
@@ -1778,6 +1778,7 @@ function play(song: Song, playerName: string, opts: PlayOpts) {
    const cleanup=()=>{clock.stop();opts.yt?.destroy();opts.mic?.stop();opts.controls?.dispose();opts.lostHint?.remove();dancePresentation?.dispose();dancePresentation=null;hud.destroy();preview?.remove();cancelAnimationFrame(raf);};
    opts.controls=new CanvasControls(v=>{manualPause=v;pauseAudio();},()=>{cleanup();opts.onAgain();},()=>{cleanup();showDanceHome();});}
   const playStart = performance.now();
+  let videoBounds = '';
   let tapShown = false;
   let lastSync = 0;
 
@@ -1855,7 +1856,7 @@ function play(song: Song, playerName: string, opts: PlayOpts) {
 
     // YouTube backdrop: the video becomes the upper half of the stage
     stageLight = null;
-    if (yt && dancePresentation?.ready) { const r = dancePresentation.screenRect(); yt.setBounds(r.x, r.y, r.w, r.h); }
+    if (yt && dancePresentation?.ready) { const r = dancePresentation.videoRect(); const k = `${r.x},${r.y},${r.w},${r.h}`; if (k !== videoBounds) { videoBounds = k; yt.setBounds(r.x, r.y, r.w, r.h); } }
     else if (yt) drawVideoStage(yt, Math.max(0, beat), fx.goldBurst, stageCols);
 
     // floor tiles that lit up under last frame's footsteps
@@ -2255,7 +2256,8 @@ async function endSong(song: Song, scorer: Scorer, hud: Hud, preview: HTMLCanvas
   }
 
   const flash = div('overlay flash');
-  flash.innerHTML = `<div class="flash-logo">GROOVESTAR</div>`;
+  flash.innerHTML = kineticSettings().renderer === '3d' ? '<img class="pt-flash-logo" src="/kinetic/pt/logo.webp" alt="GrooveStar">' : `<div class="flash-logo">GROOVESTAR</div>`;
+  if (kineticSettings().renderer === '3d') flash.classList.add('pt-flash');
   app.appendChild(flash);
   await wait(900);
   flash.classList.add('fade');

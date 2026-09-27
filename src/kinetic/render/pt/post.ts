@@ -28,16 +28,18 @@ export function gradePass() {
         vec2 d = vUv - 0.5;
         float r2 = dot(d, d);
         vec2 off = d * uAberration * (1.0 + r2 * 6.0);
+        vec4 center = texture2D(tDiffuse, vUv);
+        float a = clamp(center.a, 0.0, 1.0);
         vec3 c;
         c.r = texture2D(tDiffuse, vUv + off).r;
-        c.g = texture2D(tDiffuse, vUv).g;
+        c.g = center.g;
         c.b = texture2D(tDiffuse, vUv - off).b;
         c *= 1.0 + uKick * 0.22;
         c += uFlashColor * uFlash * 0.35 * (1.0 - r2 * 1.6);
-        c += uLift;
+        c += uLift * a;
         c *= 1.0 - smoothstep(0.12, 0.72, r2) * uVignette;
-        c += (hash(vUv * 1024.0 + fract(uTime)) - 0.5) * uGrain * (0.35 + dot(c, vec3(0.3)));
-        gl_FragColor = vec4(max(c, 0.0), 1.0);
+        c += (hash(vUv * 1024.0 + fract(uTime)) - 0.5) * uGrain * (0.35 + dot(c, vec3(0.3))) * a;
+        gl_FragColor = vec4(max(c, 0.0), a);
       }`,
   });
 }
