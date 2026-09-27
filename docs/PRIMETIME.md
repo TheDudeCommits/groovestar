@@ -36,3 +36,14 @@ Palette: Stage Black `#07040F`, Midnight `#1A0B3A`, Hot Magenta `#FF3FB4`, Elect
 ## Phase 0 status
 
 Implemented on branch `primetime/phase-0`; see `HANDOVER.md` for the change list and verification.
+
+## Overhaul status (27 September 2026)
+
+After seeing the Phase 0 preview, the owner asked for the visible overhaul straight away. Branch `primetime/overhaul` (on top of Phase 0) delivers most of Phases 1 and 2:
+
+- **Render kit and show:** Primetime stage mode (night fog, toon key light, bloom, grade with a beat kick), the Show Director with five hype levels, moving heads, lasers, LED walls, crowds, confetti, sparks and pyro.
+- **Nova 2.0:** the Meshy model, toon-shaded with an outline hull and two-color rim, with seven animation clips. Tracking and choreography drive the Meshy skeleton through rest-relative limb aiming; coaches use two-bone IK.
+- **Venues:** Dance Main Stage (LED wall, hologram coach, pyro; YouTube songs play on the LED wall behind the dancer), Beat Blade cathedral, Boxing sunset arena, Rush Groove City, Tennis night stadium, Bowling cosmic lanes, Fruit Slice night market.
+- **Interface:** lobby home with the live stage behind a game-card carousel, level and streak bar, key-art game pages, new setup, results, settings, crew and progress screens, chrome judgment callouts, combo counter, hype meter and level banners.
+
+Still open from Phases 1 and 2: an original song for the Dance slice (decision 3), Fruit Slice in Three.js (it keeps its 2D simulation under a new painted arena), and the other seven characters (the crew screen shows them as arriving soon; every role is played by Nova for now). Phases 3 and 4 have not started.

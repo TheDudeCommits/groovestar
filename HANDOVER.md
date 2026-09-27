@@ -1,3 +1,42 @@
+# GrooveStar · Primetime overhaul handover
+
+Updated 27 September 2026. The owner reviewed the Phase 0 preview, found the look unchanged and too plain, and asked for the full visual overhaul. It is on branch `primetime/overhaul`, which builds on Phase 0 (the Phase 0 handover follows below). The plan, decisions and status are in [docs/PRIMETIME.md](docs/PRIMETIME.md).
+
+## What the overhaul changed
+
+| Area | Change | Files |
+| --- | --- | --- |
+| Art | Seven game key-art cards, the GrooveStar logo, five venue backdrops and a crowd strip, generated from the approved concept frames. Rebuild with `node tools/primetime/import-art.mjs` (sources outside the repository). | `public/kinetic/pt/`, `tools/primetime/import-art.mjs` |
+| Nova 2.0 | The Meshy Nova with Idle, three dances, Guard, Celebrate and Run in one 1.8 MB GLB. Toon shading, ink outline hull, cyan and magenta rim. Every role uses Nova until the rest of the cast is rebuilt. | `public/models/nova-pt.glb`, `tools/primetime/build-nova.mjs`, `src/kinetic/render/character.ts`, `src/kinetic/render/pt/toon.ts` |
+| Render kit | `Stage` gains a Primetime mode (night fog, toon key light and fills, bloom, grade pass with beat kick). Shared effects: moving heads, lasers, LED walls, instanced crowds, confetti, sparks, pyro, painted backdrops, blurred mirror floors. | `src/kinetic/render/stage.ts`, `src/kinetic/render/pt/` |
+| Show Director | Every round tracks the beat and a hype meter. Hits climb five levels (Soundcheck, Warm-up, Headliner, Encore, Supernova) that recolor the lights and fire confetti, lasers, pyro and a level banner. | `src/kinetic/render/pt/show.ts`, `src/kinetic/core/session.ts` |
+| Venues | Beat Blade cathedral with crystal notes and lightsabers; Boxing sunset arena with Nova holding focus mitts and first-person gloves; Rush through Groove City at dusk with a hologram ghost; Dance main stage with a hologram coach on a pedestal; Tennis night stadium; Bowling cosmic lanes; Fruit Slice night market (still the 2D simulation). | `src/kinetic/render/pt/*-venue.ts`, `src/kinetic/games/`, `src/kinetic/render/dance.ts`, `src/kinetic/render/fruit-arena.ts`, `src/games/fruit.ts` |
+| YouTube songs | The video plays on the Dance LED wall behind the dancer: the stage canvas is transparent there with an LED-dot mask, and every additive effect keeps the frame alpha. | `src/kinetic/render/pt/fx.ts`, `src/kinetic/render/pt/palette.ts`, `src/main.ts` |
+| Interface | Home is a lobby: Nova dances on the stage behind a game-card carousel, with level, medals and streak. Key-art game pages, setup, results, settings, crew, progress, pause, song ready flow, lobbies and phone camera all use the night-show design. The in-game HUD has chrome judgment callouts, a combo counter and a hype meter. | `src/kinetic/ui.ts`, `src/kinetic/setup.ts`, `src/kinetic/primetime.css`, `src/ui/hud.ts` |
+| Seated play | Arm-only games (Beat Blade, Boxing, Fruit Slice, Tennis) track with shoulders and hands in frame, so they no longer pause when the hips leave the camera. Dance, Rush and Bowling still need the hips. | `src/kinetic/core/input.ts`, `src/kinetic/core/catalog.ts` |
+| Performance | In-game overlays avoid backdrop blur and per-frame filter changes; with them, Bowling stalled for 50 to 130 ms every couple of seconds. | `src/kinetic/primetime.css` |
+| QA | Tour and screenshot helpers for visual review. QA scripts follow the new class names. Four new unit tests cover hype levels, the beat pulse, alpha-safe blending and seated tracking. | `tools/primetime/tour.mjs`, `tools/primetime/shot.mjs`, `tools/kinetic/`, `tests/primetime.test.ts` |
+
+## Overhaul verification
+
+Run on 27 September 2026 on the same M1 Pro MacBook.
+
+- `npm test`: 32 of 32 pass.
+- `npm run build`: passes.
+- `npm run qa:kinetic`: passes; all five 3D demos at 16.7 to 16.8 ms frame p95 (draw calls: Blade 150, Boxing 83, Rush 167 to 197, Tennis 76, Bowling 36).
+- `npm run qa:recovery`: passes, including portrait layouts without overflow.
+- `npm run qa:realmotion`: 7 of 7 games pass with worker inference and 16.7 to 16.8 ms frame p95 with the camera on.
+- YouTube song flow checked with an embeddable video: the video fills the LED wall and the dancer stays in front of it.
+
+## Still open after the overhaul
+
+- A real webcam on real hardware, Safari and Firefox, and phones, as after Phase 0.
+- Original music (decision 3). The three synthesized tracks remain.
+- The other seven characters; the crew screen marks them as arriving soon.
+- Fruit Slice in Three.js, the replay layer (Phase 3) and the content engine (Phase 4).
+
+---
+
 # GrooveStar · Primetime Phase 0 handover
 
 Updated 27 September 2026. The owner approved the Primetime direction and all six plan decisions, then asked for Phase 0. The work is on branch `primetime/phase-0` (from `main` at `1a88042`). The plan, decisions and phase gates are in [docs/PRIMETIME.md](docs/PRIMETIME.md). The Kinetic Broadcast handover below still describes the Production release.
