@@ -12,6 +12,8 @@ interface Actions {
   youtube: () => void;
   dance: () => void;
   home: () => void;
+  /** online match lobby (boxing) */
+  online?: (id: GameId) => void;
 }
 
 /** Neon edge colors per game card, taken from each game's key art. */
@@ -149,6 +151,7 @@ export function renderGameHome(menu: HTMLElement, id: GameId, a: Actions) {
     id === "fruit" ? '<button class="pt-mode" data-race>RACE A FRIEND</button>' : "",
     id === "rush" ? '<button class="pt-mode" data-endless>ENDLESS</button>' : "",
     id === "bowl" ? '<button class="pt-mode" data-two>2 PLAYERS</button>' : "",
+    id === "box" ? '<button class="pt-mode" data-online>FIGHT ONLINE</button>' : "",
     `<button class="pt-mode" data-daily>DAILY</button>`,
   ].join("");
   menu.innerHTML = `<div class="pt-detail" style="--c1:${c1};--c2:${c2}"><div class="pt-detail-art" aria-hidden="true"><img src="${hero(id)}" alt=""></div><div class="pt-detail-shade" aria-hidden="true"></div>${topBar(`<button class="pt-back" data-back aria-label="All games">${ICON.back}</button>`)}<main class="pt-detail-main"><section class="pt-detail-info"><h1 class="pt-title">${g.title.toUpperCase()}</h1>${best ? `<p class="pt-best"><span>★</span>${best.toLocaleString()}</p>` : ""}<div class="pt-pace" role="group" aria-label="Your pace">${(["flow", "athlete", "expert"] as const)
@@ -178,6 +181,7 @@ export function renderGameHome(menu: HTMLElement, id: GameId, a: Actions) {
   menu.querySelector("[data-demo]")!.addEventListener("click", () => a.play(id, true, track()));
   menu.querySelector("[data-youtube]")?.addEventListener("click", a.youtube);
   menu.querySelector("[data-race]")?.addEventListener("click", a.race);
+  menu.querySelector("[data-online]")?.addEventListener("click", () => a.online?.(id));
   menu.querySelector("[data-two]")?.addEventListener("click", () => {
     sessionStorage.setItem("gs-bowl-players", "2");
     a.play(id, false);

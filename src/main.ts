@@ -319,13 +319,14 @@ function kineticActions() {
     open: (id: GameId) => id === 'dance' ? showDanceHome() : showGameHome(ARCADE.find(g => g.id === id)!),
     play: (id: GameId, demo: boolean, track = 0, endless = false) => { void launchKinetic(id, demo, track, endless); },
     phone: () => openPhoneCam(), race: () => fruitRaceLobby(ARCADE[0]), youtube: () => startBeatBlade(), dance: () => showDanceHome(),
+    online: () => boxOnlineLobby(),
   };
 }
 let requestedDemo = false;
 let lastKineticRecord: RunRecord | null = null;
 let dancePresentation:import('./kinetic/render/dance').DancePresentation|null=null;
 let broadcastFloor:typeof import('./kinetic/render/dance').broadcastFloor|null=null;
-async function launchKinetic(id: GameId, demo = false, track = 0, endless = false) {
+async function launchKinetic(id: GameId, demo = false, track = 0, endless = false, room?: Room) {
   playerNameFromMenu();
   stopKineticPreview();
   if (id === 'dance') { showDanceHome(); return; }
@@ -351,11 +352,11 @@ async function launchKinetic(id: GameId, demo = false, track = 0, endless = fals
   const preview = cameraOk ? buildArcadePreview() : null;
   const seed = sessionStorage.getItem('gs-next-seed') ?? dailySeed(id);
   sessionStorage.removeItem('gs-next-seed');sessionStorage.removeItem('gs-next-endless');sessionStorage.removeItem('gs-next-track');
-  const opts = {id,canvas,ctx,tracker:cam(),cameraOk,track,endless,seed,players:Number(sessionStorage.getItem('gs-bowl-players')??1),
+  const opts = {id,canvas,ctx,tracker:cam(),cameraOk,track,endless,seed,room,players:Number(sessionStorage.getItem('gs-bowl-players')??1),
     onRecord:(r: RunRecord)=>{lastKineticRecord=r;},
-    onQuit:()=>{preview?.remove();debugCtl.exit();showGameHome(def);},
+    onQuit:()=>{preview?.remove();debugCtl.exit();room?.destroy();showGameHome(def);},
     onRestart:()=>{preview?.remove();debugCtl.exit();if(seed)sessionStorage.setItem('gs-next-seed',seed);void launchKinetic(id,demo,track,endless);},
-    onExit:(score:number,label?:string)=>{preview?.remove();debugCtl.exit();endArcade(def,score,label);},
+    onExit:(score:number,label?:string)=>{preview?.remove();debugCtl.exit();room?.destroy();endArcade(def,score,label);},
   };
   try {
     if(id==='fruit'){arcadeGame=new FruitGame({...opts,rig:new HandRig(),medals:def.medals});}
@@ -756,6 +757,74 @@ function showFruitHome() {
   menu.querySelector('#fh-solo')!.addEventListener('click', () => launchFruitSolo());
   menu.querySelector('#fh-race')!.addEventListener('click', () => fruitRaceLobby(def));
   menu.querySelector('#home-back')!.addEventListener('click', () => showMenu());
+}
+
+/** Online boxing: create or join a room, then both fighters enter the ring. */
+async function boxOnlineLobby() {
+  const pick = div('overlay lobby');
+  pick.innerHTML = `<div class="lobby-box">
+    <div class="lobby-title">Fight online</div>
+    <div class="yt-row" style="justify-content:center">
+      <button id="bx-create" class="mp-btn">Create room</button>
+      <input id="bx-code" placeholder="CODE" maxlength="4" inputmode="numeric" aria-label="Room code">
+      <button id="bx-join" class="mp-btn">Join</button>
+    </div>
+    <div id="bx-status" class="yt-err" aria-live="polite"></div>
+    <div id="bx-roster" class="fit-row"></div>
+    <button id="bx-start" class="mp-btn" style="display:none">Start the fight</button>
+    <button id="bx-back" class="lobby-leave">Back</button>
+  </div>`;
+  app.appendChild(pick);
+  const status = pick.querySelector('#bx-status') as HTMLElement;
+  const rosterEl = pick.querySelector('#bx-roster') as HTMLElement;
+  const startBtn = pick.querySelector('#bx-start') as HTMLButtonElement;
+  let room: Room | null = null;
+  let launched = false;
+  const go = (r: Room) => {
+    if (launched) return;
+    launched = true;
+    pick.remove();
+    void launchKinetic('box', false, 0, false, r);
+  };
+  const showRoster = () => {
+    if (!room) return;
+    rosterEl.textContent = room.players.map((p) => p.name).join('  VS  ');
+    if (room.isHost) {
+      startBtn.style.display = room.players.length >= 2 ? '' : 'none';
+      status.textContent = room.players.length >= 2 ? '' : `Room ${room.code}. Share the code with your opponent`;
+    } else status.textContent = 'Connected. Waiting for the host to start';
+  };
+  const wire = (r: Room) => {
+    room = r;
+    r.onUpdate = showRoster;
+    r.onMessage = (_from, msg) => { if (msg.t === 'bxstart') go(r); };
+    r.onClosed = (reason) => { if (!launched) status.textContent = reason; };
+    showRoster();
+  };
+  pick.querySelector('#bx-create')!.addEventListener('click', async () => {
+    if (room) return;
+    status.textContent = 'Creating room…';
+    try { wire(await Room.create(playerNameFromMenu())); } catch (e) { status.textContent = String((e as Error).message ?? e); }
+  });
+  pick.querySelector('#bx-join')!.addEventListener('click', async () => {
+    if (room) return;
+    const code = (pick.querySelector('#bx-code') as HTMLInputElement).value.trim();
+    if (!/^\d{4}$/.test(code)) { status.textContent = 'Enter the 4-digit code.'; return; }
+    status.textContent = 'Joining…';
+    try { wire(await Room.join(code, playerNameFromMenu())); } catch (e) { status.textContent = String((e as Error).message ?? e); }
+  });
+  startBtn.addEventListener('click', () => {
+    if (!room || launched || room.players.length < 2) return;
+    room.send({ t: 'bxstart', seed: String(Math.floor(Math.random() * 1e9)) });
+    go(room);
+  });
+  pick.querySelector('#bx-back')!.addEventListener('click', () => {
+    if (!launched) { room?.destroy(); pick.remove(); }
+  });
+  // dev and QA: ?bxroom=create or ?bxroom=<code> drives the lobby
+  const q = (import.meta as unknown as { env?: { DEV?: boolean } }).env?.DEV ? initialQuery.get('bxroom') : null;
+  if (q === 'create') (pick.querySelector('#bx-create') as HTMLElement).click();
+  else if (q && /^\d{4}$/.test(q)) { (pick.querySelector('#bx-code') as HTMLInputElement).value = q; (pick.querySelector('#bx-join') as HTMLElement).click(); }
 }
 
 async function fruitRaceLobby(def: ArcadeDef) {

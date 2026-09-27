@@ -22,7 +22,9 @@ export type NetMsg =
   | { t: 'pose'; d: number[] }          // quantized landmarks (see poseCodec)
   | { t: 'score'; s: number; stars: number }
   | { t: 'end'; s: number }
-  | { t: 'race'; game: string; seed: string };   // arcade score race: same seed, same waves
+  | { t: 'race'; game: string; seed: string }    // arcade score race: same seed, same waves
+  | { t: 'bxstart'; seed: string }                // online boxing: both fighters enter the ring
+  | { t: 'bx'; d: unknown };                      // online boxing traffic (see kinetic/games/boxing-net.ts)
 
 export interface Envelope { from: string; msg: NetMsg }
 

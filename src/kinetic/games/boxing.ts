@@ -9,6 +9,9 @@ import { FighterInput, type Punch, type Defense } from "./boxing-input";
 import { sfx } from "../../games/sfx";
 import { announce } from "../core/settings";
 import { random } from "../core/records";
+import type { Room } from "../../net/room";
+import type { PunchKind } from "./boxing-input";
+import { type BxMsg, encodeWorld, decodeWorld, ONLINE_DMG } from "./boxing-net";
 
 /*
  * Boxing: a real fight with Blaze, three rounds, first person.
@@ -162,6 +165,24 @@ export class KineticBox extends KineticSession {
   private lastPunchAt = -9;
   private punchLog: unknown[] = [];
   private defenseSeen = { guard: 0, slip: 0, duck: 0, frames: 0 };
+  /** online: the other fighter is a person, streaming their pose from their room */
+  private net: {
+    room: Room;
+    host: boolean;
+    me: string;
+    them: string;
+    body: Body3D;
+    inbox: BxMsg[];
+    poseAt: number;
+    stateAt: number;
+    clockAt: number;
+    nextId: number;
+    incoming: { at: number; id: number; hand: "L" | "R"; kind: PunchKind; power: number; high: boolean }[];
+    warnHand: "L" | "R" | null;
+    warnUntil: number;
+    /** heard from the other fighter since the fight began (they finished setup) */
+    heard: boolean;
+  } | null = null;
 
   constructor(o: KineticOpts) {
     super(o, { fog: 0x06030e, fogDensity: 0.03, bloom: 0.6, bloomThreshold: 0.85, exposure: 1.0, vignette: 0.55 });
@@ -193,7 +214,227 @@ export class KineticBox extends KineticSession {
     this.telegraphGlow.scale.setScalar(0.5);
     this.stage.scene.add(this.telegraphGlow, this.blazeGloves.L, this.blazeGloves.R);
     this.ui = this.makeUi();
+    const room = (o as KineticOpts & { room?: Room }).room;
+    if (room) this.setupNet(room);
     if ((import.meta as unknown as { env?: { DEV?: boolean } }).env?.DEV) (window as unknown as { gsGame: unknown }).gsGame = this;
+  }
+
+  // ---- online ------------------------------------------------------------
+
+  private setupNet(room: Room) {
+    const me = room.players.find((p) => p.id === room.myId)?.name ?? "YOU";
+    const them = room.players.find((p) => p.id !== room.myId)?.name ?? "RIVAL";
+    this.net = { room, host: room.isHost, me, them, body: new Body3D(), inbox: [], poseAt: 0, stateAt: 0, clockAt: 0, nextId: 1, incoming: [], warnHand: null, warnUntil: 0, heard: false };
+    room.onMessage = (_from, msg) => {
+      if (msg.t === "bx") this.net?.inbox.push(msg.d as BxMsg);
+    };
+    room.onClosed = () => this.opponentLeft();
+    room.onUpdate = () => {
+      if (room.players.length < 2) this.opponentLeft();
+    };
+    this.ui.root.querySelector(".bx-blaze b")!.textContent = them.toUpperCase().slice(0, 14);
+  }
+
+  private send(d: BxMsg) {
+    this.net?.room.send({ t: "bx", d });
+  }
+
+  private opponentLeft() {
+    if (this.phase === "over") return;
+    this.call("OPPONENT LEFT", "info", 2000);
+    this.endFight("you", this.elapsed, "FORFEIT");
+  }
+
+  private netStep(dt: number, t: number, punches: Punch[]) {
+    const n = this.net!;
+    const now = performance.now();
+    // stream your pose and state
+    const world = this.options.tracker.latestWorld;
+    if (world && now - n.poseAt > 60) {
+      n.poseAt = now;
+      this.send({ k: "pose", w: encodeWorld(world) });
+    }
+    if (now - n.stateAt > 250) {
+      n.stateAt = now;
+      this.send({ k: "state", hp: Math.round(this.hp.you * 10) / 10, st: Math.round(this.stamina), name: n.me });
+    }
+    for (const m of n.inbox.splice(0)) this.onNet(m, t);
+    if (n.host) this.hostClock(dt, t);
+    if (this.phase === "intro" && (n.heard || !n.host)) this.introBanner(t);
+    if (this.phase === "fight") for (const p of punches) this.netPunch(p, t);
+    if (this.phase === "down" && this.downWho === "you") this.runDown(t, punches);
+    // their punches land after a short flight, so you can see them coming
+    for (const inc of n.incoming.slice()) {
+      if (inc.at > t) continue;
+      n.incoming.splice(n.incoming.indexOf(inc), 1);
+      if (this.phase !== "fight") continue;
+      const kind = inc.kind === "hook" ? "hook" : inc.kind === "uppercut" ? "upper" : "straight";
+      const dmg = ONLINE_DMG[inc.kind] * (0.6 + inc.power * 0.5) * (inc.high ? 1 : 0.8);
+      const r = this.defend(kind, inc.hand === "L" ? 1 : -1, dmg, t);
+      this.send({ k: "result", id: inc.id, out: r.out, dmg: Math.round(r.dmg * 10) / 10 });
+    }
+  }
+
+  private onNet(m: BxMsg, t: number) {
+    const n = this.net!;
+    n.heard = true;
+    switch (m.k) {
+      case "pose": {
+        const lms = decodeWorld(m.w);
+        if (lms) n.body.update(lms as never, performance.now());
+        break;
+      }
+      case "state":
+        this.hp.blaze = m.hp;
+        if (m.name) n.them = m.name;
+        break;
+      case "punch": {
+        n.incoming.push({ at: t + 0.28, id: m.id, hand: m.hand, kind: m.kind, power: m.power, high: m.high });
+        // their left fist comes from your right
+        n.warnHand = m.hand;
+        n.warnUntil = t + 0.4;
+        this.ui.warn.dataset.side = m.kind === "uppercut" ? "low" : m.hand === "L" ? "right" : "left";
+        this.ui.warn.classList.remove("show");
+        void this.ui.warn.offsetWidth;
+        this.ui.warn.classList.add("show");
+        break;
+      }
+      case "result": {
+        const at = this.targetPoint({ hand: "L", kind: "jab", dir: [0, 0, 1], power: 1, high: true, t });
+        if (m.out === "hit") {
+          this.landed.you++;
+          this.hits++;
+          this.combo++;
+          this.bestCombo = Math.max(this.bestCombo, this.combo);
+          this.score += Math.round(m.dmg * 12);
+          this.show.hit(Math.min(1, 0.4 + m.dmg / 12));
+          this.venue.sparks.emit(at, m.dmg > 8 ? PT.gold : 0xfff0c0, m.dmg > 8 ? 44 : 26, 5, 0.5);
+          sfx.punch(Math.min(1, m.dmg / 10), false);
+          if (m.dmg > 8) this.call("BOOM!", "good", 600);
+          this.hp.blaze = Math.max(0, this.hp.blaze - m.dmg);
+        } else if (m.out === "block") {
+          this.venue.sparks.emit(at, 0xffffff, 10, 2.5, 0.3);
+          sfx.punch(0.4, true);
+          this.call("BLOCKED", "info", 400);
+        } else {
+          this.call(m.out === "duck" ? "DUCKED" : "SLIPPED", "info", 400);
+          sfx.whoosh();
+        }
+        break;
+      }
+      case "round":
+        if (!n.host) {
+          if (m.phase !== this.phase && this.phase !== "down" && this.phase !== "over") {
+            if (m.phase === "intro") this.introDone = false;
+            if (m.phase === "break") {
+              this.call(`END OF ROUND ${this.round}`, "info", 1600);
+              sfx.ring(2);
+            }
+            this.setPhase(m.phase as KineticBox["phase"], t);
+          }
+          this.round = m.round;
+          this.roundLeft = m.left;
+        }
+        break;
+      case "down":
+        this.downs.blaze++;
+        this.setPhase("down", t);
+        this.downWho = "blaze";
+        this.count = 0;
+        this.call("KNOCKDOWN!", "good", 1200);
+        this.venue.confetti.burst(120);
+        sfx.crowd("cheer", 1);
+        this.score += 1000;
+        break;
+      case "count":
+        if (this.phase === "down" && this.downWho === "blaze") {
+          this.count = m.n;
+          this.ui.count.textContent = String(m.n);
+          this.ui.count.classList.remove("show");
+          void this.ui.count.offsetWidth;
+          this.ui.count.classList.add("show");
+          sfx.count();
+        }
+        break;
+      case "up":
+        this.hp.blaze = m.hp;
+        this.ui.count.textContent = "";
+        this.call(`${n.them.toUpperCase()} IS UP`, "info", 900);
+        this.setPhase("fight", t);
+        break;
+      case "over":
+        this.endFight(m.loser === "sender" ? "you" : "blaze", t, m.how === "KO" ? "KO" : "DECISION");
+        break;
+    }
+  }
+
+  private netPunch(p: Punch, t: number) {
+    const n = this.net!;
+    this.thrown++;
+    this.lastPunchAt = t;
+    this.gloveKick[p.hand] = 1;
+    const tired = this.stamina < 25;
+    this.stamina = Math.max(0, this.stamina - (p.kind === "jab" ? 9 : 14));
+    this.send({ k: "punch", id: n.nextId++, hand: p.hand, kind: p.kind, power: tired ? p.power * 0.55 : p.power, high: p.high });
+  }
+
+  /** The host keeps time for both fighters. */
+  private hostClock(dt: number, t: number) {
+    const n = this.net!;
+    const before = this.phase;
+    switch (this.phase) {
+      case "intro":
+        // wait for the other fighter to finish their camera setup
+        if (!n.heard) {
+          this.phaseAt = t;
+          this.ui.clock.textContent = `WAITING FOR ${n.them.toUpperCase().slice(0, 12)}`;
+          break;
+        }
+        if (t - this.phaseAt > 2.1) this.setPhase("fight", t);
+        break;
+      case "fight":
+        this.roundLeft = Math.max(0, this.roundLeft - dt);
+        if (this.roundLeft <= 0) {
+          sfx.ring(2);
+          if (this.round >= this.rounds) {
+            // decision: whoever took less damage over the fight
+            const iWin = this.hp.you >= this.hp.blaze;
+            this.send({ k: "over", loser: iWin ? "receiver" : "sender", how: "DECISION" });
+            this.endFight(iWin ? "you" : "blaze", t, "DECISION");
+            return;
+          }
+          this.call(`END OF ROUND ${this.round}`, "info", 1600);
+          this.setPhase("break", t);
+        }
+        break;
+      case "break":
+        if (t - this.phaseAt > 6) {
+          this.round++;
+          this.roundLeft = this.roundLen;
+          this.introDone = false;
+          this.fighter.recenter();
+          this.setPhase("intro", t);
+        }
+        break;
+    }
+    const now = performance.now();
+    if (this.phase !== before || now - n.clockAt > 1000) {
+      n.clockAt = now;
+      this.send({ k: "round", phase: this.phase, round: this.round, left: Math.round(this.roundLeft * 10) / 10 });
+    }
+  }
+
+  private introBanner(t: number) {
+    if (t - this.phaseAt > 0.2 && !this.introDone) {
+      this.introDone = true;
+      this.call(`ROUND ${this.round}`, "big", 1300);
+      window.setTimeout(() => {
+        if (this.stopped) return;
+        this.call("FIGHT!", "big", 800);
+        sfx.ring(1);
+        sfx.crowd("cheer", 0.8);
+      }, 1300);
+    }
   }
 
   private makeUi() {
@@ -279,7 +520,8 @@ export class KineticBox extends KineticSession {
     set(this.ui.stamina, this.stamina);
     const m = Math.floor(this.roundLeft / 60),
       s = Math.floor(this.roundLeft % 60);
-    this.ui.clock.textContent = this.phase === "break" ? `R${this.round + 1} NEXT` : `R${this.round} · ${m}:${String(s).padStart(2, "0")}`;
+    if (!(this.net && this.net.host && !this.net.heard && this.phase === "intro"))
+      this.ui.clock.textContent = this.phase === "break" ? `R${this.round + 1} NEXT` : `R${this.round} · ${m}:${String(s).padStart(2, "0")}`;
     this.hurt = Math.max(0, this.hurt - 0.03);
     this.ui.hurt.style.opacity = this.hurt.toFixed(2);
   }
@@ -302,7 +544,8 @@ export class KineticBox extends KineticSession {
     if (!this.options.cameraOk) this.demoDefense(t);
     void input;
     this.stamina = Math.min(100, this.stamina + dt * 9);
-    switch (this.phase) {
+    if (this.net) this.netStep(dt, t, punches);
+    else switch (this.phase) {
       case "intro":
         if (t - this.phaseAt > 0.2 && !this.introDone) {
           this.introDone = true;
@@ -546,33 +789,40 @@ export class KineticBox extends KineticSession {
 
   /** Her punch arrives: did you block, slip, duck, or eat it? */
   private resolveAttack(id: AttackId, t: number) {
-    const ai = this.ai;
     const a = ATTACKS[id];
-    const d: Defense = this.options.cameraOk ? this.fighter.defenseAround(t) : this.demoDef;
-    const from = a.hand === "L" ? 1 : -1; // screen side the fist comes from
-    const slipOk = a.kind === "straight" ? d.slip !== 0 : a.kind === "hook" ? d.slip === -from : d.slip !== 0;
-    const duckOk = a.kind === "straight" || a.kind === "hook" ? d.duck : false;
     const diff = this.config.difficulty;
     const mult = diff === "expert" ? 1.25 : diff === "athlete" ? 1 : 0.7;
+    const r = this.defend(a.kind, a.hand === "L" ? 1 : -1, a.dmg * mult, t);
+    if (r.out === "slip" || r.out === "duck") this.ai.open = t + 0.95;
+    this.log.push({ t: +t.toFixed(2), id, out: r.out });
+  }
+
+  /**
+   * A punch arrives (from Blaze or an online opponent): block, slip, duck
+   * or eat it. `from` is the screen side the fist comes from. Returns what
+   * happened and the damage you took.
+   */
+  private defend(kind: "straight" | "hook" | "upper", from: 1 | -1, dmg: number, t: number): { out: "hit" | "block" | "slip" | "duck"; dmg: number } {
+    const d: Defense = this.options.cameraOk ? this.fighter.defenseAround(t) : this.demoDef;
+    const slipOk = kind === "straight" ? d.slip !== 0 : kind === "hook" ? d.slip === -from : d.slip !== 0;
+    const duckOk = kind === "straight" || kind === "hook" ? d.duck : false;
     if (slipOk || duckOk) {
       this.call(duckOk ? "DUCKED!" : "SLIPPED!", "good", 600);
       sfx.whoosh();
-      ai.open = t + 0.95;
       this.score += 60;
       this.show.hit(0.7);
-      this.log.push({ t: +t.toFixed(2), id, out: duckOk ? "duck" : "slip" });
-      return;
+      return { out: duckOk ? "duck" : "slip", dmg: 0 };
     }
     // a high guard covers straights and hooks, but an uppercut comes up
     // between the gloves, and a fist you just threw isn't guarding anything
-    const guarding = d.guard && t - this.lastPunchAt > 0.28 && a.kind !== "upper";
+    const guarding = d.guard && t - this.lastPunchAt > 0.28 && kind !== "upper";
     if (guarding) {
+      const chip = dmg * (kind === "hook" ? 0.28 : 0.15);
       this.call("BLOCKED", "info", 450);
       sfx.punch(0.5, true);
-      this.damage("you", a.dmg * (a.kind === "hook" ? 0.28 : 0.15) * mult, t);
+      this.damage("you", chip, t);
       this.camShake.set(from * 0.012, 0.004, 0);
-      this.log.push({ t: +t.toFixed(2), id, out: "block" });
-      return;
+      return { out: "block", dmg: chip };
     }
     // you take it
     this.landed.blaze++;
@@ -580,10 +830,10 @@ export class KineticBox extends KineticSession {
     this.show.miss();
     sfx.punch(0.9, false);
     this.hurt = 0.85;
-    this.camShake.set(-from * 0.07, a.kind === "upper" ? 0.05 : 0.02, 0.03);
-    this.call(a.kind === "upper" && d.guard ? "THROUGH THE GUARD" : a.kind === "hook" ? "HOOK" : a.kind === "upper" ? "UPPERCUT" : "HIT", "bad", 550);
-    this.damage("you", a.dmg * mult, t);
-    this.log.push({ t: +t.toFixed(2), id, out: "hit" });
+    this.camShake.set(-from * 0.07, kind === "upper" ? 0.05 : 0.02, 0.03);
+    this.call(kind === "upper" && d.guard ? "THROUGH THE GUARD" : kind === "hook" ? "HOOK" : kind === "upper" ? "UPPERCUT" : "HIT", "bad", 550);
+    this.damage("you", dmg, t);
+    return { out: "hit", dmg };
   }
 
   // ---- knockdowns, rounds, the result -------------------------------------
@@ -607,6 +857,7 @@ export class KineticBox extends KineticSession {
       this.call("YOU'RE DOWN", "bad", 1200);
       this.hurt = 1;
       this.aiDo("rest", t, "Taunt");
+      this.send({ k: "down" });
     }
   }
   private downWho: Side = "blaze";
@@ -617,6 +868,7 @@ export class KineticBox extends KineticSession {
     const n = Math.min(10, Math.floor((age - 1) / 1.0) + 1);
     if (age > 1 && n !== this.count) {
       this.count = n;
+      if (who === "you") this.send({ k: "count", n });
       this.ui.count.textContent = String(n);
       this.ui.count.classList.remove("show");
       void this.ui.count.offsetWidth;
@@ -635,9 +887,13 @@ export class KineticBox extends KineticSession {
         this.fighter.recenter();
         this.setPhase("fight", t);
         this.backToStance(t, 1.5);
+        this.send({ k: "up", hp: this.hp.you });
         return;
       }
-      if (this.count >= 10 || (this.downs.you >= 3 && this.count >= 3)) this.endFight("blaze", t, "KO");
+      if (this.count >= 10 || (this.downs.you >= 3 && this.count >= 3)) {
+        this.send({ k: "over", loser: "sender", how: "KO" });
+        this.endFight("blaze", t, "KO");
+      }
       return;
     }
     // Blaze beats the count unless it's her third time down
@@ -677,7 +933,7 @@ export class KineticBox extends KineticSession {
     this.hp.blaze = Math.min(100, this.hp.blaze + 15);
   }
 
-  private endFight(winner: Side, t: number, how: "KO" | "DECISION") {
+  private endFight(winner: Side, t: number, how: "KO" | "DECISION" | "FORFEIT") {
     if (this.phase === "over") return;
     this.setPhase("over", t);
     this.winner = winner;
@@ -703,6 +959,20 @@ export class KineticBox extends KineticSession {
   private poseBlaze(dt: number, t: number) {
     const ai = this.ai;
     this.blaze.group.position.set(ai.x, 0, -0.3);
+    if (this.net && this.moves) {
+      // the other fighter, live: their pose drives the avatar (facing you,
+      // so it copies them rather than mirroring)
+      if (this.net.body.live(performance.now())) this.blaze.drive(this.net.body, "back", { blend: 0.6, legs: true });
+      else this.blaze.timeline([["BoxBounce", t, 1]]);
+      const g = this.telegraphGlow.material as T.SpriteMaterial;
+      if (this.net.warnHand && t < this.net.warnUntil) {
+        const hand = this.blaze.boneWorld(this.net.warnHand === "L" ? "LeftHand" : "RightHand");
+        if (hand) this.telegraphGlow.position.copy(hand);
+        g.opacity = 0.9;
+      } else g.opacity = Math.max(0, g.opacity - dt * 4);
+      this.placeBlazeGloves();
+      return;
+    }
     if (!this.moves) {
       this.blaze.update(dt);
       return;
@@ -742,6 +1012,10 @@ export class KineticBox extends KineticSession {
     } else g.opacity = Math.max(0, g.opacity - dt * 4);
     const head = this.blaze.boneWorld("Head");
     if (head) this.headPos.copy(head);
+    this.placeBlazeGloves();
+  }
+
+  private placeBlazeGloves() {
     for (const s of ["L", "R"] as const) {
       const hand = this.blaze.boneWorld(s === "L" ? "LeftHand" : "RightHand"),
         fore = this.blaze.boneWorld(s === "L" ? "LeftForeArm" : "RightForeArm");
@@ -838,6 +1112,12 @@ export class KineticBox extends KineticSession {
 
   protected resultDetails() {
     const acc = this.thrown ? Math.round((this.landed.you / this.thrown) * 100) : 0;
+    if (this.net)
+      return [
+        { label: `VS ${this.net.them.toUpperCase().slice(0, 12)}`, value: this.winner === "you" ? `WIN · ${this.howWon}` : `LOSS · ${this.howWon}` },
+        { label: "PUNCHES LANDED", value: `${this.landed.you} / ${this.thrown} (${acc}%)` },
+        { label: "KNOCKDOWNS", value: `${this.downs.blaze} – ${this.downs.you}` },
+      ];
     return [
       { label: "RESULT", value: this.winner === "you" ? `WIN · ${this.howWon}` : `LOSS · ${this.howWon}` },
       { label: "PUNCHES LANDED", value: `${this.landed.you} / ${this.thrown} (${acc}%)` },
