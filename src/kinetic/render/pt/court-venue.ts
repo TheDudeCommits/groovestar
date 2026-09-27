@@ -2,7 +2,7 @@ import * as T from "three";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
 import type { Stage } from "../stage";
 import { PT, neon, softDot } from "./palette";
-import { backdrop, LedWall, Confetti, Sparks, Crowd, glossFloor } from "./fx";
+import { skyDome, LedWall, Confetti, Sparks, Crowd, glossFloor } from "./fx";
 import type { ShowDirector } from "./show";
 
 /**
@@ -12,12 +12,26 @@ import type { ShowDirector } from "./show";
 export function tennisVenue(stage: Stage, show: ShowDirector) {
   const root = new T.Group();
   stage.scene.add(root);
-  stage.scene.fog = new T.FogExp2(0x0a0a2a, 0.01);
-  stage.scene.background = new T.Color(0x070a22);
-  backdrop(root, "/kinetic/pt/plate-tennis.webp", { radius: 38, height: 30, arc: 2.2, y: -4, center: new T.Vector3(0, 0, 0), brightness: 0.95 });
+  stage.scene.fog = new T.FogExp2(0x04050f, 0.018);
+  stage.scene.background = new T.Color(0x020309);
+  const sky = skyDome(root, { top: 0x010208, horizon: 0x0a1030, bottom: 0x020309, stars: 0.6 });
+  // Stands: dark tiers on three sides of the court, packed with fans.
+  const tierMat = new T.MeshStandardMaterial({ color: 0x0b0d1c, roughness: 0.85 });
+  const tiers: T.BufferGeometry[] = [];
+  for (let k = 0; k < 6; k++) {
+    const back = new T.BoxGeometry(26 + k * 2.4, 0.8, 1.4);
+    back.translate(0, 0.4 + k * 0.8, -22 - k * 1.3);
+    tiers.push(back);
+    for (const side of [-1, 1]) {
+      const g = new T.BoxGeometry(1.4, 0.8, 30);
+      g.translate(side * (9.2 + k * 1.3), 0.4 + k * 0.8, -6);
+      tiers.push(g);
+    }
+  }
+  root.add(new T.Mesh(mergeGeometries(tiers)!, tierMat));
 
   // Surround and court.
-  const surround = new T.Mesh(new T.PlaneGeometry(40, 50), new T.MeshStandardMaterial({ color: 0x0b1a3a, roughness: 0.55, metalness: 0.2 }));
+  const surround = new T.Mesh(new T.PlaneGeometry(40, 50), new T.MeshStandardMaterial({ color: 0x08301f, roughness: 0.6, metalness: 0.1 }));
   surround.rotation.x = -Math.PI / 2;
   surround.position.set(0, -0.01, -7);
   root.add(surround);
@@ -25,7 +39,7 @@ export function tennisVenue(stage: Stage, show: ShowDirector) {
   court.position.set(0, 0.002, -7);
   const paint = new T.Mesh(
     new T.PlaneGeometry(11, 24),
-    new T.MeshStandardMaterial({ color: 0x163c9e, roughness: 0.65, transparent: true, opacity: 0.88 }),
+    new T.MeshStandardMaterial({ color: 0x0f2e7a, roughness: 0.6, transparent: true, opacity: 0.9 }),
   );
   paint.rotation.x = -Math.PI / 2;
   paint.position.set(0, 0.005, -7);
@@ -77,26 +91,43 @@ export function tennisVenue(stage: Stage, show: ShowDirector) {
     }),
   ];
 
-  // Floodlights: bright heads with long soft flares.
+  // Floodlight towers: a grid of lamps on each mast, with a soft flare.
   const flares = new T.Group();
   root.add(flares);
+  const mastMat = new T.MeshStandardMaterial({ color: 0x0c0e18, roughness: 0.5, metalness: 0.7 });
+  const lampMat = neon(0xf2f6ff, 3.2);
+  const lamps: T.BufferGeometry[] = [];
   for (const [x, z] of [
-    [-13, -16],
-    [13, -16],
-    [-15, 2],
-    [15, 2],
+    [-15, -20],
+    [15, -20],
+    [-17, 2],
+    [17, 2],
   ]) {
-    const s = new T.Sprite(new T.SpriteMaterial({ map: softDot(), color: new T.Color(0xdfe8ff).multiplyScalar(2.2), blending: T.AdditiveBlending, depthWrite: false, fog: false }));
-    s.scale.set(5, 5, 1);
-    s.position.set(x, 15, z);
+    const mast = new T.Mesh(new T.CylinderGeometry(0.18, 0.28, 16, 8), mastMat);
+    mast.position.set(x, 8, z);
+    root.add(mast);
+    for (let i = 0; i < 4; i++)
+      for (let j = 0; j < 3; j++) {
+        const g = new T.BoxGeometry(0.55, 0.42, 0.1);
+        g.translate(x + (i - 1.5) * 0.62, 16.4 + j * 0.5, z);
+        g.lookAt?.(new T.Vector3(0, 0, -6));
+        lamps.push(g);
+      }
+    const s = new T.Sprite(new T.SpriteMaterial({ map: softDot(), color: new T.Color(0xdfe8ff).multiplyScalar(1.6), blending: T.AdditiveBlending, depthWrite: false, fog: false }));
+    s.scale.set(9, 7, 1);
+    s.position.set(x, 16.9, z + 0.3);
     flares.add(s);
   }
+  root.add(new T.Mesh(mergeGeometries(lamps)!, lampMat));
   const crowd = new Crowd(root, {
-    count: 80,
+    count: 420,
     seed: 23,
     area: (r) => {
-      const side = r() < 0.5 ? -1 : 1;
-      return { x: side * (8.6 + r() * 3), y: r() * 1.4, z: -2 - r() * 18, ry: side > 0 ? -Math.PI / 2 : Math.PI / 2 };
+      const k = Math.floor(r() * 6);
+      const where = r();
+      if (where < 0.4) return { x: (r() - 0.5) * (24 + k * 2.4), y: 0.8 + k * 0.8, z: -22 - k * 1.3, ry: 0 };
+      const side = where < 0.7 ? -1 : 1;
+      return { x: side * (9.2 + k * 1.3), y: 0.8 + k * 0.8, z: 8 - r() * 28, ry: side > 0 ? -Math.PI / 2 : Math.PI / 2 };
     },
   });
   const sparks = new Sparks(root, 500, -6);
@@ -114,9 +145,47 @@ export function tennisVenue(stage: Stage, show: ShowDirector) {
       last = t;
       boards.forEach((b) => b.update(t, show));
       crowd.update(show);
+      sky.update(t);
       lineMat.color.setRGB(0.9, 0.95, 1).multiplyScalar(0.85 + show.pulse * 0.3);
       sparks.update(dt);
       confetti.update(dt, t);
+    },
+  };
+}
+
+/** Procedural nebula mural: drifting magenta and cyan clouds over stars. */
+function nebulaWall(parent: T.Object3D, o: { width: number; height: number; position: T.Vector3 }) {
+  const mat = new T.ShaderMaterial({
+    fog: false,
+    uniforms: { uTime: { value: 0 }, uPulse: { value: 0 }, uA: { value: new T.Color(PT.magenta) }, uB: { value: new T.Color(PT.cyan) } },
+    vertexShader: `varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
+    fragmentShader: `varying vec2 vUv; uniform float uTime; uniform float uPulse; uniform vec3 uA; uniform vec3 uB;
+      float h(vec2 p){ return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+      float n(vec2 p){ vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);
+        return mix(mix(h(i), h(i + vec2(1, 0)), f.x), mix(h(i + vec2(0, 1)), h(i + vec2(1, 1)), f.x), f.y); }
+      float fbm(vec2 p){ float v = 0.0, a = 0.5; for (int i = 0; i < 5; i++) { v += a * n(p); p *= 2.03; a *= 0.5; } return v; }
+      void main(){
+        vec2 p = vUv * vec2(3.4, 1.4);
+        float t = uTime * 0.02;
+        float c1 = fbm(p + vec2(t, 0.0) + fbm(p * 1.6 - t));
+        float c2 = fbm(p * 1.3 - vec2(0.0, t) + 4.0);
+        vec3 col = uA * pow(c1, 3.0) * 1.6 + uB * pow(c2, 3.2) * 1.4;
+        col += vec3(0.02, 0.01, 0.05);
+        vec2 sp = floor(vUv * vec2(420.0, 170.0));
+        float star = step(0.9965, h(sp)) * (0.6 + 0.4 * sin(uTime * 2.0 + h(sp) * 40.0));
+        col += vec3(0.9, 0.9, 1.0) * star;
+        float edge = smoothstep(0.0, 0.18, vUv.y) * smoothstep(1.0, 0.7, vUv.y) * smoothstep(0.0, 0.2, vUv.x) * smoothstep(1.0, 0.8, vUv.x);
+        gl_FragColor = vec4(col * edge * (0.9 + uPulse * 0.2), 1.0);
+      }`,
+  });
+  const m = new T.Mesh(new T.PlaneGeometry(o.width, o.height), mat);
+  m.position.copy(o.position);
+  parent.add(m);
+  return {
+    mesh: m,
+    update(t: number, show: ShowDirector) {
+      mat.uniforms.uTime.value = t;
+      mat.uniforms.uPulse.value = show.pulse;
     },
   };
 }
@@ -158,9 +227,9 @@ export function ptRacket(color: number) {
 export function bowlVenue(stage: Stage, show: ShowDirector) {
   const root = new T.Group();
   stage.scene.add(root);
-  stage.scene.fog = new T.FogExp2(0x100628, 0.012);
-  stage.scene.background = new T.Color(0x07040f);
-  backdrop(root, "/kinetic/pt/plate-bowl.webp", { radius: 30, height: 22, arc: 1.7, y: -4.5, center: new T.Vector3(0, 0, 6), brightness: 1 });
+  stage.scene.fog = new T.FogExp2(0x05020d, 0.016);
+  stage.scene.background = new T.Color(0x030108);
+  const nebula = nebulaWall(root, { width: 34, height: 14, position: new T.Vector3(0, 6.2, -26) });
   const hall = new T.Mesh(new T.PlaneGeometry(60, 60), new T.MeshStandardMaterial({ color: 0x0a0618, roughness: 0.7 }));
   hall.rotation.x = -Math.PI / 2;
   hall.position.set(0, -0.06, -10);
@@ -179,11 +248,11 @@ export function bowlVenue(stage: Stage, show: ShowDirector) {
       void main(){
         vec2 uv = vUv * vec2(1.0, 25.0);
         float boards = smoothstep(0.0, 0.04, abs(fract(vUv.x * 12.0) - 0.5));
-        vec3 wood = mix(vec3(0.08, 0.04, 0.16), vec3(0.13, 0.07, 0.24), boards);
+        vec3 wood = mix(vec3(0.018, 0.01, 0.04), vec3(0.035, 0.018, 0.07), boards);
         // swirling UV galaxy print
         vec2 p = vUv * vec2(3.0, 40.0);
         float n = sin(p.x * 2.1 + sin(p.y * 0.35 + uTime * 0.2) * 2.0) * sin(p.y * 0.23 - uTime * 0.15);
-        vec3 c = wood + mix(uA, uB, 0.5 + 0.5 * n) * 0.12 * (0.6 + 0.4 * uPulse);
+        vec3 c = wood + mix(uA, uB, 0.5 + 0.5 * n) * 0.07 * (0.6 + 0.4 * uPulse);
         float star = step(0.997, hash(floor(uv * vec2(40.0, 3.0))));
         c += vec3(0.8, 0.9, 1.0) * star * 0.35;
         // arrows and dots
@@ -255,6 +324,7 @@ export function bowlVenue(stage: Stage, show: ShowDirector) {
       const dt = Math.min(0.05, Math.max(0, t - last));
       last = t;
       laneMat.uniforms.uTime.value = t;
+      nebula.update(t, show);
       laneMat.uniforms.uPulse.value = show.pulse;
       (laneMat.uniforms.uA.value as T.Color).copy(show.colorA);
       (laneMat.uniforms.uB.value as T.Color).copy(show.colorB);

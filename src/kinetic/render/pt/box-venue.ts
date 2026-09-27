@@ -2,7 +2,7 @@ import * as T from "three";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
 import type { Stage } from "../stage";
 import { PT, neon } from "./palette";
-import { backdrop, MovingHeads, Crowd, Confetti, Sparks, LedWall, Lasers, neonTube, haze } from "./fx";
+import { MovingHeads, Crowd, Confetti, Sparks, LedWall, Lasers, neonTube } from "./fx";
 import type { ShowDirector } from "./show";
 
 /** Canvas art for the ring canvas: a star medallion and rings, no words. */
@@ -113,9 +113,17 @@ export function bannerTexture(text: string, sub = "") {
 export function boxVenue(stage: Stage, show: ShowDirector) {
   const root = new T.Group();
   stage.scene.add(root);
-  stage.scene.fog = new T.FogExp2(0x1a0a30, 0.012);
-  stage.scene.background = new T.Color(0x140828);
-  backdrop(root, "/kinetic/pt/plate-box.webp", { radius: 34, height: 30, arc: 2.3, y: -3.5, center: new T.Vector3(0, 0, 4), brightness: 0.92 });
+  stage.scene.fog = new T.FogExp2(0x06030e, 0.03);
+  stage.scene.background = new T.Color(0x030108);
+  stage.scene.children.filter((c) => c instanceof T.HemisphereLight).forEach((h) => ((h as T.HemisphereLight).intensity = 0.3));
+  // Arena bowl: dark tiers rising behind the ring.
+  const tierMat = new T.MeshStandardMaterial({ color: 0x0a0714, roughness: 0.8, metalness: 0.2 });
+  for (let k = 0; k < 5; k++) {
+    const tier = new T.Mesh(new T.CylinderGeometry(9 + k * 1.6, 9 + k * 1.6, 0.9, 64, 1, true, Math.PI * 0.62, Math.PI * 0.76), tierMat);
+    tier.material.side = T.DoubleSide;
+    tier.position.set(0, -0.2 + k * 0.9, 0.5);
+    root.add(tier);
+  }
 
   // Arena floor around the ring.
   const floor = new T.Mesh(new T.CircleGeometry(40, 48), new T.MeshStandardMaterial({ color: 0x0b0618, roughness: 0.35, metalness: 0.6 }));
@@ -193,18 +201,38 @@ export function boxVenue(stage: Stage, show: ShowDirector) {
 
   // Stands of fans around the ring, lit by phone lights and light sticks.
   const crowd = new Crowd(root, {
-    count: 70,
+    count: 260,
     seed: 17,
-    scale: 1.05,
+    scale: 1.0,
     area: (r) => {
-      const a = Math.PI + (r() - 0.5) * 2.4,
-        rad = 5.6 + r() * 2.6;
+      const k = Math.floor(r() * 5);
+      const a = Math.PI + (r() - 0.5) * 2.3,
+        rad = 9.3 + k * 1.6 + r() * 0.4;
       const x = Math.sin(a) * rad,
         z = 0.5 + Math.cos(a) * rad;
-      if (Math.abs(x) < 4.4 && z > -3.8) return null;
-      return { x, y: -0.62 + Math.max(0, rad - 6.5) * 0.35, z, ry: Math.atan2(-x, -z + 0.5) };
+      return { x, y: 0.25 + k * 0.9, z, ry: Math.atan2(-x, -z + 0.5) };
     },
   });
+  // The ring is lit from a square rig overhead; the arena stays dark.
+  const rigMat = neon(0xfff1e0, 2.4);
+  const rig: T.BufferGeometry[] = [];
+  for (const [w, d, x, z] of [
+    [7.6, 0.18, 0, 3.6],
+    [7.6, 0.18, 0, -3.2],
+    [0.18, 6.8, -3.8, 0.2],
+    [0.18, 6.8, 3.8, 0.2],
+  ]) {
+    const g = new T.BoxGeometry(w, 0.1, d);
+    g.translate(x, 6.4, z);
+    rig.push(g);
+  }
+  root.add(new T.Mesh(mergeGeometries(rig)!, rigMat));
+  const ringLight = new T.SpotLight(0xfff4ea, 9, 18, 0.62, 0.55, 1.2);
+  ringLight.position.set(0, 7.2, 0.4);
+  ringLight.target.position.set(0, 0, 0.2);
+  ringLight.castShadow = true;
+  ringLight.shadow.mapSize.set(1024, 1024);
+  root.add(ringLight, ringLight.target);
 
   // Truss with moving heads and the LED banner above the ring.
   const heads = new MovingHeads(root, {
@@ -227,10 +255,7 @@ export function boxVenue(stage: Stage, show: ShowDirector) {
     strength: 0.35,
     sweep: 1.6,
   });
-  const slogans = ["STAY SHARP", "HANDS UP", "ON TARGET", "FIND YOUR FLOW"].map((s, i) => bannerTexture(s, i === 2 ? "GROOVESTAR BOXING" : ""));
-  const banner = new LedWall(root, { width: 6.4, height: 1.6, position: new T.Vector3(0, 4.05, -6.4), grid: 64, mode: "image", brightness: 1.2 });
-  banner.material.uniforms.uMap.value = slogans[0];
-  banner.material.uniforms.uHasMap.value = 1;
+  const banner = new LedWall(root, { width: 6.4, height: 1.6, position: new T.Vector3(0, 4.05, -6.4), grid: 64, mode: "bars", brightness: 1.1 });
   const bannerFrame = new T.Mesh(new T.BoxGeometry(6.8, 1.95, 0.25), postMat);
   bannerFrame.position.set(0, 4.05, -6.55);
   root.add(bannerFrame);
@@ -240,20 +265,16 @@ export function boxVenue(stage: Stage, show: ShowDirector) {
     return w;
   });
   const lasers = new Lasers(root, { emitters: [new T.Vector3(-6, 6.2, -6), new T.Vector3(6, 6.2, -6)], perEmitter: 5, length: 40, minLevel: 2 });
-  haze(root, { positions: [new T.Vector3(-3, 1.2, -4), new T.Vector3(3, 1.4, -4.5), new T.Vector3(0, 2.4, -6)], size: 7, color: 0x7a3cff, opacity: 0.08 });
 
   const sparks = new Sparks(root, 700, -6);
   const confetti = new Confetti(root, { count: 420, area: new T.Box3(new T.Vector3(-5, 0, -4), new T.Vector3(5, 7, 3)), ambient: 0 });
   show.onLevel((_, up) => {
     if (up) confetti.burst(180);
   });
-  let slogan = 0,
-    last = 0;
+  let last = 0;
+  const modes = ["bars", "chevrons", "rings"] as const;
   show.onBeat((b) => {
-    if (b > 0 && b % 16 === 0) {
-      slogan = (slogan + 1) % slogans.length;
-      banner.material.uniforms.uMap.value = slogans[slogan];
-    }
+    if (b > 0 && b % 16 === 0) banner.setMode(modes[(b / 16) % modes.length]);
   });
   return {
     root,
@@ -271,9 +292,11 @@ export function boxVenue(stage: Stage, show: ShowDirector) {
       apronMat.color.copy(show.colorA).multiplyScalar(1.1 + show.pulse * 1.1);
       ropes.forEach((r, i) => {
         const c = [show.colorB, new T.Color(PT.white), show.colorA][Math.floor(i / 3)];
-        (r.material as T.MeshBasicMaterial).color.copy(c).multiplyScalar(1.1 + show.pulse * 0.8 + show.flash * 0.6);
+        (r.material as T.MeshBasicMaterial).color.copy(c).multiplyScalar(0.75 + show.pulse * 0.6 + show.flash * 0.4);
       });
       (pool.material as T.MeshBasicMaterial).color.setRGB(0.75, 0.85, 1).multiplyScalar(0.12 + show.pulse * 0.06);
+      rigMat.color.setRGB(1, 0.95, 0.88).multiplyScalar(2.1 + show.pulse * 0.6 + show.flash * 0.8);
+      ringLight.intensity = 9 + show.flash * 4;
       sparks.update(dt);
       confetti.update(dt, t);
     },

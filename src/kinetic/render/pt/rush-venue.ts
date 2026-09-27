@@ -2,8 +2,7 @@ import * as T from "three";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
 import type { Stage } from "../stage";
 import { PT, neon, seeded, softDot } from "./palette";
-import { backdrop, skyDome, glossFloor, Sparks, Confetti } from "./fx";
-import { bannerTexture } from "./box-venue";
+import { skyDome, glossFloor, Sparks, Confetti } from "./fx";
 import type { ShowDirector } from "./show";
 
 const CHUNK = 72;
@@ -155,7 +154,7 @@ function gateTexture() {
   g.addColorStop(0, "#fffbe0");
   g.addColorStop(1, "#ffd23e");
   c.fillStyle = g;
-  c.fillText("GROOVE CITY", 512, 136);
+  c.fillText("", 512, 136);
   const t = new T.CanvasTexture(cv);
   t.colorSpace = T.SRGBColorSpace;
   return t;
@@ -169,10 +168,39 @@ function gateTexture() {
 export function rushVenue(stage: Stage, show: ShowDirector) {
   const root = new T.Group();
   stage.scene.add(root);
-  stage.scene.fog = new T.FogExp2(0x2c1034, 0.0085);
-  stage.scene.background = new T.Color(0x2a1036);
-  const sky = skyDome(root, { top: 0x14082e, horizon: 0x8a2e5a, bottom: 0x1a0a24, stars: 0.4 });
-  backdrop(root, "/kinetic/pt/plate-rush.webp", { radius: 150, height: 64, arc: 1.5, y: -8, center: new T.Vector3(0, 0, 6), brightness: 1.05 });
+  stage.scene.fog = new T.FogExp2(0x1c0a28, 0.0085);
+  stage.scene.background = new T.Color(0x12071f);
+  const sky = skyDome(root, { top: 0x07031a, horizon: 0x7a1e52, bottom: 0x12071f, stars: 0.7 });
+  // Synthwave sun on the horizon, and a far skyline in silhouette.
+  const sunMat = new T.ShaderMaterial({
+    transparent: true,
+    depthWrite: false,
+    fog: false,
+    uniforms: { uTime: { value: 0 }, uPulse: { value: 0 } },
+    vertexShader: `varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
+    fragmentShader: `varying vec2 vUv; uniform float uTime; uniform float uPulse;
+      void main(){
+        vec2 p = (vUv - 0.5) * 2.0; float r = length(p);
+        vec3 top = vec3(1.0, 0.86, 0.32), bot = vec3(1.0, 0.18, 0.55);
+        vec3 c = mix(bot, top, smoothstep(-0.9, 0.9, p.y)) * 1.6;
+        float band = step(0.0, sin((p.y + uTime * 0.05) * 28.0) + 0.9 + p.y * 1.4);
+        float disc = smoothstep(1.0, 0.985, r) * (p.y > -0.1 ? 1.0 : band);
+        float glow = smoothstep(1.9, 0.9, r) * 0.25;
+        gl_FragColor = vec4(c * disc + bot * glow * (1.0 + uPulse * 0.3), max(disc, glow));
+      }`,
+  });
+  const sun = new T.Mesh(new T.PlaneGeometry(90, 90), sunMat);
+  sun.position.set(0, 18, -185);
+  root.add(sun);
+  const skyline: T.BufferGeometry[] = [];
+  const srng = seeded(77);
+  for (let i = 0; i < 70; i++) {
+    const w = 3 + srng() * 7, h = 8 + srng() * 38;
+    const g = new T.BoxGeometry(w, h, 3);
+    g.translate((i - 35) * 5.2 + srng() * 3, h / 2 - 1, -160 - srng() * 12);
+    skyline.push(g);
+  }
+  root.add(new T.Mesh(mergeGeometries(skyline)!, new T.MeshBasicMaterial({ color: 0x0a0414, fog: false })));
 
   // Wet avenue: a mirror for the neon, darker sidewalks with glowing curbs.
   const road = glossFloor(root, new T.PlaneGeometry(10.5, 220), { resolution: 0.38, strength: 0.55, tint: 0x9a86b0, blur: 0.006 });
@@ -197,9 +225,7 @@ export function rushVenue(stage: Stage, show: ShowDirector) {
   ].map(([k, col]) => new T.MeshBasicMaterial({ map: signTexture(k as number, col as string), color: new T.Color(1.35, 1.35, 1.35), transparent: true }));
   const stripMat = neon(PT.magenta, 2.0);
   const warmMat = new T.MeshBasicMaterial({ map: shopTexture(), color: new T.Color(1.1, 1.1, 1.1) });
-  const boardMats = ["GOOD VIBES", "MOVE LOUD", "GROOVE CITY", "FEEL IT"].map(
-    (text, i) => new T.MeshBasicMaterial({ map: bannerTexture(text, i === 2 ? "NIGHT RUN" : ""), color: new T.Color(1.25, 1.25, 1.25) }),
-  );
+  const boardMats = [0, 1, 2, 3].map((k) => new T.MeshBasicMaterial({ map: signTexture(k, ["#ff3fb4", "#3fe0ff", "#ffd23e", "#b58cff"][k]), color: new T.Color(1.25, 1.25, 1.25), transparent: true }));
   const awningMats = [neon(PT.cyan, 1.2), neon(PT.magenta, 1.2), neon(PT.gold, 1.0)];
   const bulbMat = new T.MeshBasicMaterial({ color: new T.Color(1, 0.8, 0.45).multiplyScalar(2.0) });
   const wireMat = new T.MeshBasicMaterial({ color: 0x1a1024 });
@@ -347,6 +373,7 @@ export function rushVenue(stage: Stage, show: ShowDirector) {
   gate.add(beam);
   const gateSign = new T.Mesh(new T.PlaneGeometry(10.5, 2.6), new T.MeshBasicMaterial({ map: gateTexture(), transparent: true, color: new T.Color(1.15, 1.15, 1.15), depthWrite: false }));
   gateSign.position.set(0, 12.2, 0.6);
+  gateSign.visible = false;
   gate.add(gateSign);
 
   // Fireworks over the skyline on phrase boundaries and level-ups.
@@ -396,6 +423,8 @@ export function rushVenue(stage: Stage, show: ShowDirector) {
       const speed = Math.max(0, distance - lastDistance);
       lastDistance = distance;
       sky.update(t);
+      sunMat.uniforms.uTime.value = t;
+      sunMat.uniforms.uPulse.value = show.pulse;
       chunks.forEach((g, i) => {
         g.position.z = ((distance - i * CHUNK + CHUNK * 3) % (CHUNK * 3)) - 120;
       });

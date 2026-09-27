@@ -42,7 +42,8 @@ function mitt(side: "L" | "R") {
 function glove(side: "L" | "R") {
   const g = new T.Group();
   const col = new T.Color(SIDE_COLOR[side]);
-  const leather = new T.MeshStandardMaterial({ color: col, roughness: 0.32, metalness: 0.05, emissive: col, emissiveIntensity: 0.08 });
+  // glossy competition leather: deep color under a clear coat
+  const leather = new T.MeshPhysicalMaterial({ color: col.clone().multiplyScalar(0.7), roughness: 0.38, clearcoat: 1, clearcoatRoughness: 0.12, emissive: col, emissiveIntensity: 0.05 });
   const fist = new T.Mesh(new T.SphereGeometry(0.13, 28, 20), leather);
   fist.scale.set(1, 1.15, 1.05);
   g.add(fist);
@@ -74,13 +75,14 @@ export class KineticBox extends KineticSession {
   private shake = 0;
   private visibleTarget: { side: string; x: number; y: number; r: number } | null = null;
   constructor(o: KineticOpts) {
-    super(o, { fog: 0x1a0a30, fogDensity: 0.012, bloom: 0.62, bloomThreshold: 0.84, exposure: 1.02 });
+    super(o, { fog: 0x06030e, fogDensity: 0.03, bloom: 0.7, bloomThreshold: 0.82, exposure: 1.0, vignette: 0.6 });
     this.duration = 60;
     this.world = boxVenue(this.stage, this.show);
     this.stage.camera.position.set(0, 1.5, 4.5);
     this.stage.camera.lookAt(0, 1.3, 0);
     this.stage.scene.add(this.coach.group);
     if (this.stage.key) {
+      this.stage.key.intensity = 1.2;
       this.stage.key.position.set(-1.5, 5, 5);
       this.stage.key.target.position.set(0, 1, 0);
     }
@@ -208,10 +210,8 @@ export class KineticBox extends KineticSession {
     return c
       ? c.kind === "slip"
         ? `SLIP ${c.side === "L" ? "LEFT" : "RIGHT"}`
-        : `${c.side === "L" ? "LEFT" : "RIGHT"} ${c.high ? "HIGH" : "BODY"} · RETURN TO GUARD`
-      : this.options.cameraOk
-        ? "BREATHE · RETURN TO GUARD"
-        : super.hint();
+        : `${c.side === "L" ? "LEFT" : "RIGHT"} ${c.high ? "HIGH" : "BODY"}`
+      : super.hint();
   }
   protected diagnostics() {
     return { coachReady: this.coach.ready, target: this.visibleTarget, cues: this.cues.length };
