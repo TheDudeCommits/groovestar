@@ -1,3 +1,28 @@
+# GrooveStar · Round 3 handover (art, text and game quality)
+
+Updated 27 September 2026. The owner reviewed the Primetime overhaul preview: the UI was better, but the generated menu art looked low quality and AI-made, there was too much text, and the games were far from Kinect or Wii quality (Dance and Beat Blade not vibey, Fruit Slice's background awful). This round answers that on the same branch, `primetime/overhaul`.
+
+## What changed
+
+| Area | Change | Files |
+| --- | --- | --- |
+| Dance | Nova is the coach: full size, center stage, performing twenty Meshy motion-capture dances time-warped onto the song's beat grid. Each clip's tempo, beat phase and pose data are measured by the dance lab, so the scorer and move cards read the motion she performs. Routines use 8-beat phrases, and choruses repeat so they can be learned. The stage has an LED wall of beat-synced graphics per section, moving heads and floor uplights that change look every bar, a follow spot and colored rims, a mirror floor, and gold-move pyro and confetti. Move cards are colored silhouettes with arrows showing how the hands travel. | `src/dance/nova-routine.ts`, `src/kinetic/render/dance.ts`, `src/kinetic/render/pt/dance-stage.ts`, `src/ui/hud.ts`, `tools/primetime/{build-moves.mjs,bake-dances.mjs,dance-data.py,lab/}` |
+| Dance scoring fix | The dance tracker had the player's left and right swapped (fixed earlier in `rig.ts`, never in `computeFrame`), and the old AIST++ clip angles were mirrored. Features now follow the move library's convention, so copying the coach scores. | `src/pose/tracker.ts`, `tests/dance.test.ts` |
+| Beat Blade | A black void where the music draws the light: a tunnel of neon rings that spins on every bar, laser fans, side pylons, a halo at the vanishing point, a mirror floor and streaming motes. Glossy red and blue cubes split along the swing with a slash flash; sabers are longer with a white-hot core. | `src/kinetic/render/pt/blade-arena.ts`, `src/kinetic/games/blade.ts` |
+| Fruit Slice | A rendered wooden dojo wall lit by paper lanterns replaces the generated night market. Fruit is 42% larger, and juice stains take the fruit's color, drip and linger on the wall. | `public/kinetic/pt/plate-fruit.webp`, `src/kinetic/render/fruit-arena.ts`, `src/games/fruit.ts` |
+| Other venues | Boxing, Tennis, Bowling and Rush no longer use generated plates: 3D tiered stands and crowds, a ring light rig, floodlight towers, a procedural nebula wall, a synthwave sun and skyline. Slogan banners became graphics. | `src/kinetic/render/pt/{box,court,rush}-venue.ts` |
+| Menu art | Every card and game-page hero is a Cycles render of the game's own Nova, posed from her clips with each game's props (sabers and a sliced cube, gloves, coins, fruit, a racket, a galaxy ball and pins) under stage lighting. | `tools/primetime/keyart/`, `tools/primetime/import-keyart.mjs`, `public/kinetic/pt/{card,hero}-*.webp` |
+| Less text | Taglines, descriptions, spec sheets, hints, eyebrow labels, the demo banner and long in-game hints are gone. Home is the logo, carousel and a circuit button with icon chips; game pages are the hero, title, pace, PLAY and short mode pills; setup is one instruction, a short tip and the camera. | `src/kinetic/ui.ts`, `src/kinetic/setup.ts`, `src/kinetic/core/session.ts`, `src/kinetic/primetime.css` |
+| Soundtrack | Four original tracks rendered from pure DSP: punchy drums, sidechain-pumped supersaws, plucks, a lead hook, risers and impacts into each drop, reverb, delay and a limited master near -9.4 LUFS. Dance plays the produced Neon Nights (the live synth stays as a fallback). | `tools/primetime/music/`, `public/kinetic/audio/`, `src/audio/engine.ts`, `src/kinetic/core/music.ts` |
+
+## Still open after round 3
+
+- A real webcam on real hardware, Safari, Firefox and phones.
+- Owner listening: the new tracks are prototypes rendered without a human listening pass; commissioned or licensed songs are still planned (decision 3).
+- The other seven characters (the crew screen shows locks), Fruit Slice in Three.js, the replay layer and content phases.
+
+---
+
 # GrooveStar · Primetime overhaul handover
 
 Updated 27 September 2026. The owner reviewed the Phase 0 preview, found the look unchanged and too plain, and asked for the full visual overhaul. It is on branch `primetime/overhaul`, which builds on Phase 0 (the Phase 0 handover follows below). The plan, decisions and status are in [docs/PRIMETIME.md](docs/PRIMETIME.md).

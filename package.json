@@ -10,7 +10,7 @@
     "test": "tsx --test tests/*.test.ts",
     "qa:kinetic": "node tools/kinetic/smoke.mjs",
     "assets:cast": "node tools/kinetic/build-cast.mjs",
-    "assets:audio": "node tools/kinetic/build_audio.mjs",
+    "assets:audio": "node tools/kinetic/build_audio.mjs && node tools/primetime/music/render.mjs",
     "assets:art": "node tools/kinetic/capture-artwork.mjs",
     "qa:motion": "node tools/kinetic/motion-check.mjs",
     "qa:rounds": "node tools/kinetic/rounds.mjs",
