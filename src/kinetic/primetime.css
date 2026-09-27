@@ -2580,7 +2580,7 @@ dialog.pt-cast-dialog {
   color: #fff !important;
 }
 
-.pt-setup-tip {
+.pt-setup .pt-setup-copy p.pt-setup-tip {
   margin: 4px 0 0;
   font: italic 900 22px var(--pt-display);
   letter-spacing: 0.08em;

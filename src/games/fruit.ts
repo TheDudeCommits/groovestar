@@ -775,7 +775,7 @@ export class FruitGame implements Game {
       ctx.textAlign = 'center';
       ctx.fillStyle = 'rgba(255,247,238,0.7)';
       ctx.font = `700 ${h * 0.022}px 'Manrope', sans-serif`;
-      ctx.fillText('Step back so the camera can see you', w / 2, h * 0.5);
+      ctx.fillText('STEP INTO VIEW', w / 2, h * 0.5);
       ctx.restore();
     }
     this.drawHud(ctx, left);
@@ -1053,44 +1053,30 @@ export class FruitGame implements Game {
     const w = this.W, h = this.H;
     ctx.save();
     // Score panel: angled glass card, top-left, like the other Primetime HUDs.
-    const px = w * 0.02, py = h * 0.03, pw = Math.max(h * 0.3, 190), ph = h * 0.17;
+    const px = w * 0.02, py = h * 0.03, pw = Math.max(h * 0.24, 160), ph = h * 0.11;
     ctx.beginPath();
-    ctx.moveTo(px, py); ctx.lineTo(px + pw, py); ctx.lineTo(px + pw - h * 0.022, py + ph); ctx.lineTo(px, py + ph); ctx.closePath();
+    ctx.moveTo(px, py); ctx.lineTo(px + pw, py); ctx.lineTo(px + pw - h * 0.02, py + ph); ctx.lineTo(px, py + ph); ctx.closePath();
     const pg = ctx.createLinearGradient(px, py, px + pw, py + ph);
-    pg.addColorStop(0, 'rgba(20,10,52,0.84)');
-    pg.addColorStop(1, 'rgba(8,4,22,0.74)');
+    pg.addColorStop(0, 'rgba(20,10,52,0.62)');
+    pg.addColorStop(1, 'rgba(8,4,22,0.4)');
     ctx.fillStyle = pg;
     ctx.fill();
     ctx.fillStyle = '#3fe0ff';
     ctx.fillRect(px, py, 3, ph);
     ctx.textAlign = 'left';
-    ctx.font = `700 ${h * 0.016}px 'Barlow Condensed', sans-serif`;
-    ctx.fillStyle = '#3fe0ff';
-    ctx.fillText(this.o.cameraOk ? 'FRUIT SLICE' : 'FRUIT SLICE · DEMO', px + h * 0.022, py + h * 0.033);
     ctx.font = `italic 900 ${h * 0.068}px 'Barlow Condensed', sans-serif`;
-    const sg = ctx.createLinearGradient(0, py + h * 0.04, 0, py + h * 0.11);
+    const sg = ctx.createLinearGradient(0, py + h * 0.02, 0, py + h * 0.09);
     sg.addColorStop(0.3, '#ffffff');
     sg.addColorStop(1, '#b9f3ff');
     ctx.fillStyle = sg;
     ctx.shadowColor = 'rgba(63,224,255,0.6)';
     ctx.shadowBlur = 14;
-    ctx.fillText(String(this.score), px + h * 0.02, py + h * 0.105);
+    ctx.fillText(String(this.score), px + h * 0.02, py + h * 0.075);
     ctx.shadowBlur = 0;
-    ctx.font = `700 ${h * 0.015}px 'Barlow Condensed', sans-serif`;
-    ctx.fillStyle = 'rgba(255,247,238,0.72)';
-    ctx.fillText(this.o.cameraOk ? `BEST ${Math.max(this.best, this.score)}` : 'RECORDS DISABLED IN DEMO', px + h * 0.022, py + h * 0.132);
-    // next medal target keeps a goal on screen the whole round
-    if (this.o.medals) {
-      const [b, s, g] = this.o.medals;
-      const next = this.score < b ? ['BRONZE', b] as const : this.score < s ? ['SILVER', s] as const : this.score < g ? ['GOLD', g] as const : null;
-      ctx.font = `italic 800 ${h * 0.016}px 'Barlow Condensed', sans-serif`;
-      if (next) {
-        ctx.fillStyle = next[0] === 'GOLD' ? '#ffd23e' : next[0] === 'SILVER' ? '#cfd6e4' : '#e59a62';
-        ctx.fillText(`${next[0]} AT ${next[1]}`, px + h * 0.022, py + h * 0.156);
-      } else {
-        ctx.fillStyle = '#ffd23e';
-        ctx.fillText('GOLD MEDAL SECURED', px + h * 0.022, py + h * 0.156);
-      }
+    if (this.o.cameraOk && this.best > 0) {
+      ctx.font = `italic 800 ${h * 0.017}px 'Barlow Condensed', sans-serif`;
+      ctx.fillStyle = '#ffd23e';
+      ctx.fillText(`★ ${Math.max(this.best, this.score)}`, px + h * 0.022, py + h * 0.1);
     }
     // live rival score in a race
     const rival = this.o.race?.rival();
@@ -1133,10 +1119,10 @@ export class FruitGame implements Game {
     ctx.font = `italic 800 ${h * 0.018}px 'Barlow Condensed', sans-serif`;
     if (this.feverLeft > 0) {
       ctx.fillStyle = '#ff6ac1';
-      ctx.fillText('FEVER · DOUBLE POINTS', cx, by + h * 0.035);
+      ctx.fillText('FEVER ×2', cx, by + h * 0.035);
     } else if (this.goldRush) {
       ctx.fillStyle = this.finale === 'frenzy' ? '#ff6ac1' : '#ffd23e';
-      const label = this.finale === 'goldrush' ? 'GOLD RUSH · DOUBLE POINTS' : this.finale === 'frenzy' ? 'FRENZY FINALE' : 'FINAL BOSSES · DOUBLE POINTS';
+      const label = this.finale === 'goldrush' ? 'GOLD RUSH ×2' : this.finale === 'frenzy' ? 'FRENZY' : 'BOSSES ×2';
       ctx.fillText(label, cx, by + h * 0.035);
     }
     if (this.combo >= 2) {
