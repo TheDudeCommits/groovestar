@@ -545,13 +545,18 @@
 }
 
 /* ---------------------------------------------------------- dance stage -- */
-.kinetic-dance-layer.pt-dance {
-  z-index: 0;
+#app.pt-dance-on {
   background: var(--pt-black);
 }
-.pt-dance-on .yt-holder {
+.kinetic-dance-layer.pt-dance {
   z-index: 1;
-  box-shadow: 0 0 60px rgba(255, 63, 180, 0.35);
+  background: var(--pt-black);
+}
+.kinetic-dance-layer.pt-dance.pt-video {
+  background: transparent;
+}
+.pt-dance-on .yt-holder {
+  z-index: 0;
 }
 .pt-dance-on #stage {
   z-index: 2;
@@ -2345,4 +2350,259 @@ dialog.pt-cast-dialog {
   dialog.pt-dialog {
     padding: 26px 18px 22px;
   }
+}
+
+/* ===================================================== SONG READY FLOW === */
+.overlay.ready-card {
+  justify-content: center;
+  background:
+    radial-gradient(ellipse at 50% 38%, rgba(60, 20, 120, 0.9), rgba(7, 4, 15, 0.97) 70%),
+    var(--pt-black) !important;
+}
+.ready-card .ready-inner {
+  margin: 0;
+  padding: 36px 44px 32px;
+  gap: 16px;
+  border-radius: 26px;
+  background: rgba(10, 6, 28, 0.72) !important;
+  box-shadow: inset 0 0 0 1.5px rgba(190, 170, 255, 0.35), 0 0 80px rgba(141, 92, 255, 0.35) !important;
+  max-width: min(760px, 92vw);
+}
+.ready-card .get-ready {
+  font: italic 900 clamp(60px, 8vw, 128px) / 0.9 var(--pt-display) !important;
+  letter-spacing: 0.01em;
+  background: var(--pt-chrome);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent !important;
+  filter: drop-shadow(0 5px 0 #1b0b46) drop-shadow(0 0 26px rgba(255, 63, 180, 0.6));
+  text-shadow: none !important;
+  padding: 0 0.1em;
+}
+.ready-card .song-banner {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 12px 22px;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.05);
+  box-shadow: inset 0 0 0 1.5px rgba(63, 224, 255, 0.35);
+}
+.ready-card .song-banner b {
+  font: italic 900 26px/1.1 var(--pt-display) !important;
+  color: #fff;
+}
+.ready-card .song-banner span {
+  font: 800 13px var(--pt-display) !important;
+  letter-spacing: 0.2em;
+  color: var(--pt-cyan);
+  opacity: 1;
+}
+.ready-card .ready-tip {
+  font: italic 800 20px/1.3 var(--pt-display) !important;
+  letter-spacing: 0.06em;
+  color: rgba(255, 244, 234, 0.85) !important;
+}
+.ready-card .scanline {
+  color: var(--pt-magenta);
+}
+.overlay.countdown {
+  justify-content: center;
+  pointer-events: none;
+  font: italic 900 clamp(140px, 22vw, 300px) / 1 var(--pt-display) !important;
+  color: #fff !important;
+  text-shadow: 0 8px 0 #1b0b46, 0 0 60px rgba(63, 224, 255, 0.8) !important;
+  background: none !important;
+}
+.overlay.flash.pt-flash {
+  background: var(--pt-black);
+}
+.pt-flash-logo {
+  width: min(62vw, 900px);
+  filter: drop-shadow(0 0 40px rgba(255, 63, 180, 0.6));
+  animation: pt-title-in 0.6s cubic-bezier(0.2, 1.4, 0.3, 1) both;
+}
+.gs-toast {
+  background: rgba(14, 8, 38, 0.94) !important;
+  color: #fff !important;
+  border-radius: 14px !important;
+  font: italic 800 16px var(--pt-display) !important;
+  letter-spacing: 0.06em;
+  box-shadow: inset 0 0 0 1.5px rgba(190, 170, 255, 0.35), 0 12px 40px rgba(0, 0, 0, 0.5);
+}
+.tap-start {
+  font: italic 900 28px var(--pt-display) !important;
+  border-radius: 16px !important;
+  background: linear-gradient(180deg, #ffe36a, #ffae1f) !important;
+  color: #2a1400 !important;
+}
+.ready-card .ready-inner {
+  color: #fff !important;
+}
+
+/* ============================================ LOBBIES AND PHONE CAMERA === */
+.overlay.lobby,
+.overlay.calib {
+  justify-content: center;
+  z-index: 15;
+  overflow-y: auto;
+  padding: 24px 0;
+  background:
+    radial-gradient(ellipse at 50% 38%, rgba(60, 20, 120, 0.88), rgba(7, 4, 15, 0.97) 70%),
+    var(--pt-black) !important;
+  font-family: var(--pt-body);
+}
+.lobby-box,
+.calib-box {
+  width: min(680px, 92vw) !important;
+  margin: auto 0;
+  padding: 34px 36px 28px !important;
+  border: 0 !important;
+  border-radius: 26px !important;
+  background: linear-gradient(160deg, rgba(26, 12, 64, 0.97), rgba(8, 4, 22, 0.98)) !important;
+  color: var(--pt-white) !important;
+  box-shadow:
+    inset 0 0 0 1.5px rgba(190, 170, 255, 0.4),
+    0 0 80px rgba(141, 92, 255, 0.35),
+    0 40px 100px rgba(0, 0, 0, 0.6) !important;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 14px;
+  text-align: center;
+}
+.lobby-box .lobby-title,
+.calib-box .lobby-title {
+  font: italic 900 clamp(40px, 5vw, 64px) / 0.95 var(--pt-display) !important;
+  text-transform: uppercase;
+  color: #fff !important;
+  letter-spacing: 0.01em;
+  text-shadow: 0 4px 0 #1b0b46, 0 0 24px rgba(255, 63, 180, 0.5) !important;
+}
+.lobby-box .yt-row,
+.calib-box .yt-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: center;
+  align-items: center;
+}
+.lobby-box input,
+.calib-box input {
+  height: 50px;
+  min-width: 0;
+  padding: 0 14px;
+  border-radius: 12px !important;
+  border: 1.5px solid rgba(190, 170, 255, 0.4) !important;
+  background: rgba(255, 255, 255, 0.06) !important;
+  color: #fff !important;
+  font: italic 900 20px var(--pt-display) !important;
+  letter-spacing: 0.12em;
+  text-align: center;
+}
+.lobby-box #mp-url {
+  flex: 1;
+  text-align: left;
+  font: 600 15px var(--pt-body) !important;
+  letter-spacing: 0;
+}
+.lobby-box .mp-btn,
+.calib-box .mp-btn,
+.lobby-box .lobby-leave,
+.calib-box .lobby-leave {
+  height: 50px;
+  padding: 0 22px;
+  border-radius: 12px !important;
+  border: 1.5px solid rgba(190, 170, 255, 0.45) !important;
+  background: rgba(255, 255, 255, 0.06) !important;
+  color: #fff !important;
+  font: italic 900 18px var(--pt-display) !important;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  box-shadow: none !important;
+  cursor: pointer;
+  transform: skewX(-6deg);
+}
+.lobby-box .mp-btn::after,
+.calib-box .mp-btn::after,
+.lobby-box .lobby-leave::after,
+.calib-box .lobby-leave::after {
+  display: none !important;
+}
+.lobby-box .mp-btn.big,
+.calib-box .mp-btn.big,
+#fr-create,
+#fr-start,
+#mp-create {
+  background: linear-gradient(180deg, #ffe36a, #ffae1f) !important;
+  border-color: #fff1a8 !important;
+  color: #2a1400 !important;
+}
+.lobby-box .mp-btn:hover,
+.calib-box .mp-btn:hover,
+.lobby-box .lobby-leave:hover,
+.calib-box .lobby-leave:hover {
+  border-color: var(--pt-cyan) !important;
+  box-shadow: 0 0 18px rgba(63, 224, 255, 0.4) !important;
+}
+.lobby-box .lobby-leave,
+.calib-box .lobby-leave {
+  align-self: center;
+  background: transparent !important;
+  border-color: transparent !important;
+  color: rgba(255, 244, 234, 0.7) !important;
+}
+.lobby-box .lobby-code,
+.calib-box .lobby-code {
+  font: 800 14px var(--pt-display) !important;
+  letter-spacing: 0.3em;
+  color: var(--pt-cyan) !important;
+}
+.lobby-box .lobby-code b,
+.calib-box .lobby-code b {
+  display: block;
+  margin: 6px 0 0;
+  font: italic 900 64px/1 var(--pt-display) !important;
+  letter-spacing: 0.3em;
+  color: var(--pt-gold) !important;
+  text-shadow: 0 0 26px rgba(255, 210, 62, 0.7) !important;
+}
+.lobby-box .lobby-wait,
+.calib-box .lobby-wait,
+.lobby-box .yt-label,
+.calib-box .yt-label {
+  font: 600 14px/1.5 var(--pt-body) !important;
+  color: rgba(255, 244, 234, 0.7) !important;
+  letter-spacing: 0;
+  text-transform: none;
+  font-style: normal;
+}
+.lobby-box .lobby-player {
+  border-radius: 999px !important;
+  border: 1.5px solid rgba(63, 224, 255, 0.45) !important;
+  background: rgba(63, 224, 255, 0.08) !important;
+  color: #fff !important;
+  font: italic 800 16px var(--pt-display) !important;
+  padding: 8px 16px !important;
+}
+.lobby-box .lobby-players {
+  justify-content: center;
+}
+.calib-box .calib-status,
+.lobby-box .yt-err {
+  font: italic 800 17px var(--pt-display) !important;
+  letter-spacing: 0.06em;
+  min-height: 22px;
+}
+.lobby-box .fit-row {
+  font: italic 800 18px var(--pt-display) !important;
+  color: var(--pt-gold) !important;
+}
+.lobby-box .lobby-classics-title:has(+ .lobby-classics:empty),
+.lobby-box .lobby-classics:empty {
+  display: none;
+}
+.lobby-box .yt-title {
+  font: italic 900 20px var(--pt-display) !important;
+  color: #fff !important;
 }

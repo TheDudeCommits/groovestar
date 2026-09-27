@@ -76,7 +76,7 @@ try {
     ),
   );
   await page.reload();
-  await page.waitForSelector(".k-preview-fallback");
+  await page.waitForSelector(".pt-scene-still");
   await page.goto(`${origin}/?demo=fruit`);
   await page.waitForSelector(".k-canvas-controls", { timeout: 15000 });
   await page.getByRole("button", { name: "Pause game" }).click();

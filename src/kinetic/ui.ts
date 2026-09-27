@@ -95,7 +95,7 @@ export function renderHome(menu: HTMLElement, a: Actions) {
   menu.innerHTML = `<div class="pt-scene" id="k-preview" aria-hidden="true"></div><div class="pt-home-shade" aria-hidden="true"></div>${topBar()}<main class="pt-home-main"><section class="pt-carousel" id="k-games" aria-label="Choose a game"><div class="pt-cards" role="list">${CATALOG.map(
     (g, i) =>
       `<button class="pt-card" role="listitem" data-game="${g.id}" data-index="${i}" style="--c1:${CARD_COLORS[g.id][0]};--c2:${CARD_COLORS[g.id][1]}" aria-label="${g.title}. ${g.tag.toLowerCase()}. ${g.duration}"><span class="pt-card-art"><img src="${art(g.id)}" alt="" loading="${i < 4 ? "eager" : "lazy"}"></span><span class="pt-card-title">${g.title.toUpperCase().replace(" ", "<br>")}</span><span class="pt-card-meta">${g.duration} · ${g.movement}</span><span class="pt-card-play">PLAY</span></button>`,
-  ).join("")}</div></section><section class="pt-home-copy"><h1 class="pt-tagline"><span>PLAY.</span> <span>MOVE.</span> <span>BE YOU.</span></h1><p>Seven games. Your body is the controller.</p><div class="pt-home-actions"><button class="pt-btn pt-btn-hot" data-session><span>4-MINUTE CIRCUIT</span></button><label class="pt-name"><span>PLAYER</span><input aria-label="Player name" maxlength="14" value="${name}"></label><button class="pt-btn pt-btn-ghost" data-phone><span>USE YOUR PHONE AS A CAMERA</span></button></div></section></main><footer class="pt-hints" aria-hidden="true"><span><i>◀ ▶</i> CHOOSE</span><span><i>ENTER</i> SELECT</span><span><i>ESC</i> MENU</span></footer>`;
+  ).join("")}</div></section><section class="pt-home-copy"><h1 class="pt-tagline"><span>PLAY.</span> <span>MOVE.</span> <span>BE YOU.</span></h1><p>Seven games. Your body is the controller.</p><div class="pt-home-actions"><button class="pt-btn pt-btn-hot" data-session><span>4-MINUTE CIRCUIT</span></button><label class="pt-name"><span>PLAYER</span><input aria-label="Player name" maxlength="14" value="${name}"></label><button class="pt-btn pt-btn-ghost" data-phone><span>USE YOUR PHONE AS A CAMERA</span></button></div></section></main><footer class="pt-hints" aria-hidden="true"><span><i>◀ ▶</i> CHOOSE</span><span><i>ENTER</i> OPEN</span></footer>`;
   wireTop(menu, a);
   menu.querySelector("input")!.addEventListener("input", (e) =>
     localStorage.setItem("gs-name", (e.target as HTMLInputElement).value.slice(0, 14)),
@@ -272,7 +272,9 @@ function openProgress(a: Actions) {
 export function renderResult(menu: HTMLElement, r: RunRecord, a: Actions) {
   shell(menu, "pt-result-screen");
   const accuracy = Math.round((r.hits / Math.max(1, r.hits + r.misses)) * 100);
-  const stars = starsFor(r);
+  // Dance scores its own stars; other games derive them from accuracy and combo.
+  const scored = r.details?.find((d) => /STAR/.test(d.label))?.value.match(/^(\d)/);
+  const stars = scored ? Number(scored[1]) : starsFor(r);
   const p = profile();
   const gained = Math.round(60 + Math.min(420, r.score / 12) + (r.activeSeconds ?? r.seconds) * 2);
   const title = RANKS[stars];

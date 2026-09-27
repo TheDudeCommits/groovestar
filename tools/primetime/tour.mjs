@@ -53,6 +53,27 @@ try {
     await page.waitForSelector(".pt-dance-hero");
     await shot("dance-home", 1500);
   }
+  if (want("phone")) {
+    await page.goto(origin);
+    await page.waitForSelector(".pt-card");
+    await page.locator("[data-phone]").click();
+    await shot("phone", 2500);
+  }
+  if (want("race")) {
+    await page.goto(origin);
+    await page.waitForSelector(".pt-card");
+    await page.locator('[data-game="fruit"]').click();
+    await page.locator("[data-race]").click();
+    await shot("race", 3000);
+  }
+  if (want("youtube")) {
+    await page.goto(origin);
+    await page.waitForSelector(".pt-card");
+    await page.locator('[data-game="dance"]').click();
+    await page.locator("#yt-url").fill("https://www.youtube.com/watch?v=aqz-KE-bpKQ");
+    await page.locator("#yt-go").click();
+    await shot("youtube-ready", 6000);
+  }
   if (want("progress")) {
     await page.goto(origin);
     await page.waitForSelector(".pt-card");
