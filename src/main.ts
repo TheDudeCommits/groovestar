@@ -1922,7 +1922,9 @@ async function startOriginalDance(demo=false){
  app.querySelectorAll('.overlay,.yt-holder').forEach(e=>e.remove());cancelAnimationFrame(raf);
  const {AudioEngine}=await import('./audio/engine');const music=new AudioEngine();music.setVolume(kineticSettings().volume*.65);
  // dev: ?dancetest&at=48 starts the song at beat 48 for visual checks
- const seek=(import.meta as unknown as {env?:{DEV?:boolean}}).env?.DEV?Number(initialQuery.get('at')??0):0;await music.play(song,seek>0?-seek:4);
+ const seek=(import.meta as unknown as {env?:{DEV?:boolean}}).env?.DEV?Number(initialQuery.get('at')??0):0;
+ // the produced track; the live synth remains the fallback if it can't load
+ try{await music.playTrack(`/kinetic/audio/${song.id}.mp3`,song,seek>0?-seek:4);}catch{await music.play(song,seek>0?-seek:4);}
  play(song,playerNameFromMenu(),{clock:music,onAgain:()=>void startOriginalDance(demo)});
 }
 
