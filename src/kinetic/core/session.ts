@@ -269,7 +269,10 @@ export abstract class KineticSession implements Game {
     this.shownScore += (this.score - this.shownScore) * 0.25;
     if (Math.abs(this.score - this.shownScore) < 1) this.shownScore = this.score;
     q("[data-score]").textContent = Math.round(this.shownScore).toLocaleString();
-    q("[data-time]").textContent = this.options.endless
+    const timeEl = q("[data-time]");
+    // match-based games (tennis, bowling) have no clock to show
+    timeEl.hidden = !this.options.endless && !Number.isFinite(this.duration);
+    timeEl.textContent = this.options.endless
       ? String(Math.floor(this.elapsed))
       : Number.isFinite(this.duration)
         ? String(Math.max(0, Math.ceil(this.duration - this.elapsed)))

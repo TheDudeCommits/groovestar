@@ -2761,3 +2761,144 @@ dialog.pt-dialog .pt-gear small {
 .pt-game[data-game="tennis"] .pt-level-banner b {
   font-size: clamp(34px, 4.6vw, 64px);
 }
+
+/* ---- Tennis: scoreboard and shot calls ---- */
+.tn-board {
+  position: absolute;
+  left: 26px;
+  top: 150px;
+  z-index: 5;
+  pointer-events: none;
+  min-width: 170px;
+  padding: 10px 14px 12px;
+  background: linear-gradient(135deg, rgba(20, 10, 52, 0.7), rgba(8, 4, 22, 0.45));
+  border-left: 3px solid var(--pt-cyan);
+  clip-path: polygon(0 0, 100% 0, calc(100% - 12px) 100%, 0 100%);
+  font-family: var(--pt-display);
+}
+.tn-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 18px;
+  font: italic 900 22px/1.15 var(--pt-display);
+  letter-spacing: 0.06em;
+  color: #fff;
+}
+.tn-row i {
+  font-style: italic;
+  color: var(--pt-gold);
+  font-variant-numeric: tabular-nums;
+}
+.tn-luna b {
+  color: #ffb3e4;
+}
+.tn-call {
+  margin-top: 6px;
+  font: italic 800 18px/1 var(--pt-display);
+  letter-spacing: 0.12em;
+  color: var(--pt-cyan);
+}
+.tn-pop {
+  position: absolute;
+  left: 50%;
+  top: 30%;
+  z-index: 6;
+  pointer-events: none;
+  transform: translate(-50%, -50%) skewX(-8deg);
+  font: italic 900 clamp(34px, 5vw, 72px) / 1 var(--pt-display);
+  letter-spacing: 0.02em;
+  color: #fff;
+  white-space: nowrap;
+  opacity: 0;
+  text-shadow: 0 4px 0 #12063a, 0 0 22px rgba(63, 224, 255, 0.7);
+}
+.tn-pop.show {
+  animation: tn-pop 1.3s cubic-bezier(0.2, 1.4, 0.4, 1) forwards;
+}
+.tn-pop[data-kind="win"],
+.tn-pop[data-kind="perfect"] {
+  color: #fff4b0;
+  text-shadow: 0 4px 0 #4a1a00, 0 0 26px rgba(255, 190, 40, 0.85);
+}
+.tn-pop[data-kind="lose"] {
+  color: #ffc2dc;
+  text-shadow: 0 4px 0 #3a0620, 0 0 22px rgba(255, 63, 140, 0.7);
+}
+.tn-pop[data-kind="info"] {
+  font-size: clamp(24px, 3vw, 42px);
+  top: 22%;
+}
+@keyframes tn-pop {
+  0% { opacity: 0; transform: translate(-50%, -40%) scale(0.6) skewX(-8deg); }
+  14% { opacity: 1; transform: translate(-50%, -50%) scale(1.08) skewX(-8deg); }
+  75% { opacity: 1; transform: translate(-50%, -55%) scale(1) skewX(-8deg); }
+  100% { opacity: 0; transform: translate(-50%, -62%) scale(0.98) skewX(-8deg); }
+}
+
+/* ---- Bowling scorecard ---- */
+.bw-card {
+  position: absolute;
+  left: 50%;
+  top: 18px;
+  transform: translateX(-50%);
+  z-index: 5;
+  pointer-events: none;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.bw-row {
+  display: flex;
+  gap: 3px;
+  align-items: stretch;
+}
+.bw-p {
+  font: italic 900 16px/1 var(--pt-display);
+  color: var(--pt-cyan);
+  align-self: center;
+  margin-right: 6px;
+}
+.bw-f {
+  width: 50px;
+  background: rgba(10, 6, 28, 0.62);
+  border: 1px solid rgba(160, 140, 255, 0.28);
+  border-radius: 4px;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+}
+.bw-f:last-child {
+  width: 66px;
+}
+.bw-f.live {
+  border-color: var(--pt-cyan);
+  box-shadow: 0 0 12px rgba(63, 224, 255, 0.55);
+}
+.bw-m {
+  display: flex;
+  justify-content: flex-end;
+  border-bottom: 1px solid rgba(160, 140, 255, 0.2);
+}
+.bw-m i {
+  width: 18px;
+  height: 18px;
+  font: italic 900 14px/18px var(--pt-display);
+  text-align: center;
+  color: #fff;
+  border-left: 1px solid rgba(160, 140, 255, 0.2);
+}
+.bw-b,
+.bw-f b {
+  display: block;
+  height: 24px;
+  font: italic 900 19px/24px var(--pt-display);
+  text-align: center;
+  color: var(--pt-gold);
+  font-variant-numeric: tabular-nums;
+}
+@media (max-width: 760px) {
+  .bw-f { width: 30px; }
+  .bw-f:last-child { width: 42px; }
+  .bw-m i { width: 11px; font-size: 11px; }
+  .bw-f b { font-size: 14px; }
+}

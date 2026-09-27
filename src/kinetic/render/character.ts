@@ -43,7 +43,10 @@ const HOLD_MS = 350;
  */
 const PT_MODELS: Record<string, { url: string; height: number }> = {
   nova: { url: "/models/nova-pt.glb", height: 1.72 },
+  blaze: { url: "/models/blaze-pt.glb", height: 1.7 },
 };
+/** Nova's rest hip height (armature units): the move library was recorded on her rig. */
+const NOVA_HIPS_Y = 94.95;
 const MESHY_BONES: Record<string, string> = {
   UpperArmR: "RightArm",
   LowerArmR: "RightForeArm",
@@ -107,6 +110,10 @@ export class Character {
   private hipsRest = new T.Vector3();
   /** rest orientation of each bone relative to the character group */
   private restChar = new Map<string, T.Quaternion>();
+  /** clips from the shared move library (recorded on Nova's rig) */
+  private movesNames = new Set<string>();
+  /** how far this rig's hips sit from Nova's, to seat library clips */
+  private hipsDelta = 0;
   ready = false;
   constructor(private look: CharacterLook = {}) {}
   async load(id = "nova") {
@@ -131,7 +138,10 @@ export class Character {
       if (o instanceof T.Bone) {
         this.bones.set(o.name, o);
         this.rest.set(o.name, o.quaternion.clone());
-        if (o.name === "Hips") this.hipsRest.copy(o.position);
+        if (o.name === "Hips") {
+          this.hipsRest.copy(o.position);
+          this.hipsDelta = pt ? o.position.y - NOVA_HIPS_Y : 0;
+        }
       }
     });
     if (pt) {
@@ -198,7 +208,11 @@ export class Character {
     }
     const gltf = await promise;
     if (!this.alive || !this.mixer) return;
-    for (const c of gltf.animations) if (!this.actions.has(c.name)) this.actions.set(c.name, this.mixer.clipAction(c));
+    for (const c of gltf.animations) {
+      if (this.actions.has(c.name)) continue;
+      this.actions.set(c.name, this.mixer.clipAction(c));
+      this.movesNames.add(c.name);
+    }
   }
   clipDuration(name: string) {
     return this.actions.get(name)?.getClip().duration ?? 0;
@@ -231,6 +245,18 @@ export class Character {
     for (const name of this.timelineNames) if (!used.has(name)) this.actions.get(name)?.stop();
     this.timelineNames = used;
     this.mixer.update(0);
+    // library clips carry Nova's hip height: seat other rigs at their own
+    if (Math.abs(this.hipsDelta) > 0.01) {
+      let lib = 0,
+        all = 0;
+      for (const [name, , weight] of layers) {
+        if (weight <= 0.001 || !this.actions.has(name)) continue;
+        all += weight;
+        if (this.movesNames.has(name)) lib += weight;
+      }
+      const hips = this.bones.get("Hips");
+      if (hips && all > 0) hips.position.y += this.hipsDelta * (lib / all);
+    }
     if (this.holo) this.holo.uTime.value = performance.now() / 1000;
   }
   private timelineNames = new Set<string>();
@@ -391,9 +417,22 @@ export class Character {
    * it copies them (third-person games). Limbs are aimed from rest, the
    * torso takes the player's lean and twist, and the feet stay planted.
    */
-  drive(body: Body3D, facing: "front" | "back", opts: { blend?: number; legs?: boolean; torso?: boolean; now?: number } = {}) {
+  drive(
+    body: Body3D,
+    facing: "front" | "back",
+    opts: {
+      blend?: number;
+      legs?: boolean;
+      torso?: boolean;
+      now?: number;
+      /** only these arms (character sides); default both */
+      arms?: ("L" | "R")[];
+      /** layer over the clip pose set this frame instead of taking over the skeleton */
+      overlay?: boolean;
+    } = {},
+  ) {
     if (!this.ready || this.kind !== "meshy") return;
-    this.takeControl();
+    if (!opts.overlay) this.takeControl();
     this.group.updateWorldMatrix(true, true);
     const blend = opts.blend ?? 0.6;
     const sx = facing === "front" ? 1 : -1;
@@ -417,7 +456,7 @@ export class Character {
     const segs: [string, Body3DJoint, Body3DJoint][] = [];
     for (const c of ["L", "R"] as const) {
       const p = player(c);
-      segs.push([`UpperArm${c}`, `sh${p}` as Body3DJoint, `el${p}` as Body3DJoint], [`LowerArm${c}`, `el${p}` as Body3DJoint, `wr${p}` as Body3DJoint]);
+      if (!opts.arms || opts.arms.includes(c)) segs.push([`UpperArm${c}`, `sh${p}` as Body3DJoint, `el${p}` as Body3DJoint], [`LowerArm${c}`, `el${p}` as Body3DJoint, `wr${p}` as Body3DJoint]);
       if (opts.legs !== false) segs.push([`Thigh${c}`, `hip${p}` as Body3DJoint, `knee${p}` as Body3DJoint], [`Shin${c}`, `knee${p}` as Body3DJoint, `ank${p}` as Body3DJoint]);
     }
     for (const [bn, a, b] of segs) {
@@ -427,12 +466,18 @@ export class Character {
       if (pa && pb) {
         this.pointBone(bn, pa, pb, blend);
         this.segSeen.set(bn, now);
-      } else if (now - (this.segSeen.get(bn) ?? -1e9) > HOLD_MS) {
+      } else if (!opts.overlay && now - (this.segSeen.get(bn) ?? -1e9) > HOLD_MS) {
         const ia = TRACK_SEGMENTS.find((x) => x[0] === bn);
         if (ia) this.pointBone(bn, idle(ia[1]), idle(ia[2]), 0.08);
       }
     }
-    this.plantFeet();
+    if (!opts.overlay) this.plantFeet();
+  }
+
+  /** World position of any rig bone by its Meshy name. */
+  boneWorld(name: string, target = new T.Vector3()) {
+    const b = this.bones.get(name);
+    return b ? b.getWorldPosition(target) : null;
   }
 
   /** Turn the spine so the chest matches a target up vector and shoulder line (character space). */

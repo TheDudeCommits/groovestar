@@ -9,6 +9,7 @@ import { ALL_EXTENSIONS } from "@gltf-transform/extensions";
 import { dedup, prune, resample, meshopt } from "@gltf-transform/functions";
 import { MeshoptEncoder, MeshoptDecoder } from "meshoptimizer";
 import { join } from "node:path";
+import { existsSync } from "node:fs";
 import { homedir } from "node:os";
 
 const src = (process.env.GROOVESTAR_NOVA_SRC ?? join(homedir(), "Claude-Pro/groovestar-primetime/meshy")).replace(/^~/, homedir());
@@ -28,6 +29,16 @@ export const MOVES = [
   ["Swing", 323, "pin"], ["Throw", 239, "pin"],
   ["Victory", 412, "drift"], ["VictoryCheer", 59, "drift"], ["FistPump", 403, "pin"],
   ["JumpOpen", 460, "pin"], ["SpinJump", 397, "pin"], ["Wave", 28, "pin"],
+  // Boxing match (round 4)
+  ["Taunt", 88, "pin"], ["Block1", 138, "pin"], ["Block2", 139, "pin"], ["Block3", 140, "pin"],
+  ["Dodge", 156, "drift"], ["Dodge1", 157, "drift"], ["HitBody", 171, "pin"], ["HitFace", 174, "pin"],
+  ["HitFace1", 175, "pin"], ["HitFace2", 176, "pin"], ["HitReact", 178, "pin"], ["KnockDown", 187, "pin"],
+  ["KnockDown1", 190, "pin"], ["HookR", 195, "pin"], ["UppercutL", 196, "pin"], ["HookShortL", 197, "pin"],
+  ["Combo", 198, "pin"], ["StraightR", 210, "pin"], ["GetUp", 365, "pin"], ["Warmup", 385, "pin"],
+  ["Tired", 31, "pin"],
+  // Tennis and bowling (round 4)
+  ["Serve", 393, "pin"], ["RunFightL", 630, "pin"], ["RunFightR", 631, "pin"], ["BowlThrow", 280, "pin"],
+  ["CrouchThrow", 398, "pin"],
 ];
 
 await MeshoptEncoder.ready;
@@ -51,7 +62,8 @@ const nodes = new Map(root.listNodes().map((n) => [n.getName(), n]));
 const buffer = root.listBuffers()[0];
 
 for (const [name, id, rootMode] of MOVES) {
-  const doc = await io.read(join(src, `anim2/a${id}.glb`));
+  const file = existsSync(join(src, `anim2/a${id}.glb`)) ? `anim2/a${id}.glb` : `anim3/a${id}.glb`;
+  const doc = await io.read(join(src, file));
   const clip = doc.getRoot().listAnimations()[0];
   const anim = base.createAnimation(name);
   for (const ch of clip.listChannels()) {

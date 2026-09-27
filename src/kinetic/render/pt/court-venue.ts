@@ -154,7 +154,7 @@ export function tennisVenue(stage: Stage, show: ShowDirector) {
 }
 
 /** Procedural nebula mural: drifting magenta and cyan clouds over stars. */
-function nebulaWall(parent: T.Object3D, o: { width: number; height: number; position: T.Vector3 }) {
+export function nebulaWall(parent: T.Object3D, o: { width: number; height: number; position: T.Vector3 }) {
   const mat = new T.ShaderMaterial({
     fog: false,
     uniforms: { uTime: { value: 0 }, uPulse: { value: 0 }, uA: { value: new T.Color(PT.magenta) }, uB: { value: new T.Color(PT.cyan) } },
@@ -363,7 +363,7 @@ export function ptPin() {
   colorize(body, new T.Color(0.95, 0.93, 1));
   const stripes = [0.6, 0.67].map((y) => colorize(new T.CylinderGeometry(0.076, 0.08, 0.035, 24).translate(0, y, 0).toNonIndexed(), new T.Color(PT.magenta)));
   const geo = mergeGeometries([body, ...stripes])!;
-  pinMat ??= new T.MeshStandardMaterial({ vertexColors: true, roughness: 0.25, emissive: 0x6a50c0, emissiveIntensity: 0.35 });
+  pinMat ??= new T.MeshStandardMaterial({ vertexColors: true, roughness: 0.3, emissive: 0x6a50c0, emissiveIntensity: 0.12 });
   const g = new T.Group();
   const m = new T.Mesh(geo, pinMat);
   m.castShadow = true;

@@ -24,7 +24,17 @@ const shots = flag("shots", "");
 const every = Number(flag("every", "5"));
 const track = flag("track", "");
 const minRate = flag("min-hit-rate", "");
-const cam = flag("cam", "");
+const clip = flag("clip", "");
+let cam = flag("cam", "");
+if (clip) {
+  // a fixture from tests/fixtures/motion, converted to a y4m webcam once
+  const { tmpdir } = await import("node:os");
+  const { existsSync, mkdirSync } = await import("node:fs");
+  const dir = `${tmpdir()}/groovestar-realmotion`;
+  mkdirSync(dir, { recursive: true });
+  cam = `${dir}/${clip}.y4m`;
+  if (!existsSync(cam)) execFileSync("ffmpeg", ["-y", "-loglevel", "error", "-i", `tests/fixtures/motion/${clip}.mp4`, "-vf", "fps=30", "-pix_fmt", "yuv420p", cam]);
+}
 const film = flag("film", "");
 const width = Number(flag("w", "1280")),
   height = Number(flag("h", "720"));

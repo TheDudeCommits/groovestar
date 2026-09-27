@@ -176,9 +176,107 @@ function danceBot(mode: "copy" | "still" | "random" = "copy"): Bot {
   };
 }
 
+// ---- Tennis ---------------------------------------------------------------
+
+/** Plays a racket hand like a person: take it back, swing through on time. */
+function tennisBot(): Bot {
+  let swingAt = -1,
+    fore = true,
+    serveAt = -1,
+    lastContact = -1;
+  const ease = (k: number) => k * k * (3 - 2 * k);
+  return ({ t, body, view, skill, gauss }) => {
+    idle(body, t);
+    const H = view.hand === "L" ? "L" : "R";
+    const s = H === "R" ? -1 : 1; // subject x of the racket side
+    // serving: raise the racket to toss, then hit near the top
+    if (view.server === "you" && view.phase === "serve") {
+      body.hand[H] = body.chestPoint(s * 0.25, 0.45, 0.05);
+      return;
+    }
+    if (view.tossTopAt && serveAt < view.tossTopAt - 2000) serveAt = view.tossTopAt - 40 + gauss() * (1 - skill) * 120;
+    if (serveAt > 0 && Math.abs(t - serveAt) < 260) {
+      const k = Math.max(0, Math.min(1, (t - serveAt + 130) / 260));
+      const e = ease(k);
+      body.hand[H] = body.chestPoint(s * (0.3 - 0.4 * e), 0.5 - 0.95 * e, -0.2 + 0.6 * e);
+      return;
+    }
+    if (view.contactAt && Math.abs(view.contactAt - lastContact) > 250) {
+      lastContact = view.contactAt;
+      swingAt = view.contactAt + gauss() * (1 - skill) * 110;
+      fore = view.forehand;
+    }
+    if (swingAt > 0) {
+      const k = (t - (swingAt - 140)) / 280;
+      if (k > -2.2 && k < 1.3) {
+        // take the racket back smoothly well before, then swing across and up
+        const rest: [number, number, number] = [s * 0.24, -0.5, 0.12];
+        const back: [number, number, number] = fore ? [s * 0.6, -0.38, -0.25] : [-s * 0.55, -0.3, -0.2];
+        const thru: [number, number, number] = fore ? [-s * 0.3, -0.02, 0.4] : [s * 0.45, 0.02, 0.35];
+        let p: [number, number, number];
+        if (k < 0) {
+          const e = ease(Math.max(0, Math.min(1, (k + 2.2) / 1.4)));
+          p = rest.map((r, i) => r + (back[i] - r) * e) as [number, number, number];
+        } else {
+          const e = ease(Math.min(1, k));
+          p = back.map((b, i) => b + (thru[i] - b) * e) as [number, number, number];
+        }
+        body.hand[H] = body.chestPoint(p[0], p[1], p[2]);
+        return;
+      }
+    }
+  };
+}
+
+// ---- Bowling ----------------------------------------------------------------
+
+/** Push away, swing back behind the hip, swing through and release low. */
+function bowlBot(): Bot {
+  let plan: { start: number; x: number; power: number; curve: number } | null = null;
+  const keys: [number, [number, number, number]][] = [
+    [0, [-0.15, -0.22, 0.22]],
+    [0.3, [-0.17, -0.28, 0.42]],
+    [0.55, [-0.2, -0.62, 0.05]],
+    [0.8, [-0.22, -0.38, -0.46]],
+    [1.12, [-0.2, -0.64, 0.12]],
+    [1.36, [-0.14, 0.04, 0.5]],
+  ];
+  return ({ t, body, view, skill, gauss, rand }) => {
+    idle(body, t);
+    if (view.phase !== "aim" || !view.live) {
+      plan = null;
+      return;
+    }
+    // a throw that didn't take: settle, then bowl again
+    if (plan && (t - plan.start) / 1000 / plan.power > 2.6) plan = null;
+    if (!plan) plan = { start: t + 900 + rand() * 900, x: gauss() * 0.1, power: 0.85 + skill * 0.3 + gauss() * 0.08, curve: gauss() * (1.2 - skill) * 0.12 };
+    body.root = [plan.x, 0, 0];
+    const k = (t - plan.start) / 1000 / plan.power;
+    if (k < 0) {
+      body.hand.R = body.chestPoint(-0.15, -0.22, 0.22);
+      return;
+    }
+    let p = keys[keys.length - 1][1];
+    for (let i = 0; i < keys.length - 1; i++) {
+      const [ta, a] = keys[i],
+        [tb, b] = keys[i + 1];
+      if (k >= ta && k <= tb) {
+        const e = (k - ta) / (tb - ta);
+        const s = e * e * (3 - 2 * e);
+        p = a.map((v, j) => v + (b[j] - v) * s) as [number, number, number];
+        if (i >= 3) p[0] += plan.curve * s;
+        break;
+      }
+    }
+    body.hand.R = body.chestPoint(p[0], p[1], p[2]);
+  };
+}
+
 const BOTS: Record<string, () => Bot> = {
   idle: () => ({ t, body }) => idle(body, t),
   blade: bladeBot,
+  tennis: tennisBot,
+  bowl: bowlBot,
   dance: () => danceBot("copy"),
   dancestill: () => danceBot("still"),
   dancerandom: () => danceBot("random"),
